@@ -14,7 +14,7 @@ from paapi5_python_sdk.partner_type import PartnerType
 PAAPI_SPLIT = 10
 
 
-def fetch_price(config, asin_list):
+def fetch_price_by_api(config, asin_list):
     if len(asin_list) == 0:
         return {}
 
@@ -45,6 +45,7 @@ def fetch_price(config, asin_list):
                 item_ids=asin_sub_list,
                 resources=[
                     GetItemsResource.OFFERS_SUMMARIES_LOWESTPRICE,
+                    GetItemsResource.ITEMINFO_CLASSIFICATIONS,
                     GetItemsResource.IMAGES_PRIMARY_MEDIUM,
                     GetItemsResource.IMAGES_PRIMARY_SMALL,
                 ],
@@ -52,12 +53,12 @@ def fetch_price(config, asin_list):
         )
 
         if resp.items_result is not None:
-            for item_info in resp.items_result.items:
-                if item_info.offers is None:
+            for item_data in resp.items_result.items:
+                if item_data.offers is None:
                     continue
 
                 item = {}
-                for offer in item_info.offers.summaries:
+                for offer in item_data.offers.summaries:
                     if offer.condition.value != "New":
                         continue
                     item["price"] = int(offer.lowest_price.amount)
@@ -66,16 +67,28 @@ def fetch_price(config, asin_list):
                 if "price" not in item:
                     continue
 
-                item["thumb_url"] = item_info.images.primary.medium.url
+                try:
+                    item[
+                        "category"
+                    ] = item_data.item_info.classifications.product_group.display_value
+                except:
+                    logging.warning(
+                        "Unable to get category of {asin}.".format(asin=item_data.asin)
+                    )
+                    pass
 
-                price_map[item_info.asin] = item
+                item["thumb_url"] = item_data.images.primary.medium.url
+
+                price_map[item_data.asin] = item
 
     return price_map
 
 
-def check_list(config, item_list):
+def check_item_list(config, item_list):
     try:
-        price_map = fetch_price(config, list(map(lambda item: item["asin"], item_list)))
+        price_map = fetch_price_by_api(
+            config, list(map(lambda item: item["asin"], item_list))
+        )
         for item in item_list:
             if item["asin"] in price_map:
                 item["stock"] = 1
@@ -96,7 +109,7 @@ if __name__ == "__main__":
     config = load_config()
 
     pprint.pprint(
-        fetch_price(
+        fetch_price_by_api(
             config,
             ["B0BGPCH9C3", "B0BFZWW3H6"],
         )

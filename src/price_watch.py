@@ -136,7 +136,7 @@ def do_work(config, driver, item_list, loop, error_count):
             pass
         time.sleep(SCRAPE_INTERVAL_SEC)
 
-    for item in store_amazon.check_list(
+    for item in store_amazon.check_item_list(
         config,
         list(filter(lambda item: item["check_method"] == "amazon-paapi", item_list)),
     ):
