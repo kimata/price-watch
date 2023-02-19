@@ -14,6 +14,7 @@ store_list:
 
   - name: switch-science.com
     price_xpath: '//div[contains(@class, "price__current")]/span[contains(@class, "money")]'
+    thumb_xpath: '//div[@class="product-gallery--image-background"]/img'
     unavailable_xpath: '//span[contains(text(), "売り切れ")]'
 
   - name: store.ui.com
@@ -77,4 +78,3 @@ item_list:
   - name: Raspberry Pi Zero 2 W
     store: switch-science.com
     url: https://www.switch-science.com/products/7600
-    thumb_url: https://cdn.shopify.com/s/files/1/0514/0719/2262/products/89a3a7de-8847-4f1a-94aa-e4f627190b4d_1390x1390.jpg?v=1675224998
