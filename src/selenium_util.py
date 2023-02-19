@@ -18,8 +18,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.core.utils import ChromeType
 from webdriver_manager.chrome import ChromeDriverManager
 
-
 DATA_PATH = pathlib.Path(os.path.dirname(__file__)).parent / "data"
+DUMP_PATH = str(DATA_PATH / "debug")
 
 
 def create_driver_impl(profile_name, data_path):
@@ -100,7 +100,7 @@ def is_display(driver, xpath):
     )
 
 
-def dump_page(driver, dump_path, index):
+def dump_page(driver, index, dump_path=DUMP_PATH):
     name = inspect.stack()[1].function.replace("<", "").replace(">", "")
     dump_path = pathlib.Path(dump_path)
 
@@ -121,7 +121,7 @@ def dump_page(driver, dump_path, index):
     logging.info("page dump: {index:02d}.".format(index=index))
 
 
-def clean_dump(dump_path, keep_days=1):
+def clean_dump(dump_path=DUMP_PATH, keep_days=1):
     dump_path = pathlib.Path(dump_path)
     time_threshold = datetime.timedelta(keep_days)
 
@@ -141,6 +141,4 @@ def clean_dump(dump_path, keep_days=1):
 
 
 if __name__ == "__main__":
-    DATA_PATH = pathlib.Path(os.path.dirname(__file__)).parent / "data"
-    DUMP_PATH = str(DATA_PATH / "debug")
-    clean_dump(DUMP_PATH)
+    clean_dump()

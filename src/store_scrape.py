@@ -60,7 +60,7 @@ def process_action(config, driver, wait, item, action_list, name="action"):
                 "Resolve captche is needed at {domain}.".format(domain=domain)
             )
 
-            dump_page(driver, DUMP_PATH, int(random.random() * 100))
+            dump_page(driver, int(random.random() * 100))
             code = input("{domain} captcha: ".format(domain=domain))
 
             driver.find_element(By.XPATH, input_xpath).send_keys(code)
@@ -108,7 +108,7 @@ def check_impl(config, driver, item, loop):
 
     if not xpath_exists(driver, item["price_xpath"]):
         logging.warning("{name}: price not found.".format(name=item["name"]))
-        dump_page(driver, DUMP_PATH, int(random.random() * 100))
+        dump_page(driver, int(random.random() * 100))
         return False
 
     price_text = driver.find_element(By.XPATH, item["price_xpath"]).text
@@ -142,6 +142,6 @@ def check(config, driver, item, loop):
     except:
         logging.error("URL: {url}".format(url=driver.current_url))
         logging.error(traceback.format_exc())
-        dump_page(driver, DUMP_PATH, int(random.random() * 100))
-        clean_dump(DUMP_PATH)
+        dump_page(driver, int(random.random() * 100))
+        clean_dump()
         raise
