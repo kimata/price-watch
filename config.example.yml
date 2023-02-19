@@ -10,7 +10,9 @@ amazon:
   associate: XXXXXX-22
   access_key: XXXXXXXXXXXXXXXXXXXX
   secret_key: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-  
+  host: webservices.amazon.co.jp
+  region: us-west-2
+
 liveness:
   file: /dev/shm/healthz
   interval: 300

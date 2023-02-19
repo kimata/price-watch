@@ -5,9 +5,11 @@ import logging
 import time
 import traceback
 
-from amazon.paapi import AmazonAPI
+from paapi5_python_sdk.api.default_api import DefaultApi
 from paapi5_python_sdk.get_items_resource import GetItemsResource
+from paapi5_python_sdk.get_items_request import GetItemsRequest
 from paapi5_python_sdk.condition import Condition
+from paapi5_python_sdk.partner_type import PartnerType
 
 PAAPI_SPLIT = 10
 
@@ -20,11 +22,11 @@ def fetch_price(config, asin_list):
         "PAAPI GetItems: ASIN = [ {asin_list} ]".format(asin_list=", ".join(asin_list))
     )
 
-    amazon_api = AmazonAPI(
-        config["amazon"]["access_key"],
-        config["amazon"]["secret_key"],
-        config["amazon"]["associate"],
-        "JP",
+    default_api = DefaultApi(
+        access_key=config["amazon"]["access_key"],
+        secret_key=config["amazon"]["secret_key"],
+        host=config["amazon"]["host"],
+        region=config["amazon"]["region"],
     )
 
     price_map = {}
@@ -34,34 +36,39 @@ def fetch_price(config, asin_list):
         if i != 0:
             time.sleep(10)
 
-        resp = amazon_api.get_items(
-            asin_sub_list,
-            condition=Condition.NEW,
-            get_items_resource=[
-                GetItemsResource.OFFERS_SUMMARIES_LOWESTPRICE,
-                GetItemsResource.IMAGES_PRIMARY_MEDIUM,
-                GetItemsResource.IMAGES_PRIMARY_SMALL,
-            ],
+        resp = default_api.get_items(
+            GetItemsRequest(
+                partner_tag=config["amazon"]["associate"],
+                partner_type=PartnerType.ASSOCIATES,
+                marketplace="www.amazon.co.jp",
+                condition=Condition.NEW,
+                item_ids=asin_sub_list,
+                resources=[
+                    GetItemsResource.OFFERS_SUMMARIES_LOWESTPRICE,
+                    GetItemsResource.IMAGES_PRIMARY_MEDIUM,
+                    GetItemsResource.IMAGES_PRIMARY_SMALL,
+                ],
+            )
         )
 
-        for asin, product in resp["data"].items():
-            product_info = product.to_dict()
-            if product_info["offers"] is None:
-                continue
-
-            item = {}
-            for offer in product_info["offers"]["summaries"]:
-                if offer["condition"]["value"] != "New":
+        if resp.items_result is not None:
+            for item_info in resp.items_result.items:
+                if item_info.offers is None:
                     continue
-                item["price"] = int(offer["lowest_price"]["amount"])
-                break
 
-            if "price" not in item:
-                continue
+                item = {}
+                for offer in item_info.offers.summaries:
+                    if offer.condition.value != "New":
+                        continue
+                    item["price"] = int(offer.lowest_price.amount)
+                    break
 
-            item["thumb_url"] = product_info["images"]["primary"]["medium"]["url"]
+                if "price" not in item:
+                    continue
 
-            price_map[asin] = item
+                item["thumb_url"] = item_info.images.primary.medium.url
+
+                price_map[item_info.asin] = item
 
     return price_map
 
@@ -91,6 +98,6 @@ if __name__ == "__main__":
     pprint.pprint(
         fetch_price(
             config,
-            ["B0BPBXPCT5", "B00C7FG7YO", "B09M6GW286", "B092HFNCDR", "B09T9YVP3B"],
+            ["B0BGPCH9C3", "B0BFZWW3H6"],
         )
     )
