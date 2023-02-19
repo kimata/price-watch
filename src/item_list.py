@@ -24,6 +24,7 @@ def load_item_list(error_count):
             merged_item["price_unit"] = "円"
 
         if merged_item["check_method"] == "amazon-paapi":
+            # NOTE: url は ID 的に使用するので，必ず定義されているようにする
             merged_item["url"] = "https://www.amazon.co.jp/dp/{asin}".format(
                 asin=merged_item["asin"]
             )
