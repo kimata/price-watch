@@ -7,6 +7,7 @@ import inspect
 import pathlib
 import os
 import shutil
+import datetime
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -16,6 +17,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.core.utils import ChromeType
 from webdriver_manager.chrome import ChromeDriverManager
+
 
 DATA_PATH = pathlib.Path(os.path.dirname(__file__)).parent / "data"
 
@@ -117,3 +119,28 @@ def dump_page(driver, dump_path, index):
         f.write(driver.page_source)
 
     logging.info("page dump: {index:02d}.".format(index=index))
+
+
+def clean_dump(dump_path, keep_days=1):
+    dump_path = pathlib.Path(dump_path)
+    time_threshold = datetime.timedelta(keep_days)
+
+    for item in dump_path.iterdir():
+        if not item.is_file():
+            continue
+        time_diff = datetime.datetime.now() - datetime.datetime.fromtimestamp(
+            item.stat().st_mtime
+        )
+        if time_diff > time_threshold:
+            logging.info(
+                "remove {path} [{day:,} day(s) old].".format(
+                    path=item.absolute(), day=time_diff.days
+                )
+            )
+            item.unlink(missing_ok=True)
+
+
+if __name__ == "__main__":
+    DATA_PATH = pathlib.Path(os.path.dirname(__file__)).parent / "data"
+    DUMP_PATH = str(DATA_PATH / "debug")
+    clean_dump(DUMP_PATH)

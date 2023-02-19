@@ -14,7 +14,7 @@ import traceback
 from selenium.webdriver.support.wait import WebDriverWait
 
 from selenium.webdriver.common.by import By
-from selenium_util import xpath_exists, dump_page
+from selenium_util import xpath_exists, dump_page, clean_dump
 
 import captcha
 
@@ -143,4 +143,5 @@ def check(config, driver, item, loop):
         logging.error("URL: {url}".format(url=driver.current_url))
         logging.error(traceback.format_exc())
         dump_page(driver, DUMP_PATH, int(random.random() * 100))
+        clean_dump(DUMP_PATH)
         raise

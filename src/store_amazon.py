@@ -19,7 +19,7 @@ def fetch_price_by_api(config, asin_list):
         return {}
 
     logging.info(
-        "PAAPI GetItems: ASIN = [ {asin_list} ]".format(asin_list=", ".join(asin_list))
+        "PA-API GetItems: ASIN = [ {asin_list} ]".format(asin_list=", ".join(asin_list))
     )
 
     default_api = DefaultApi(
