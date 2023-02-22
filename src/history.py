@@ -61,6 +61,27 @@ select * from price_history WHERE url="{url} ORDER BY time DESC
     return price_hist
 
 
+def lowest(url):
+    conn = connect()
+    conn.row_factory = dict_factory
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+select * from price_history WHERE url="{url}" ORDER BY price ASC
+""".format(
+            url=url
+        )
+    )
+
+    price_hist = cur.fetchone()
+
+    conn.commit()
+    conn.close()
+
+    return price_hist
+
+
 def collect(url, func):
     conn = connect()
     conn.row_factory = dict_factory

@@ -93,7 +93,9 @@ def process_data(config, item, last):
                         price_unit=item["price_unit"],
                     )
                 )
-                notify_slack.send(config, item)
+                notify_slack.send(
+                    config, item, item["price"] < history.lowest(item["url"])["price"]
+                )
             elif last["stock"] == 0:
                 logging.warning(
                     "{name}: back in stock {new_price:,}{price_unit}.".format(

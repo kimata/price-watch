@@ -53,16 +53,17 @@ ERROR_TMPL = """\
 """
 
 
-def send(config, item):
+def send(config, item, is_record=False):
     client = WebClient(token=config["slack"]["bot_token"])
 
     message = MESSAGE_TMPL.format(
         message=json.dumps(
-            ":tada: {old_price:,} ⇒ *{price:,}{price_unit}*\n{stock}\n<{url}|詳細>".format(
+            ":tada: {old_price:,} ⇒ *{price:,}{price_unit}* {record}\n{stock}\n<{url}|詳細>".format(
                 old_price=item["old_price"],
                 price=item["price"],
                 price_unit=item["price_unit"],
                 url=item["url"],
+                record=":fire:" if is_record else "",
                 stock="out of stock" if item["stock"] == 0 else "in stock",
             )
         ),
