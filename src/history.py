@@ -47,7 +47,7 @@ def last(url):
 
     cur.execute(
         """
-select * from price_history WHERE url="{url} ORDER BY time DESC
+select * from price_history WHERE url="{url}" ORDER BY time DESC
 """.format(
             url=url
         )
