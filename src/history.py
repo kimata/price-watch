@@ -40,16 +40,16 @@ INSERT INTO price_history
     conn.close()
 
 
-def last(name, store):
+def last(url):
     conn = connect()
     conn.row_factory = dict_factory
     cur = conn.cursor()
 
     cur.execute(
         """
-select * from price_history WHERE name="{name}" AND store="{store}" ORDER BY time DESC
+select * from price_history WHERE url="{url} ORDER BY time DESC
 """.format(
-            name=name, store=store
+            url=url
         )
     )
 
@@ -61,16 +61,16 @@ select * from price_history WHERE name="{name}" AND store="{store}" ORDER BY tim
     return price_hist
 
 
-def collect(name, func):
+def collect(url, func):
     conn = connect()
     conn.row_factory = dict_factory
     cur = conn.cursor()
 
     for price_hist in cur.execute(
         """
-select * from price_history WHERE name="{name}" ORDER BY time DESC
+select * from price_history WHERE url="{url}" ORDER BY time DESC
 """.format(
-            name=name
+            url=url
         )
     ):
         func(price_hist)

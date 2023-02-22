@@ -124,7 +124,7 @@ def do_work(config, driver, item_list, loop, error_count):
     for item in filter(lambda item: item["check_method"] == "scrape", item_list):
         try:
             store_scrape.check(config, driver, item, loop)
-            process_data(config, item, history.last(item["name"], item["store"]))
+            process_data(config, item, history.last(item["url"]))
 
             pathlib.Path(config["liveness"]["file"]).touch()
             error_count[item["url"]] = 0
@@ -140,7 +140,7 @@ def do_work(config, driver, item_list, loop, error_count):
         config,
         list(filter(lambda item: item["check_method"] == "amazon-paapi", item_list)),
     ):
-        process_data(config, item, history.last(item["name"], item["store"]))
+        process_data(config, item, history.last(item["url"]))
     pathlib.Path(config["liveness"]["file"]).touch()
 
 
