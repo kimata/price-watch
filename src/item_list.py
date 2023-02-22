@@ -29,7 +29,8 @@ def load_item_list(error_count):
                 asin=merged_item["asin"]
             )
 
-        error_count[merged_item["url"]] = 0
+        if merged_item["url"] not in error_count:
+            error_count[merged_item["url"]] = 0
 
         if ("preload" in item) and ("every" not in item["preload"]):
             merged_item["preload"]["every"] = 1
