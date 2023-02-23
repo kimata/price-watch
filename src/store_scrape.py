@@ -29,20 +29,20 @@ def resolve_template(template, item):
 
 
 def process_action(config, driver, wait, item, action_list, name="action"):
-    logging.info("process {name}.".format(name=name))
+    logging.debug("process {name}.".format(name=name))
 
     for action in action_list:
-        logging.info("action: {action}.".format(action=action["type"]))
+        logging.debug("action: {action}.".format(action=action["type"]))
         if action["type"] == "input":
             if not xpath_exists(driver, resolve_template(action["xpath"], item)):
-                logging.info("Element not found. Interrupted.")
+                logging.debug("Element not found. Interrupted.")
                 return
             driver.find_element(
                 By.XPATH, resolve_template(action["xpath"], item)
             ).send_keys(resolve_template(action["value"], item))
         elif action["type"] == "click":
             if not xpath_exists(driver, resolve_template(action["xpath"], item)):
-                logging.info("Element not found. Interrupted.")
+                logging.debug("Element not found. Interrupted.")
                 return
             driver.find_element(
                 By.XPATH, resolve_template(action["xpath"], item)
@@ -52,7 +52,7 @@ def process_action(config, driver, wait, item, action_list, name="action"):
         elif action["type"] == "captcha":
             input_xpath = '//input[@id="captchacharacters"]'
             if not xpath_exists(driver, input_xpath):
-                logging.info("Element not found.")
+                logging.debug("Element not found.")
                 continue
             domain = urllib.parse.urlparse(driver.current_url).netloc
 
