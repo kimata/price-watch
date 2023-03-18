@@ -15,6 +15,8 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.remote.remote_connection import LOGGER as seleniumLogger
+from urllib3.connectionpool import log as urllibLogger
 from webdriver_manager.core.utils import ChromeType
 from webdriver_manager.chrome import ChromeDriverManager
 
@@ -50,6 +52,10 @@ def create_driver_impl(profile_name, data_path):
         chrome_type = ChromeType.GOOGLE
     else:
         chrome_type = ChromeType.CHROMIUM
+
+    # NOTE: Selenium 関係のログは常に WARNING にしておく
+    seleniumLogger.setLevel(logging.WARNING)
+    urllibLogger.setLevel(logging.WARNING)
 
     driver = webdriver.Chrome(
         service=Service(
