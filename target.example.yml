@@ -18,7 +18,7 @@ store_list:
     unavailable_xpath: '//span[contains(text(), "売り切れ")]'
 
   - name: store.ui.com
-    price_xpath: '(//div[contains(@class, "comProduct__price")]/span[1] | //span[contains(@class, "relatedProducts__item__data__price")]/span[1])[1]'
+    price_xpath: '(//div[contains(@class, "comProduct__price")]/span[1] | //div[contains(@class, "highlight")]//span[contains(@class, "relatedProducts__item__data__price")][.//span])[1]'
     thumb_xpath: '//li[@class="flex-active-slide"][1]//img'
     price_unit: ドル
     action:
