@@ -113,6 +113,8 @@ def check_impl(config, driver, item, loop):
 
     price_text = driver.find_element(By.XPATH, item["price_xpath"]).text
 
+    logging.debug(f"price_text: '{price_text}'")
+
     m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
     item["price"] = int(m.group(1).replace(",", ""))
 

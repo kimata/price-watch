@@ -132,6 +132,9 @@ def do_work(config, driver, item_list, loop, error_count):
             error_count[item["url"]] = 0
         except:
             error_count[item["url"]] += 1
+            logging.debug(
+                "error_count = {count}.".format(count=error_count[item["url"]])
+            )
             if error_count[item["url"]] >= ERROR_NOTIFY_COUNT:
                 notify_slack.error(config, item, traceback.format_exc())
                 error_count[item["url"]] = 0
