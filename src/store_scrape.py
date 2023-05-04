@@ -108,6 +108,7 @@ def check_impl(config, driver, item, loop):
 
     if not xpath_exists(driver, item["price_xpath"]):
         logging.warning("{name}: price not found.".format(name=item["name"]))
+        item["stock"] = 0
         dump_page(driver, int(random.random() * 100))
         return False
 
