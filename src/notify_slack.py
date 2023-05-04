@@ -97,3 +97,6 @@ def error(config, item, error_msg):
         )
     except SlackApiError as e:
         logging.warning(e.response["error"])
+
+
+logging.getLogger("urllib3").setLevel(level=logging.DEBUG)

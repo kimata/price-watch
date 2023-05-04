@@ -151,7 +151,7 @@ def do_work(config, driver, item_list, loop, error_count):
 
 os.chdir(os.path.dirname(os.path.abspath(sys.argv[0])))
 
-logger.init("bot.price_watch", level=logging.INFO)
+logger.init("bot.price_watch", level=logging.DEBUG)
 logging.info("Start.")
 
 config = load_config()
