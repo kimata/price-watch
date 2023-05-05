@@ -112,13 +112,6 @@ def check_impl(config, driver, item, loop):
         dump_page(driver, int(random.random() * 100))
         return False
 
-    price_text = driver.find_element(By.XPATH, item["price_xpath"]).text
-
-    logging.debug(f"price_text: '{price_text}'")
-
-    m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
-    item["price"] = int(m.group(1).replace(",", ""))
-
     if "unavailable_xpath" in item:
         if len(driver.find_elements(By.XPATH, item["unavailable_xpath"])) != 0:
             item["stock"] = 0
@@ -126,6 +119,18 @@ def check_impl(config, driver, item, loop):
             item["stock"] = 1
     else:
         item["stock"] = 1
+
+    price_text = driver.find_element(By.XPATH, item["price_xpath"]).text
+    try:
+        m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
+        item["price"] = int(m.group(1).replace(",", ""))
+    except:
+        if item["stock"] == 0:
+            # NOTE: 在庫がない場合は，価格が取得できなくてもエラーにしない
+            pass
+        else:
+            logging.debug(f"unable to parse price: '{price_text}'")
+            raise
 
     if (
         ("thumb_url" not in item)
