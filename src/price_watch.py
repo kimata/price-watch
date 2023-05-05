@@ -93,8 +93,11 @@ def process_data(config, item, last):
                         price_unit=item["price_unit"],
                     )
                 )
-                notify_slack.send(
-                    config, item, item["price"] < history.lowest(item["url"])["price"]
+                notify_slack.info(
+                    config["slack"]["bot_token"],
+                    config["slack"]["channel"],
+                    item,
+                    item["price"] < history.lowest(item["url"])["price"],
                 )
             elif last["stock"] == 0:
                 logging.warning(
@@ -104,7 +107,7 @@ def process_data(config, item, last):
                         price_unit=item["price_unit"],
                     )
                 )
-                notify_slack.send(config, item)
+                notify_slack.info(config, item)
             else:
                 logging.info(
                     "{name}: {new_price:,}{price_unit} ({stock}).".format(
@@ -136,7 +139,12 @@ def do_work(config, driver, item_list, loop, error_count):
                 "error_count = {count}.".format(count=error_count[item["url"]])
             )
             if error_count[item["url"]] >= ERROR_NOTIFY_COUNT:
-                notify_slack.error(config, item, traceback.format_exc())
+                notify_slack.error(
+                    config["slack"]["bot_token"],
+                    config["slack"]["error_channel"],
+                    item,
+                    traceback.format_exc(),
+                )
                 error_count[item["url"]] = 0
             pass
         time.sleep(SCRAPE_INTERVAL_SEC)

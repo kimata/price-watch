@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
-
+import slack_sdk
 import json
 import logging
 
@@ -53,9 +51,20 @@ ERROR_TMPL = """\
 """
 
 
-def send(config, item, is_record=False):
-    client = WebClient(token=config["slack"]["bot_token"])
+def send(token, channel, message):
+    client = slack_sdk.WebClient(token=token)
 
+    try:
+        client.chat_postMessage(
+            channel=channel,
+            text=message["text"],
+            blocks=json.loads(message["json"]),
+        )
+    except slack_sdk.errors.SlackApiError as e:
+        logging.warning(e.response["error"])
+
+
+def info(token, channel, item, is_record=False):
     message = MESSAGE_TMPL.format(
         message=json.dumps(
             ":tada: {old_price:,} ⇒ *{price:,}{price_unit}* {record}\n{stock}\n<{url}|詳細>".format(
@@ -70,30 +79,30 @@ def send(config, item, is_record=False):
         name=json.dumps(item["name"]),
         thumb_url=json.dumps(item["thumb_url"]),
     )
-    try:
-        client.chat_postMessage(
-            channel=config["slack"]["channel"],
-            text=item["name"],
-            blocks=json.loads(message),
-        )
-    except SlackApiError as e:
-        logging.warning(e.response["error"])
+
+    send(
+        token,
+        channel,
+        {
+            "text": item["name"],
+            "json": message,
+        },
+    )
 
 
-def error(config, item, error_msg):
-    client = WebClient(token=config["slack"]["bot_token"])
-
+def error(token, channel, item, error_msg):
     message = ERROR_TMPL.format(
         message=json.dumps(
             "<{url}|URL>\n{error_msg}".format(url=item["url"], error_msg=error_msg)
         ),
         name=json.dumps(item["name"]),
     )
-    try:
-        client.chat_postMessage(
-            channel=config["slack"]["error_channel"],
-            text=item["name"],
-            blocks=json.loads(message),
-        )
-    except SlackApiError as e:
-        logging.warning(e.response["error"])
+
+    send(
+        token,
+        channel,
+        {
+            "text": item["name"],
+            "json": message,
+        },
+    )
