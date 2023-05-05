@@ -132,14 +132,31 @@ def check_impl(config, driver, item, loop):
             logging.debug(f"unable to parse price: '{price_text}'")
             raise
 
-    if (
-        ("thumb_url" not in item)
-        and ("thumb_xpath" in item)
-        and xpath_exists(driver, item["thumb_xpath"])
+    if "thumb_url" not in item:
+        if ("thumb_img_xpath" in item) and xpath_exists(
+            driver, item["thumb_img_xpath"]
+        ):
+            item["thumb_url"] = urllib.parse.urljoin(
+                driver.current_url,
+                driver.find_element(By.XPATH, item["thumb_img_xpath"]).get_attribute(
+                    "src"
+                ),
+            )
+    elif ("thumb_block_xpath" in item) and xpath_exists(
+        driver, item["thumb_block_xpath"]
     ):
-        item["thumb_url"] = driver.find_element(
-            By.XPATH, item["thumb_xpath"]
-        ).get_attribute("src")
+        style_text = driver.find_element(
+            By.XPATH, item["thumb_block_xpath"]
+        ).get_attribute("style")
+        m = re.match(
+            r"background-image: url\([\"'](.*)[\"']\)",
+            style_text,
+        )
+        thumb_url = m.group(1)
+        if not re.compile(r"^\.\.").search(thumb_url):
+            thumb_url = "/" + thumb_url
+
+        item["thumb_url"] = urllib.parse.urljoin(driver.current_url, thumb_url)
 
     return item
 

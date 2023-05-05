@@ -4,22 +4,22 @@ store_list:
 
   - name: yodobashi.com
     price_xpath: '//span[@id="js_scl_unitPrice"]'
-    thumb_xpath: '//img[@id="mainImg"]'
+    thumb_img_xpath: '//img[@id="mainImg"]'
     unavailable_xpath: '//p[contains(text(), "販売休止中")]'
 
   - name: shopping.yahoo.co.jp
     price_xpath: '//span[@class="elPriceNumber"]'
-    thumb_xpath: '//img[@class="elPanelImage"][1]'
+    thumb_img_xpath: '//img[@class="elPanelImage"][1]'
     unavailable_xpath: '//button[contains(@class, "isDisabled")]/span[contains(text(), "在庫がありません")]'
 
   - name: switch-science.com
     price_xpath: '//div[contains(@class, "price__current")]/span[contains(@class, "money")]'
-    thumb_xpath: '//div[@class="product-gallery--image-background"]/img'
+    thumb_img_xpath: '//div[@class="product-gallery--image-background"]/img'
     unavailable_xpath: '//span[contains(text(), "売り切れ")]'
 
   - name: store.ui.com
     price_xpath: '(//div[contains(@class, "comProduct__price")]/span[1] | //div[contains(@class, "highlight")]//span[contains(@class, "relatedProducts__item__data__price")][.//span])[1]'
-    thumb_xpath: '//li[@class="flex-active-slide"][1]//img'
+    thumb_img_xpath: '//li[@class="flex-active-slide"][1]//img'
     price_unit: ドル
     action:
       - type: click
@@ -47,7 +47,7 @@ store_list:
       - type: click
         xpath: '//div[@class="login-sign-in-button"]'
     price_xpath: '//span[@class="final-price"]'
-    thumb_xpath: '//div[@class="image-pic"]//img[@class="srcImg"]'
+    thumb_img_xpath: '//div[@class="image-pic"]//img[@class="srcImg"]'
 
 item_list:
   - name: Connect Display 13
