@@ -3,7 +3,7 @@
 
 from config import load_config
 
-CONFIG_TARGET_PATH = "../target.yml"
+CONFIG_TARGET_PATH = "target.yaml"
 
 
 def load_item_list(error_count):
@@ -25,9 +25,7 @@ def load_item_list(error_count):
 
         if merged_item["check_method"] == "amazon-paapi":
             # NOTE: url は ID 的に使用するので，必ず定義されているようにする
-            merged_item["url"] = "https://www.amazon.co.jp/dp/{asin}".format(
-                asin=merged_item["asin"]
-            )
+            merged_item["url"] = "https://www.amazon.co.jp/dp/{asin}".format(asin=merged_item["asin"])
 
         if merged_item["url"] not in error_count:
             error_count[merged_item["url"]] = 0

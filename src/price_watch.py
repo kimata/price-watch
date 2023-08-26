@@ -46,10 +46,7 @@ def sleep_until(end_time):
 def process_data(config, item, last):
     if ((last is None) and (item["stock"] == 1)) or (
         (last is not None)
-        and (
-            ((item["stock"] == 1) and (item["price"] != last["price"]))
-            or (item["stock"] != last["stock"])
-        )
+        and (((item["stock"] == 1) and (item["price"] != last["price"])) or (item["stock"] != last["stock"]))
     ):
         # NOTE: 下記いずれかの場合，履歴を記録する．
         # - 履歴データが無く，在庫がある場合
@@ -75,11 +72,7 @@ def process_data(config, item, last):
                 )
             )
         else:
-            logging.warning(
-                "{name}: watch start ({stock})".format(
-                    name=item["name"], stock="out of stock"
-                )
-            )
+            logging.warning("{name}: watch start ({stock})".format(name=item["name"], stock="out of stock"))
     else:
         item["old_price"] = last["price"]
 
@@ -118,9 +111,7 @@ def process_data(config, item, last):
                     )
                 )
         else:
-            logging.info(
-                "{name}: ({stock}).".format(name=item["name"], stock="out of stock")
-            )
+            logging.info("{name}: ({stock}).".format(name=item["name"], stock="out of stock"))
 
     return True
 
@@ -135,9 +126,7 @@ def do_work(config, driver, item_list, loop, error_count):
             error_count[item["url"]] = 0
         except:
             error_count[item["url"]] += 1
-            logging.debug(
-                "error_count = {count}.".format(count=error_count[item["url"]])
-            )
+            logging.debug("error_count = {count}.".format(count=error_count[item["url"]]))
             if error_count[item["url"]] >= ERROR_NOTIFY_COUNT:
                 notify_slack.error(
                     config["slack"]["bot_token"],
@@ -157,9 +146,7 @@ def do_work(config, driver, item_list, loop, error_count):
     pathlib.Path(config["liveness"]["file"]).touch()
 
 
-os.chdir(os.path.dirname(os.path.abspath(sys.argv[0])))
-
-logger.init("bot.price_watch", level=logging.DEBUG)
+logger.init("bot.price_watch", level=logging.INFO)
 logging.info("Start.")
 
 config = load_config()
