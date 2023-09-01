@@ -54,10 +54,10 @@ def create_driver_impl(profile_name, data_path):
     options.add_argument("--user-data-dir=" + str(chrome_data_path / profile_name))
 
     driver = webdriver.Chrome(
-        service=Service(
-            log_path=str(log_path / "webdriver.log"),
-            service_args=["--verbose"],
-        ),
+        # service=Service(
+        #     log_path=str(log_path / "webdriver.log"),
+        #     service_args=["--verbose"],
+        # ),
         options=options,
     )
 
