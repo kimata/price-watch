@@ -13,7 +13,7 @@ from selenium_util import create_driver
 import logger
 import history
 import notify_slack
-import store_amazon
+import store_amazon_api
 import store_scrape
 from config import load_config
 from item_list import load_item_list
@@ -136,7 +136,7 @@ def do_work(config, driver, item_list, loop, error_count):
             pass
         time.sleep(SCRAPE_INTERVAL_SEC)
 
-    for item in store_amazon.check_item_list(
+    for item in store_amazon_api.check_item_list(
         config,
         list(filter(lambda item: item["check_method"] == "amazon-paapi", item_list)),
     ):

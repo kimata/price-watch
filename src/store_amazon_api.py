@@ -18,9 +18,7 @@ def fetch_price_by_api(config, asin_list):
     if len(asin_list) == 0:
         return {}
 
-    logging.info(
-        "PA-API GetItems: ASIN = [ {asin_list} ]".format(asin_list=", ".join(asin_list))
-    )
+    logging.info("PA-API GetItems: ASIN = [ {asin_list} ]".format(asin_list=", ".join(asin_list)))
 
     default_api = DefaultApi(
         access_key=config["amazon"]["access_key"],
@@ -68,13 +66,9 @@ def fetch_price_by_api(config, asin_list):
                     continue
 
                 try:
-                    item[
-                        "category"
-                    ] = item_data.item_info.classifications.product_group.display_value
+                    item["category"] = item_data.item_info.classifications.product_group.display_value
                 except:
-                    logging.warning(
-                        "Unable to get category of {asin}.".format(asin=item_data.asin)
-                    )
+                    logging.warning("Unable to get category of {asin}.".format(asin=item_data.asin))
                     pass
 
                 item["thumb_url"] = item_data.images.primary.medium.url
@@ -86,9 +80,7 @@ def fetch_price_by_api(config, asin_list):
 
 def check_item_list(config, item_list):
     try:
-        price_map = fetch_price_by_api(
-            config, list(map(lambda item: item["asin"], item_list))
-        )
+        price_map = fetch_price_by_api(config, list(map(lambda item: item["asin"], item_list)))
         for item in item_list:
             if item["asin"] in price_map:
                 item["stock"] = 1
