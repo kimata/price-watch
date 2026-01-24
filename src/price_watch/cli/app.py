@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import re
 import signal
 import sys
 import threading
@@ -41,6 +42,57 @@ if TYPE_CHECKING:
     from price_watch.webapi.server import ServerHandle
 
 PROFILE_NAME = "Default"
+
+
+def _get_modified_user_agent(driver: my_lib.selenium_util.WebDriverType) -> str:
+    """ブラウザの User-Agent を取得し、ボット検出回避用に修正.
+
+    - OS 部分を Windows に変更
+    - HeadlessChrome を Chrome に変更
+
+    Args:
+        driver: WebDriver インスタンス
+
+    Returns:
+        修正された User-Agent 文字列
+    """
+    original_ua = driver.execute_script("return navigator.userAgent")
+    logging.debug("Original User-Agent: %s", original_ua)
+
+    # OS 部分を Windows に変更
+    pattern = r"\([^)]*(?:Linux|Macintosh|X11)[^)]*\)"
+    replacement = "(Windows NT 10.0; Win64; x64)"
+    modified_ua = re.sub(pattern, replacement, original_ua)
+
+    # HeadlessChrome を Chrome に変更
+    modified_ua = modified_ua.replace("HeadlessChrome", "Chrome")
+
+    logging.debug("Modified User-Agent: %s", modified_ua)
+    return modified_ua
+
+
+def _apply_stealth_settings(driver: my_lib.selenium_util.WebDriverType) -> None:
+    """ボット検出回避のための CDP 設定を適用.
+
+    ヨドバシ等のボット検出は User-Agent をチェックしているため、
+    OS を Windows に偽装し、HeadlessChrome を Chrome に変更することで回避できる。
+
+    Args:
+        driver: WebDriver インスタンス
+    """
+    try:
+        modified_ua = _get_modified_user_agent(driver)
+        driver.execute_cdp_cmd(
+            "Network.setUserAgentOverride",
+            {
+                "userAgent": modified_ua,
+                "acceptLanguage": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
+                "platform": "Win32",
+            },
+        )
+        logging.debug("CDP User-Agent override applied")
+    except Exception:
+        logging.warning("Failed to apply CDP User-Agent override")
 
 
 class AppRunner:
@@ -273,6 +325,9 @@ class AppRunner:
             history.init(self.config.data.price)
             thumbnail.init(self.config.data.thumb)
             self.driver = my_lib.selenium_util.create_driver(PROFILE_NAME, self.config.data.selenium)
+
+            # ボット検出回避のための設定を適用
+            _apply_stealth_settings(self.driver)
         except Exception:
             logging.exception("Failed to initialize")
             return False
