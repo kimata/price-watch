@@ -7,9 +7,10 @@ import logging
 
 import flask
 
-from price_watch import history, thumbnail
-from price_watch import item as item_module
-from price_watch import target as target_module
+import price_watch.history
+import price_watch.item
+import price_watch.target
+import price_watch.thumbnail
 
 blueprint = flask.Blueprint("page", __name__)
 
@@ -27,22 +28,22 @@ def _parse_days(days_str: str | None) -> int | None:
 def _get_target_urls() -> set[str]:
     """target.yaml から監視対象URLのセットを取得."""
     try:
-        return item_module.get_target_urls()
+        return price_watch.item.get_target_urls()
     except Exception:
         logging.warning("Failed to load target.yaml, showing all items")
         return set()
 
 
-def _get_target_config() -> target_module.TargetConfig | None:
+def _get_target_config() -> price_watch.target.TargetConfig | None:
     """target.yaml の設定を取得."""
     try:
-        return target_module.load()
+        return price_watch.target.load()
     except Exception:
         logging.warning("Failed to load target.yaml config")
         return None
 
 
-def _get_point_rate(target_config: target_module.TargetConfig | None, store_name: str) -> float:
+def _get_point_rate(target_config: price_watch.target.TargetConfig | None, store_name: str) -> float:
     """ストアのポイント還元率を取得."""
     if target_config is None:
         return 0.0
@@ -66,7 +67,7 @@ def get_items() -> flask.Response:
         target_config = _get_target_config()
         target_urls = _get_target_urls()
 
-        all_items = history.get_all_items()
+        all_items = price_watch.history.get_all_items()
 
         # アイテム名でグルーピング
         items_by_name: dict[str, list[dict]] = {}
@@ -76,15 +77,15 @@ def get_items() -> flask.Response:
             if target_urls and item["url"] not in target_urls:
                 continue
             # 最新価格を取得
-            latest = history.get_latest_price(item["id"])
+            latest = price_watch.history.get_latest_price(item["id"])
             if not latest:
                 continue
 
             # 統計情報を取得
-            stats = history.get_item_stats(item["id"], days)
+            stats = price_watch.history.get_item_stats(item["id"], days)
 
             # 価格履歴を取得
-            _, hist = history.get_item_history(item["url_hash"], days)
+            _, hist = price_watch.history.get_item_history(item["url_hash"], days)
 
             # ポイント還元率を取得
             point_rate = _get_point_rate(target_config, item["store"])
@@ -183,7 +184,7 @@ def serve_thumb(filename: str) -> flask.Response:
     if not filename.endswith(".png") or "/" in filename or "\\" in filename:
         return flask.Response("Not found", status=404)
 
-    thumb_file = thumbnail.get_thumb_dir() / filename
+    thumb_file = price_watch.thumbnail.get_thumb_dir() / filename
     if not thumb_file.exists():
         return flask.Response("Not found", status=404)
 
@@ -201,7 +202,7 @@ def get_item_history(url_hash: str) -> flask.Response:
         days_str = flask.request.args.get("days", "30")
         days = _parse_days(days_str)
 
-        item, hist = history.get_item_history(url_hash, days)
+        item, hist = price_watch.history.get_item_history(url_hash, days)
 
         if item is None:
             return flask.jsonify({"error": "Item not found"}), 404  # type: ignore[return-value]

@@ -7,13 +7,14 @@ import hashlib
 import logging
 import pathlib
 import sqlite3
-from datetime import datetime
 from typing import Any
 
-from price_watch.const import DATA_PATH, DB_FILE
+import my_lib.time
+
+import price_watch.const
 
 # モジュールレベルのデータパス（init で設定される）
-_data_path: pathlib.Path = DATA_PATH
+_data_path: pathlib.Path = price_watch.const.DATA_PATH
 
 
 def _dict_factory(cursor: sqlite3.Cursor, row: tuple[Any, ...]) -> dict[str, Any]:
@@ -27,7 +28,7 @@ def _dict_factory(cursor: sqlite3.Cursor, row: tuple[Any, ...]) -> dict[str, Any
 def _connect() -> sqlite3.Connection:
     """データベースに接続."""
     _data_path.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_data_path / DB_FILE))
+    conn = sqlite3.connect(str(_data_path / price_watch.const.DB_FILE))
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
@@ -59,13 +60,13 @@ def _get_or_create_item(
             params.append(thumb_url)
         if updates:
             updates.append("updated_at = ?")
-            params.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            params.append(my_lib.time.now().strftime("%Y-%m-%d %H:%M:%S"))
             params.append(item_id)
             cur.execute(f"UPDATE items SET {', '.join(updates)} WHERE id = ?", params)  # noqa: S608
         return item_id
 
     # 新規作成
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = my_lib.time.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
         """
         INSERT INTO items (url_hash, url, name, store, thumb_url, created_at, updated_at)

@@ -25,7 +25,6 @@ import my_lib.webapp.config
 import my_lib.webapp.event
 import my_lib.webapp.util
 import werkzeug.serving
-from werkzeug.serving import BaseWSGIServer
 
 URL_PREFIX = "/price"
 
@@ -34,7 +33,7 @@ URL_PREFIX = "/price"
 class ServerHandle:
     """サーバーハンドル."""
 
-    server: BaseWSGIServer
+    server: werkzeug.serving.BaseWSGIServer
     thread: threading.Thread
 
 

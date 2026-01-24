@@ -8,16 +8,16 @@ import io
 import logging
 from pathlib import Path
 
+import PIL.Image
 import requests
-from PIL import Image
 
-from price_watch.const import THUMB_PATH
+import price_watch.const
 
 THUMB_SIZE = (200, 200)
 REQUEST_TIMEOUT = 10
 
 # モジュールレベルのサムネイルパス（init で設定される）
-_thumb_path: Path = THUMB_PATH
+_thumb_path: Path = price_watch.const.THUMB_PATH
 
 
 def init(thumb_path: Path | None = None) -> None:
@@ -115,14 +115,14 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
         response.raise_for_status()
 
         # 画像を開いて PNG 形式で保存
-        image = Image.open(io.BytesIO(response.content))
+        image = PIL.Image.open(io.BytesIO(response.content))
 
         # RGBA に変換（透過対応）
         if image.mode != "RGBA":
             image = image.convert("RGBA")
 
         # リサイズ（アスペクト比維持）
-        image.thumbnail(THUMB_SIZE, Image.Resampling.LANCZOS)
+        image.thumbnail(THUMB_SIZE, PIL.Image.Resampling.LANCZOS)
 
         # 保存
         thumb_path = get_thumb_path(item_name)

@@ -13,11 +13,12 @@ import urllib.parse
 from typing import TYPE_CHECKING, Any
 
 import my_lib.selenium_util
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
+import selenium.webdriver.common.by
+import selenium.webdriver.support.wait
 
-from price_watch import captcha, thumbnail
-from price_watch.const import DUMP_PATH
+import price_watch.captcha
+import price_watch.const
+import price_watch.thumbnail
 
 if TYPE_CHECKING:
     from price_watch.config import AppConfig
@@ -34,52 +35,59 @@ def _resolve_template(template: str, item: dict[str, Any]) -> str:
 def _process_action(
     config: AppConfig,
     driver: my_lib.selenium_util.WebDriverType,
-    wait: WebDriverWait,  # type: ignore[type-arg]
+    wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
     item: dict[str, Any],
     action_list: list[dict[str, Any]],
     name: str = "action",
 ) -> None:
     """アクションを処理."""
+    By = selenium.webdriver.common.by.By
+
     logging.info("process action: %s", item["name"])
 
     for action in action_list:
-        logging.debug("action: %s.", action["type"])
-        if action["type"] == "input":
-            xpath = _resolve_template(action["xpath"], item)
-            if not my_lib.selenium_util.xpath_exists(driver, xpath):
-                logging.debug("Element not found. Interrupted.")
-                return
-            driver.find_element(By.XPATH, xpath).send_keys(_resolve_template(action["value"], item))
+        action_type = action["type"]
+        logging.debug("action: %s.", action_type)
 
-        elif action["type"] == "click":
-            xpath = _resolve_template(action["xpath"], item)
-            if not my_lib.selenium_util.xpath_exists(driver, xpath):
-                logging.debug("Element not found. Interrupted.")
-                return
-            driver.find_element(By.XPATH, xpath).click()
+        match action_type:
+            case "input":
+                xpath = _resolve_template(action["xpath"], item)
+                if not my_lib.selenium_util.xpath_exists(driver, xpath):
+                    logging.debug("Element not found. Interrupted.")
+                    return
+                driver.find_element(By.XPATH, xpath).send_keys(_resolve_template(action["value"], item))
 
-        elif action["type"] == "recaptcha":
-            captcha.resolve_mp3(driver, wait)
+            case "click":
+                xpath = _resolve_template(action["xpath"], item)
+                if not my_lib.selenium_util.xpath_exists(driver, xpath):
+                    logging.debug("Element not found. Interrupted.")
+                    return
+                driver.find_element(By.XPATH, xpath).click()
 
-        elif action["type"] == "captcha":
-            input_xpath = '//input[@id="captchacharacters"]'
-            if not my_lib.selenium_util.xpath_exists(driver, input_xpath):
-                logging.debug("Element not found.")
-                continue
-            domain = urllib.parse.urlparse(driver.current_url).netloc
+            case "recaptcha":
+                price_watch.captcha.resolve_mp3(driver, wait)
 
-            logging.warning("Resolve captcha is needed at %s.", domain)
+            case "captcha":
+                input_xpath = '//input[@id="captchacharacters"]'
+                if not my_lib.selenium_util.xpath_exists(driver, input_xpath):
+                    logging.debug("Element not found.")
+                    continue
+                domain = urllib.parse.urlparse(driver.current_url).netloc
 
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), DUMP_PATH)
-            code = input(f"{domain} captcha: ")
+                logging.warning("Resolve captcha is needed at %s.", domain)
 
-            driver.find_element(By.XPATH, input_xpath).send_keys(code)
-            driver.find_element(By.XPATH, '//button[@type="submit"]').click()
+                my_lib.selenium_util.dump_page(
+                    driver, int(random.random() * 100), price_watch.const.DUMP_PATH
+                )
+                code = input(f"{domain} captcha: ")
 
-        elif action["type"] == "sixdigit":
-            digit_code = input(f"{urllib.parse.urlparse(driver.current_url).netloc} app code: ")
-            for i, code in enumerate(list(digit_code)):
-                driver.find_element(By.XPATH, f'//input[@data-id="{i}"]').send_keys(code)
+                driver.find_element(By.XPATH, input_xpath).send_keys(code)
+                driver.find_element(By.XPATH, '//button[@type="submit"]').click()
+
+            case "sixdigit":
+                digit_code = input(f"{urllib.parse.urlparse(driver.current_url).netloc} app code: ")
+                for i, code in enumerate(list(digit_code)):
+                    driver.find_element(By.XPATH, f'//input[@data-id="{i}"]').send_keys(code)
 
         time.sleep(4)
 
@@ -87,7 +95,7 @@ def _process_action(
 def _process_preload(
     config: AppConfig,
     driver: my_lib.selenium_util.WebDriverType,
-    wait: WebDriverWait,  # type: ignore[type-arg]
+    wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
     item: dict[str, Any],
     loop: int,
 ) -> None:
@@ -114,6 +122,9 @@ def _check_impl(
     loop: int,
 ) -> dict[str, Any] | bool:
     """価格チェック実装."""
+    By = selenium.webdriver.common.by.By
+    WebDriverWait = selenium.webdriver.support.wait.WebDriverWait
+
     wait: WebDriverWait = WebDriverWait(driver, TIMEOUT_SEC)  # type: ignore[type-arg]
 
     _process_preload(config, driver, wait, item, loop)
@@ -131,11 +142,11 @@ def _check_impl(
     if not my_lib.selenium_util.xpath_exists(driver, item["price_xpath"]):
         logging.warning("%s: price not found.", item["name"])
         item["stock"] = 0
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), DUMP_PATH)
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), price_watch.const.DUMP_PATH)
         return False
 
     if "unavailable_xpath" in item:
-        if len(driver.find_elements(By.XPATH, item["unavailable_xpath"])) != 0:
+        if driver.find_elements(By.XPATH, item["unavailable_xpath"]):
             item["stock"] = 0
         else:
             item["stock"] = 1
@@ -174,7 +185,7 @@ def _check_impl(
 
     # サムネイルをローカルに保存
     if item.get("thumb_url"):
-        local_url = thumbnail.save_thumb(item["name"], item["thumb_url"])
+        local_url = price_watch.thumbnail.save_thumb(item["name"], item["thumb_url"])
         if local_url:
             item["thumb_url"] = local_url
 
@@ -194,6 +205,6 @@ def check(
     except Exception:
         logging.error("URL: %s", driver.current_url)
         logging.error(traceback.format_exc())
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), DUMP_PATH)
-        my_lib.selenium_util.clean_dump(DUMP_PATH)
+        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), price_watch.const.DUMP_PATH)
+        my_lib.selenium_util.clean_dump(price_watch.const.DUMP_PATH)
         raise

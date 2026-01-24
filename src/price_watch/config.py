@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import my_lib.config
-from my_lib.notify.slack import SlackConfig, SlackConfigTypes, SlackEmptyConfig
-from my_lib.store.amazon.config import AmazonApiConfig
+import my_lib.notify.slack
+import my_lib.store.amazon.config
 
 CONFIG_FILE_PATH = "config.yaml"
 
@@ -35,14 +35,14 @@ class CheckConfig:
 class StoreConfig:
     """ストア設定"""
 
-    amazon_api: AmazonApiConfig | None = None
+    amazon_api: my_lib.store.amazon.config.AmazonApiConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> StoreConfig:
         """dict から StoreConfig を生成"""
         amazon_api = None
         if "amazon" in data:
-            amazon_api = AmazonApiConfig.parse(data["amazon"])
+            amazon_api = my_lib.store.amazon.config.AmazonApiConfig.parse(data["amazon"])
         return cls(amazon_api=amazon_api)
 
 
@@ -120,7 +120,7 @@ class AppConfig:
     """アプリケーション設定（config.yaml）"""
 
     check: CheckConfig
-    slack: SlackConfigTypes
+    slack: my_lib.notify.slack.SlackConfigTypes
     store: StoreConfig
     data: DataConfig
     target: TargetConfig
@@ -133,9 +133,9 @@ class AppConfig:
         check = CheckConfig.parse(data.get("check", {}))
 
         # Slack 設定
-        slack: SlackConfigTypes = SlackEmptyConfig()
+        slack: my_lib.notify.slack.SlackConfigTypes = my_lib.notify.slack.SlackEmptyConfig()
         if "slack" in data:
-            slack = SlackConfig.parse(data["slack"])
+            slack = my_lib.notify.slack.SlackConfig.parse(data["slack"])
 
         # Store 設定
         store = StoreConfig()

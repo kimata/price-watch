@@ -10,11 +10,11 @@ import urllib.request
 
 import my_lib.selenium_util
 import pydub
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
-from speech_recognition import AudioFile, Recognizer
+import selenium.webdriver.common.by
+import selenium.webdriver.common.keys
+import selenium.webdriver.support.expected_conditions
+import selenium.webdriver.support.wait
+import speech_recognition
 
 
 def _recog_audio(audio_url: str) -> str:
@@ -27,8 +27,8 @@ def _recog_audio(audio_url: str) -> str:
 
         pydub.AudioSegment.from_mp3(mp3_file.name).export(wav_file.name, format="wav")
 
-        recognizer = Recognizer()
-        recaptcha_audio = AudioFile(wav_file.name)
+        recognizer = speech_recognition.Recognizer()
+        recaptcha_audio = speech_recognition.AudioFile(wav_file.name)
         with recaptcha_audio as source:
             audio = recognizer.record(source)
 
@@ -38,8 +38,15 @@ def _recog_audio(audio_url: str) -> str:
         os.unlink(wav_file.name)
 
 
-def resolve_mp3(driver: my_lib.selenium_util.WebDriverType, wait: WebDriverWait) -> None:  # type: ignore[type-arg]
+def resolve_mp3(
+    driver: my_lib.selenium_util.WebDriverType,
+    wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
+) -> None:
     """reCAPTCHA を音声認識で解決."""
+    By = selenium.webdriver.common.by.By
+    EC = selenium.webdriver.support.expected_conditions
+    Keys = selenium.webdriver.common.keys.Keys
+
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.XPATH, '//iframe[@title="reCAPTCHA"]')))
     my_lib.selenium_util.click_xpath(
         driver,

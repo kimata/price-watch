@@ -42,7 +42,9 @@ def main() -> None:
     liveness_interval = liveness_config.get("interval", 300)
 
     target_list = [
-        my_lib.healthz.HealthzTarget(name="price-watch", file=liveness_file, interval=liveness_interval),
+        my_lib.healthz.HealthzTarget(
+            name="price-watch", liveness_file=liveness_file, interval=liveness_interval
+        ),
     ]
     failed_targets = my_lib.healthz.check_liveness_all(target_list)
 
