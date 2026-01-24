@@ -1,18 +1,38 @@
-interval: 1800 # 監視周期
+check:
+    interval_sec: 1800 # 監視周期（秒）
 
 slack:
-  channel: "#price" # Bot が投稿するチャンネル
-  error_channel: "#error" # エラーが続いた場合に Bot が投稿するチャンネル
-  bot_token: xoxb-123456789012-1234567890123-XXXXXXXXXXXXXXXXXXXXXXXX # Bot のトークン
+    bot_token: xoxb-123456789012-1234567890123-XXXXXXXXXXXXXXXXXXXXXXXX
+    from: price-watch
+    info:
+        channel:
+            name: "#price"
+    error:
+        channel:
+            name: "#error"
+            id: C0123456789
+        interval_min: 60
 
-# PA-API で価格を取得するための設定
-amazon:
-  associate: XXXXXX-22
-  access_key: XXXXXXXXXXXXXXXXXXXX
-  secret_key: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-  host: webservices.amazon.co.jp
-  region: us-west-2
+store:
+    # PA-API で価格を取得するための設定
+    amazon:
+        associate: XXXXXX-22
+        access_key: XXXXXXXXXXXXXXXXXXXX
+        secret_key: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+        host: webservices.amazon.co.jp
+        region: us-west-2
+
+data:
+    selenium: ./data # Selenium プロファイルを保存するディレクトリ
+    dump: ./data/debug # デバッグダンプを保存するディレクトリ
+    price: ./data/price # 価格履歴DBを保存するディレクトリ
+    thumb: ./data/thumb # サムネイル画像を保存するディレクトリ
+    metrics: ./data/metrics # メトリクスを保存するディレクトリ
+
+target:
+    define: target.yaml # 監視対象の設定ファイル
 
 liveness:
-  file: /dev/shm/healthz
-  interval: 300
+    file:
+        crawler: /dev/shm/healthz # ヘルスチェック用ファイル
+    interval_sec: 300 # ヘルスチェック間隔（秒）

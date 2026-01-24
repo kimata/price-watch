@@ -1,5 +1,0 @@
-selenium
-webdriver-manager
-SpeechRecognition
-amazon-paapi5
-slack_bolt

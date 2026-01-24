@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+"""CAPTCHA 解決処理."""
 
-import time
-import tempfile
-import urllib
+from __future__ import annotations
+
 import os
+import tempfile
+import time
+import urllib.request
 
+import my_lib.selenium_util
+import pydub
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
-
-from speech_recognition import Recognizer, AudioFile
-import pydub
-
-from selenium_util import click_xpath
+from selenium.webdriver.support.wait import WebDriverWait
+from speech_recognition import AudioFile, Recognizer
 
 
-def recog_audio(audio_url):
-    mp3_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
-    wav_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
+def _recog_audio(audio_url: str) -> str:
+    """音声を認識してテキストに変換."""
+    mp3_file = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".mp3")
+    wav_file = tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".wav")
 
     try:
         urllib.request.urlretrieve(audio_url, mp3_file.name)
@@ -31,23 +33,17 @@ def recog_audio(audio_url):
             audio = recognizer.record(source)
 
         return recognizer.recognize_google(audio, language="en-US")
-    except:
-        raise
     finally:
         os.unlink(mp3_file.name)
         os.unlink(wav_file.name)
 
 
-def resolve_mp3(config, driver, wait):
-    wait.until(
-        EC.frame_to_be_available_and_switch_to_it(
-            (By.XPATH, '//iframe[@title="reCAPTCHA"]')
-        )
-    )
-    click_xpath(
+def resolve_mp3(driver: my_lib.selenium_util.WebDriverType, wait: WebDriverWait) -> None:  # type: ignore[type-arg]
+    """reCAPTCHA を音声認識で解決."""
+    wait.until(EC.frame_to_be_available_and_switch_to_it((By.XPATH, '//iframe[@title="reCAPTCHA"]')))
+    my_lib.selenium_util.click_xpath(
         driver,
         '//span[contains(@class, "recaptcha-checkbox")]',
-        move=True,
     )
     driver.switch_to.default_content()
     wait.until(
@@ -55,17 +51,13 @@ def resolve_mp3(config, driver, wait):
             (By.XPATH, '//iframe[contains(@title, "reCAPTCHA による確認")]')
         )
     )
-    wait.until(
-        EC.element_to_be_clickable((By.XPATH, '//div[@id="rc-imageselect-target"]'))
-    )
-    click_xpath(driver, '//button[contains(@title, "確認用の文字を音声")]', move=True)
+    wait.until(EC.element_to_be_clickable((By.XPATH, '//div[@id="rc-imageselect-target"]')))
+    my_lib.selenium_util.click_xpath(driver, '//button[contains(@title, "確認用の文字を音声")]')
     time.sleep(0.5)
 
-    audio_url = driver.find_element(
-        By.XPATH, '//audio[@id="audio-source"]'
-    ).get_attribute("src")
+    audio_url = driver.find_element(By.XPATH, '//audio[@id="audio-source"]').get_attribute("src")
 
-    text = recog_audio(audio_url)
+    text = _recog_audio(audio_url)
 
     input_elem = driver.find_element(By.XPATH, '//input[@id="audio-response"]')
     input_elem.send_keys(text.lower())
