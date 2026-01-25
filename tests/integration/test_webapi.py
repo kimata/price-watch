@@ -8,13 +8,18 @@ Pydantic スキーマに準拠していることを検証します。
 """
 
 import unittest.mock
+from datetime import datetime, timedelta, timezone
 
 import flask.testing
 import pydantic
 import pytest
+import time_machine
 
 import price_watch.history
 import price_watch.webapi.schemas as schemas
+
+# 時間単位で異なる時刻を生成するためのベース時刻
+_BASE_TIME = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=9)))
 
 
 class TestItemsEndpoint:
@@ -204,22 +209,32 @@ class TestItemHistoryEndpoint:
         client: flask.testing.FlaskClient,
         sample_item: dict,
     ) -> None:
-        """複数の履歴エントリがある場合"""
-        # 同じアイテムで異なる価格を複数回挿入
-        price_watch.history.insert(sample_item)
+        """複数の履歴エントリがある場合
 
-        modified_item = sample_item.copy()
-        modified_item["price"] = 900
-        price_watch.history.insert(modified_item)
+        Note: insert は1時間単位で重複排除するため、異なる時間帯で挿入する必要がある
+        """
+        # 1回目: 10:00
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_watch.history.insert(sample_item)
 
-        modified_item["price"] = 800
-        price_watch.history.insert(modified_item)
+        # 2回目: 11:00
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 900
+            price_watch.history.insert(modified_item)
+
+        # 3回目: 12:00
+        with time_machine.travel(_BASE_TIME + timedelta(hours=2), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 800
+            price_watch.history.insert(modified_item)
 
         # url_hash を取得
         all_items = price_watch.history.get_all_items()
         url_hash = all_items[0]["url_hash"]
 
-        response = client.get(f"/price/api/items/{url_hash}/history")
+        # days=all で全期間を指定（デフォルトは30日）
+        response = client.get(f"/price/api/items/{url_hash}/history?days=all")
 
         assert response.status_code == 200
 

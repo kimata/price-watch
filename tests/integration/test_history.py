@@ -7,8 +7,14 @@ SQLite データベース操作の統合テストを行います。
 """
 
 import pathlib
+from datetime import datetime, timedelta, timezone
+
+import time_machine
 
 import price_watch.history
+
+# 時間単位で異なる時刻を生成するためのベース時刻
+_BASE_TIME = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=9)))
 
 
 class TestHistoryInit:
@@ -64,12 +70,19 @@ class TestHistoryInsert:
         assert history[0]["stock"] == sample_item["stock"]
 
     def test_insert_same_item_multiple_times(self, initialized_db: pathlib.Path, sample_item: dict) -> None:
-        """同じアイテムを複数回 insert すると履歴が増える"""
-        price_watch.history.insert(sample_item)
+        """同じアイテムを異なる時間帯で insert すると履歴が増える
 
-        modified_item = sample_item.copy()
-        modified_item["price"] = 900
-        price_watch.history.insert(modified_item)
+        Note: insert は1時間単位で重複排除するため、異なる時間帯で挿入する必要がある
+        """
+        # 1回目: 10:00
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_watch.history.insert(sample_item)
+
+        # 2回目: 11:00（1時間後）
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 900
+            price_watch.history.insert(modified_item)
 
         items = price_watch.history.get_all_items()
         assert len(items) == 1  # アイテムは1つ
@@ -83,16 +96,15 @@ class TestHistoryLast:
 
     def test_last_returns_latest(self, initialized_db: pathlib.Path, sample_item: dict) -> None:
         """last は最新の価格を返す"""
-        import time
+        # 1回目: 10:00
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_watch.history.insert(sample_item)
 
-        price_watch.history.insert(sample_item)
-
-        # SQLite の DATETIME は秒単位の精度のため、1秒待つ
-        time.sleep(1.1)
-
-        modified_item = sample_item.copy()
-        modified_item["price"] = 800
-        price_watch.history.insert(modified_item)
+        # 2回目: 11:00（1時間後）- 価格が変わった
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 800
+            price_watch.history.insert(modified_item)
 
         result = price_watch.history.last(sample_item["url"])
 
@@ -111,14 +123,21 @@ class TestHistoryLowest:
 
     def test_lowest_returns_min_price(self, initialized_db: pathlib.Path, sample_item: dict) -> None:
         """lowest は最安値を返す"""
-        price_watch.history.insert(sample_item)  # 1000円
+        # 1回目: 10:00 - 1000円
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_watch.history.insert(sample_item)
 
-        modified_item = sample_item.copy()
-        modified_item["price"] = 800  # 最安値
-        price_watch.history.insert(modified_item)
+        # 2回目: 11:00 - 800円（最安値）
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 800
+            price_watch.history.insert(modified_item)
 
-        modified_item["price"] = 1200
-        price_watch.history.insert(modified_item)
+        # 3回目: 12:00 - 1200円
+        with time_machine.travel(_BASE_TIME + timedelta(hours=2), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 1200
+            price_watch.history.insert(modified_item)
 
         result = price_watch.history.lowest(sample_item["url"])
 
@@ -131,14 +150,21 @@ class TestHistoryStats:
 
     def test_get_item_stats(self, initialized_db: pathlib.Path, sample_item: dict) -> None:
         """get_item_stats で統計情報を取得"""
-        price_watch.history.insert(sample_item)  # 1000円
+        # 1回目: 10:00 - 1000円
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_watch.history.insert(sample_item)
 
-        modified_item = sample_item.copy()
-        modified_item["price"] = 800
-        price_watch.history.insert(modified_item)
+        # 2回目: 11:00 - 800円
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 800
+            price_watch.history.insert(modified_item)
 
-        modified_item["price"] = 1200
-        price_watch.history.insert(modified_item)
+        # 3回目: 12:00 - 1200円
+        with time_machine.travel(_BASE_TIME + timedelta(hours=2), tick=False):
+            modified_item = sample_item.copy()
+            modified_item["price"] = 1200
+            price_watch.history.insert(modified_item)
 
         items = price_watch.history.get_all_items()
         stats = price_watch.history.get_item_stats(items[0]["id"])

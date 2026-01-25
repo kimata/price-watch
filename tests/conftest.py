@@ -79,9 +79,11 @@ def initialized_db(temp_data_dir: pathlib.Path) -> pathlib.Path:
 
 # === Web API フィクスチャ ===
 @pytest.fixture
-def app(initialized_db: pathlib.Path) -> flask.Flask:
+def app(initialized_db: pathlib.Path, tmp_path: pathlib.Path) -> flask.Flask:
     """Flask アプリケーションフィクスチャ"""
-    return price_watch.webapi.server.create_app(static_dir_path=None)
+    # テスト用のダミー静的ディレクトリ（存在しないパスでも可）
+    static_dir = tmp_path / "static"
+    return price_watch.webapi.server.create_app(static_dir_path=static_dir)
 
 
 @pytest.fixture
@@ -93,27 +95,35 @@ def client(app: flask.Flask) -> flask.testing.FlaskClient:
 # === テストデータフィクスチャ ===
 @pytest.fixture
 def sample_item() -> dict:
-    """サンプルアイテムデータ"""
+    """サンプルアイテムデータ
+
+    Note: stock は 0（在庫なし）または 1（在庫あり）のブール値的な値。
+    history.insert の時間単位重複排除ロジックは stock=1 の場合のみ
+    最安値を保持する。
+    """
     return {
         "name": "テスト商品",
         "url": "https://example.com/item/1",
         "store": "test-store.com",
         "price": 1000,
-        "stock": 10,
+        "stock": 1,
         "thumb_url": None,
     }
 
 
 @pytest.fixture
 def sample_items() -> list[dict]:
-    """複数のサンプルアイテムデータ"""
+    """複数のサンプルアイテムデータ
+
+    Note: stock は 0（在庫なし）または 1（在庫あり）のブール値的な値。
+    """
     return [
         {
             "name": "商品A",
             "url": "https://store1.com/item/1",
             "store": "store1.com",
             "price": 1000,
-            "stock": 5,
+            "stock": 1,
             "thumb_url": None,
         },
         {
@@ -121,7 +131,7 @@ def sample_items() -> list[dict]:
             "url": "https://store2.com/item/1",
             "store": "store2.com",
             "price": 900,
-            "stock": 3,
+            "stock": 1,
             "thumb_url": None,
         },
         {
