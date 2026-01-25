@@ -50,20 +50,23 @@ def generate_item_key(
     """アイテムキーを生成.
 
     通常ストア: SHA256(url)[:12]
-    メルカリ: SHA256(search_keyword + "|" + cond)[:12]
+    メルカリ: SHA256(search_keyword)[:12]
+
+    NOTE: search_cond は後方互換性のため引数として残しているが、
+          item_key 生成には使用しない。これにより、同じキーワードの検索は
+          価格範囲や状態が異なっても同一アイテムとして扱われる。
 
     Args:
         url: URL（通常ストア用）
         search_keyword: 検索キーワード（メルカリ用）
-        search_cond: 検索条件 JSON（メルカリ用）
+        search_cond: 未使用（後方互換性のため保持）
 
     Returns:
         12文字のハッシュ
     """
     if search_keyword is not None:
-        # メルカリ: キーワードと検索条件からキーを生成
-        key_source = f"{search_keyword}|{search_cond or ''}"
-        return hashlib.sha256(key_source.encode()).hexdigest()[:12]
+        # メルカリ: キーワードのみからキーを生成（search_cond は無視）
+        return hashlib.sha256(search_keyword.encode()).hexdigest()[:12]
     elif url is not None:
         # 通常ストア: URL からキーを生成
         return _url_hash(url)

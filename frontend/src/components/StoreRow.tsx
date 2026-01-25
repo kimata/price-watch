@@ -20,6 +20,7 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
 
     // メルカリの場合は product_url を優先、なければ url を使用
     const linkUrl = store.product_url || store.url;
+    const hasValidUrl = Boolean(linkUrl);
 
     return (
         <div
@@ -29,17 +30,24 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
             )}
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
-                <a
-                    href={linkUrl || "#"}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-gray-700 hover:text-blue-600 truncate flex items-center gap-1"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <BuildingStorefrontIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="truncate">{store.store}</span>
-                    <ArrowTopRightOnSquareIcon className="h-3 w-3 flex-shrink-0" />
-                </a>
+                {hasValidUrl ? (
+                    <a
+                        href={linkUrl!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-gray-700 hover:text-blue-600 truncate flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <BuildingStorefrontIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate">{store.store}</span>
+                        <ArrowTopRightOnSquareIcon className="h-3 w-3 flex-shrink-0" />
+                    </a>
+                ) : (
+                    <span className="text-xs text-gray-400 truncate flex items-center gap-1">
+                        <BuildingStorefrontIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate">{store.store}</span>
+                    </span>
+                )}
                 {isBest && hasPrice && (
                     <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded whitespace-nowrap">
                         最安
