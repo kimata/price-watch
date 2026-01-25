@@ -358,7 +358,12 @@ class AppRunner:
             if self.should_terminate.wait(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
                 return
 
-        amazon_items = list(filter(lambda item: item["check_method"] == "amazon-paapi", item_list))
+        amazon_items = list(
+            filter(
+                lambda item: item["check_method"] == price_watch.target.CheckMethod.AMAZON_PAAPI.value,
+                item_list,
+            )
+        )
         if amazon_items:
             logging.info("[Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
 

@@ -1,6 +1,6 @@
 store_list:
     - name: amazon.co.jp
-      check_method: amazon-paapi
+      check_method: my_lib.store.amazon.api
       color: "#ff9900" # Amazon オレンジ
 
     - name: yodobashi.com

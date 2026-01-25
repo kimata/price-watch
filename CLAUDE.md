@@ -265,7 +265,7 @@ store_list:
       unavailable_xpath: '//p[contains(@class, "orderInfo")]/span[text()="販売休止中"]'
 
     - name: Amazon
-      check_method: amazon-paapi
+      check_method: my_lib.store.amazon.api
 
 item_list:
     - name: 商品名

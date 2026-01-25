@@ -42,7 +42,7 @@ class TestStoreDefinition:
         """チェックメソッド付きパース"""
         data = {
             "name": "amazon.co.jp",
-            "check_method": "amazon-paapi",
+            "check_method": "my_lib.store.amazon.api",
         }
         store = StoreDefinition.parse(data)
 
@@ -126,7 +126,7 @@ class TestResolvedItem:
         store = StoreDefinition.parse(
             {
                 "name": "amazon.co.jp",
-                "check_method": "amazon-paapi",
+                "check_method": "my_lib.store.amazon.api",
             }
         )
 

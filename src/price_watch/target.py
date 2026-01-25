@@ -27,7 +27,7 @@ class CheckMethod(str, Enum):
     """価格チェック方法"""
 
     SCRAPE = "scrape"
-    AMAZON_PAAPI = "amazon-paapi"
+    AMAZON_PAAPI = "my_lib.store.amazon.api"
 
 
 class ActionType(str, Enum):
