@@ -56,7 +56,11 @@ class WebUIRunner:
             logging.warning("Run 'cd frontend && npm run build' to build the frontend")
 
         # 設定ファイルのデータパスで history モジュールを初期化
-        price_watch.history.init(self.config.data.price)
+        data_path = self.config.data.price
+        db_file = data_path / "price_history.db"
+        logging.info("Data path: %s (absolute: %s)", data_path, data_path.resolve())
+        logging.info("DB file exists: %s", db_file.exists())
+        price_watch.history.init(data_path)
 
         self.server_handle = price_watch.webapi.server.start(self.port, static_dir_path=static_dir_path)
 
