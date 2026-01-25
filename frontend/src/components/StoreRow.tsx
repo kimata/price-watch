@@ -18,6 +18,9 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
     const hasPrice = store.effective_price !== null;
     const priceDiff = hasPrice && bestPrice !== null ? store.effective_price! - bestPrice : 0;
 
+    // メルカリの場合は product_url を優先、なければ url を使用
+    const linkUrl = store.product_url || store.url;
+
     return (
         <div
             className={clsx(
@@ -27,7 +30,7 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
         >
             <div className="flex items-center gap-2 min-w-0 flex-1">
                 <a
-                    href={store.url}
+                    href={linkUrl || "#"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-gray-700 hover:text-blue-600 truncate flex items-center gap-1"

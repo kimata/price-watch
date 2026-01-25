@@ -92,7 +92,7 @@ export default function ItemDetailPage({
             // 全ストアのイベントを取得してマージ
             const allEvents: Event[] = [];
             for (const store of item.stores) {
-                const response = await fetchItemEvents(store.url_hash, 20);
+                const response = await fetchItemEvents(store.item_key, 20);
                 allEvents.push(...response.events);
             }
             // 日時でソート（新しい順）
@@ -232,7 +232,7 @@ export default function ItemDetailPage({
                     <div className="space-y-2">
                         {sortedStores.map((store) => (
                             <StoreRow
-                                key={store.url_hash}
+                                key={store.item_key}
                                 store={store}
                                 isBest={store.store === item.best_store}
                                 bestPrice={item.best_effective_price}

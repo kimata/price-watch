@@ -6,9 +6,9 @@ export interface PriceHistoryPoint {
 }
 
 export interface StoreEntry {
-    url_hash: string;
+    item_key: string;
     store: string;
-    url: string;
+    url: string | null; // メルカリの場合は最安商品URL（動的）
     current_price: number | null; // null = 価格未取得
     effective_price: number | null; // null = 価格未取得
     point_rate: number;
@@ -17,6 +17,8 @@ export interface StoreEntry {
     stock: number;
     last_updated: string;
     history: PriceHistoryPoint[];
+    product_url?: string | null; // メルカリ: 最安商品への直接リンク
+    search_keyword?: string | null; // メルカリ: 検索キーワード（表示用）
 }
 
 export interface Item {

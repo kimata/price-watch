@@ -54,9 +54,9 @@ class StoreEntry(BaseSchema):
     current_price と effective_price は在庫なし時に None になる場合がある。
     """
 
-    url_hash: str
+    item_key: str
     store: str
-    url: str
+    url: str | None  # メルカリの場合は最安商品URL（動的）
     current_price: int | None
     effective_price: int | None
     point_rate: float
@@ -65,6 +65,8 @@ class StoreEntry(BaseSchema):
     stock: int
     last_updated: str
     history: list[PriceHistoryPoint]
+    product_url: str | None = None  # メルカリ: 最安商品への直接リンク
+    search_keyword: str | None = None  # メルカリ: 検索キーワード（表示用）
 
 
 class ResultItem(BaseSchema):

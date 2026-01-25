@@ -28,6 +28,7 @@ class CheckMethod(str, Enum):
 
     SCRAPE = "scrape"
     AMAZON_PAAPI = "my_lib.store.amazon.api"
+    MERCARI_SEARCH = "my_lib.store.mercari.search"
 
 
 class ActionType(str, Enum):
@@ -192,6 +193,11 @@ class ItemDefinition:
     unavailable_xpath: str | None = None
     price_unit: str | None = None
     preload: PreloadConfig | None = None
+    # メルカリ検索用
+    search_keyword: str | None = None  # 検索キーワード（省略時は name で検索）
+    exclude_keyword: str | None = None  # 除外キーワード
+    price_range: list[int] | None = None  # [min] or [min, max]
+    cond: str | None = None  # "NEW|LIKE_NEW" 形式
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> ItemDefinition:
@@ -199,6 +205,15 @@ class ItemDefinition:
         preload = None
         if "preload" in data:
             preload = PreloadConfig.parse(data["preload"])
+
+        # price_range のパース（"price" フィールド）
+        price_range = None
+        if "price" in data:
+            price_data = data["price"]
+            if isinstance(price_data, list):
+                price_range = [int(p) for p in price_data]
+            elif isinstance(price_data, int):
+                price_range = [price_data]
 
         return cls(
             name=data["name"],
@@ -210,6 +225,10 @@ class ItemDefinition:
             unavailable_xpath=data.get("unavailable_xpath"),
             price_unit=data.get("price_unit"),
             preload=preload,
+            search_keyword=data.get("search_keyword"),
+            exclude_keyword=data.get("exclude_keyword"),
+            price_range=price_range,
+            cond=data.get("cond"),
         )
 
 
@@ -219,7 +238,7 @@ class ResolvedItem:
 
     name: str
     store: str
-    url: str
+    url: str  # メルカリの場合は空文字列（動的に更新される）
     asin: str | None = None
     check_method: CheckMethod = CheckMethod.SCRAPE
     price_xpath: str | None = None
@@ -230,17 +249,15 @@ class ResolvedItem:
     color: str | None = None  # ストアの色（hex形式）
     actions: list[ActionStep] = field(default_factory=list)
     preload: PreloadConfig | None = None
+    # メルカリ検索用
+    search_keyword: str | None = None
+    exclude_keyword: str | None = None
+    price_range: list[int] | None = None
+    cond: str | None = None
 
     @classmethod
     def from_item_and_store(cls, item: ItemDefinition, store: StoreDefinition | None) -> ResolvedItem:
         """ItemDefinition と StoreDefinition をマージして ResolvedItem を生成"""
-        # URL の決定（asin がある場合は Amazon URL を生成）
-        url = item.url
-        if url is None and item.asin is not None:
-            url = f"https://www.amazon.co.jp/dp/{item.asin}"
-        if url is None:
-            raise ValueError(f"Item '{item.name}' has no url or asin")
-
         # ストア定義からデフォルト値を取得
         store_check_method = CheckMethod.SCRAPE
         store_price_xpath = None
@@ -261,6 +278,17 @@ class ResolvedItem:
             store_color = store.color
             store_actions = store.actions
 
+        # URL の決定
+        url = item.url
+        if url is None and item.asin is not None:
+            url = f"https://www.amazon.co.jp/dp/{item.asin}"
+
+        # メルカリ検索の場合は URL がなくても OK（検索結果から動的に取得）
+        if url is None and store_check_method == CheckMethod.MERCARI_SEARCH:
+            url = ""  # 空文字列（後から検索結果で更新）
+        elif url is None:
+            raise ValueError(f"Item '{item.name}' has no url or asin")
+
         # アイテム定義で上書き
         return cls(
             name=item.name,
@@ -276,6 +304,10 @@ class ResolvedItem:
             color=store_color,
             actions=store_actions,
             preload=item.preload,
+            search_keyword=item.search_keyword,
+            exclude_keyword=item.exclude_keyword,
+            price_range=item.price_range,
+            cond=item.cond,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -304,6 +336,15 @@ class ResolvedItem:
             ]
         if self.preload is not None:
             result["preload"] = {"url": self.preload.url, "every": self.preload.every}
+        # メルカリ検索用フィールド
+        if self.search_keyword is not None:
+            result["search_keyword"] = self.search_keyword
+        if self.exclude_keyword is not None:
+            result["exclude_keyword"] = self.exclude_keyword
+        if self.price_range is not None:
+            result["price_range"] = self.price_range
+        if self.cond is not None:
+            result["cond"] = self.cond
         return result
 
 

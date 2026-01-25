@@ -156,8 +156,8 @@ test-docker:
         - 'echo "Testing: ${CI_REGISTRY_IMAGE}:${TAG}"'
         - docker pull ${CI_REGISTRY_IMAGE}:${TAG}
         - mkdir -p data/debug
-        # --help が正常に動作するかテスト
-        - docker run --rm --entrypoint uv ${CI_REGISTRY_IMAGE}:${TAG} run --no-group dev price-watch --help
+        # デバッグモードで実行（各ストア1アイテムのみチェックして終了）
+        - docker run --rm -v $(pwd)/data/debug:/opt/price-watch/data/debug ${CI_REGISTRY_IMAGE}:${TAG} price-watch -D
 
     artifacts:
         when: on_failure

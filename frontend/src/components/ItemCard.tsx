@@ -75,7 +75,7 @@ export default function ItemCard({ item, storeDefinitions, onClick }: ItemCardPr
                 <div className="mt-4 space-y-2">
                     {sortedStores.map((store) => (
                         <StoreRow
-                            key={store.url_hash}
+                            key={store.item_key}
                             store={store}
                             isBest={store.store === item.best_store}
                             bestPrice={item.best_effective_price}

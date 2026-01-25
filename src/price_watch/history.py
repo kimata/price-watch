@@ -41,18 +41,68 @@ def url_hash(url: str) -> str:
     return _url_hash(url)
 
 
-def _get_or_create_item(
-    cur: sqlite3.Cursor, url: str, name: str, store: str, thumb_url: str | None = None
-) -> int:
-    """アイテムを取得または作成し、IDを返す."""
-    url_hash = _url_hash(url)
+def generate_item_key(
+    url: str | None = None,
+    *,
+    search_keyword: str | None = None,
+    search_cond: str | None = None,
+) -> str:
+    """アイテムキーを生成.
 
-    cur.execute("SELECT id, name, thumb_url FROM items WHERE url_hash = ?", (url_hash,))
+    通常ストア: SHA256(url)[:12]
+    メルカリ: SHA256(search_keyword + "|" + cond)[:12]
+
+    Args:
+        url: URL（通常ストア用）
+        search_keyword: 検索キーワード（メルカリ用）
+        search_cond: 検索条件 JSON（メルカリ用）
+
+    Returns:
+        12文字のハッシュ
+    """
+    if search_keyword is not None:
+        # メルカリ: キーワードと検索条件からキーを生成
+        key_source = f"{search_keyword}|{search_cond or ''}"
+        return hashlib.sha256(key_source.encode()).hexdigest()[:12]
+    elif url is not None:
+        # 通常ストア: URL からキーを生成
+        return _url_hash(url)
+    else:
+        raise ValueError("Either url or search_keyword must be provided")
+
+
+def _get_or_create_item(
+    cur: sqlite3.Cursor,
+    name: str,
+    store: str,
+    *,
+    url: str | None = None,
+    thumb_url: str | None = None,
+    search_keyword: str | None = None,
+    search_cond: str | None = None,
+) -> int:
+    """アイテムを取得または作成し、IDを返す.
+
+    Args:
+        cur: SQLite カーソル
+        name: アイテム名
+        store: ストア名
+        url: URL（通常ストア用、メルカリは動的に更新される）
+        thumb_url: サムネイル URL
+        search_keyword: 検索キーワード（メルカリ用）
+        search_cond: 検索条件 JSON（メルカリ用）
+
+    Returns:
+        アイテム ID
+    """
+    item_key = generate_item_key(url, search_keyword=search_keyword, search_cond=search_cond)
+
+    cur.execute("SELECT id, name, thumb_url, url FROM items WHERE item_key = ?", (item_key,))
     row = cur.fetchone()
 
     if row:
         item_id = row[0]
-        # 名前やサムネイルが更新されていたら更新
+        # 名前やサムネイル、URL が更新されていたら更新
         updates = []
         params: list[Any] = []
         if row[1] != name:
@@ -61,6 +111,10 @@ def _get_or_create_item(
         if thumb_url and row[2] != thumb_url:
             updates.append("thumb_url = ?")
             params.append(thumb_url)
+        # メルカリの場合は URL を更新（最安商品の URL）
+        if url and row[3] != url:
+            updates.append("url = ?")
+            params.append(url)
         if updates:
             updates.append("updated_at = ?")
             params.append(my_lib.time.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -72,10 +126,13 @@ def _get_or_create_item(
     now = my_lib.time.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute(
         """
-        INSERT INTO items (url_hash, url, name, store, thumb_url, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO items (
+            item_key, url, name, store, thumb_url,
+            search_keyword, search_cond, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (url_hash, url, name, store, thumb_url, now, now),
+        (item_key, url, name, store, thumb_url, search_keyword, search_cond, now, now),
     )
     return cur.lastrowid or 0
 
@@ -94,6 +151,14 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
 
     Args:
         item: アイテム情報
+            - name: アイテム名（必須）
+            - store: ストア名（必須）
+            - url: URL（通常ストア: 必須、メルカリ: 最安商品 URL）
+            - thumb_url: サムネイル URL（オプション）
+            - search_keyword: 検索キーワード（メルカリ用）
+            - search_cond: 検索条件 JSON（メルカリ用）
+            - price: 価格（オプション）
+            - stock: 在庫状態（オプション）
         crawl_status: クロール状態（0: 失敗, 1: 成功）
 
     Returns:
@@ -104,10 +169,12 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
 
         item_id = _get_or_create_item(
             cur,
-            item["url"],
             item["name"],
             item["store"],
-            item.get("thumb_url"),
+            url=item.get("url"),
+            thumb_url=item.get("thumb_url"),
+            search_keyword=item.get("search_keyword"),
+            search_cond=item.get("search_cond"),
         )
 
         now = my_lib.time.now()
@@ -204,45 +271,69 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
         return item_id
 
 
-def last(url: str) -> dict[str, Any] | None:
-    """最新の価格履歴を取得."""
+def last(url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
+    """最新の価格履歴を取得.
+
+    Args:
+        url: URL（後方互換性のため残す）
+        item_key: アイテムキー（優先）
+
+    Returns:
+        最新の価格履歴、または None
+    """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
-        url_hash = _url_hash(url)
+        # item_key が指定されている場合はそれを使用、なければ url から生成
+        key = item_key if item_key is not None else _url_hash(url) if url else None
+        if key is None:
+            return None
+
         cur.execute(
             """
             SELECT i.url, i.name, i.store, i.thumb_url, ph.price, ph.stock, ph.time
             FROM items i
             JOIN price_history ph ON i.id = ph.item_id
-            WHERE i.url_hash = ?
+            WHERE i.item_key = ?
             ORDER BY ph.time DESC
             LIMIT 1
             """,
-            (url_hash,),
+            (key,),
         )
 
         return cur.fetchone()
 
 
-def lowest(url: str) -> dict[str, Any] | None:
-    """最安値の価格履歴を取得（価格がNULLのレコードは除外）."""
+def lowest(url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
+    """最安値の価格履歴を取得（価格がNULLのレコードは除外）.
+
+    Args:
+        url: URL（後方互換性のため残す）
+        item_key: アイテムキー（優先）
+
+    Returns:
+        最安値の価格履歴、または None
+    """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
-        url_hash = _url_hash(url)
+        # item_key が指定されている場合はそれを使用、なければ url から生成
+        key = item_key if item_key is not None else _url_hash(url) if url else None
+        if key is None:
+            return None
+
         cur.execute(
             """
             SELECT i.url, i.name, i.store, i.thumb_url, ph.price, ph.stock, ph.time
             FROM items i
             JOIN price_history ph ON i.id = ph.item_id
-            WHERE i.url_hash = ? AND ph.price IS NOT NULL
+            WHERE i.item_key = ? AND ph.price IS NOT NULL
             ORDER BY ph.price ASC
             LIMIT 1
             """,
-            (url_hash,),
+            (key,),
         )
 
         return cur.fetchone()
@@ -256,7 +347,8 @@ def get_all_items() -> list[dict[str, Any]]:
 
         cur.execute(
             """
-            SELECT id, url_hash, url, name, store, thumb_url, created_at, updated_at
+            SELECT id, item_key, url, name, store, thumb_url,
+                   search_keyword, search_cond, created_at, updated_at
             FROM items
             ORDER BY updated_at DESC
             """
@@ -266,9 +358,17 @@ def get_all_items() -> list[dict[str, Any]]:
 
 
 def get_item_history(
-    url_hash: str, days: int | None = None
+    item_key: str, days: int | None = None
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
-    """アイテムの価格履歴を取得."""
+    """アイテムの価格履歴を取得.
+
+    Args:
+        item_key: アイテムキー
+        days: 期間（日数）
+
+    Returns:
+        (アイテム情報, 価格履歴リスト) のタプル
+    """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
@@ -276,11 +376,12 @@ def get_item_history(
         # アイテム情報を取得
         cur.execute(
             """
-            SELECT id, url_hash, url, name, store, thumb_url, created_at, updated_at
+            SELECT id, item_key, url, name, store, thumb_url,
+                   search_keyword, search_cond, created_at, updated_at
             FROM items
-            WHERE url_hash = ?
+            WHERE item_key = ?
             """,
-            (url_hash,),
+            (item_key,),
         )
         item = cur.fetchone()
 
@@ -388,17 +489,23 @@ def init(data_path: pathlib.Path | None = None) -> None:
         cur = conn.cursor()
 
         # items テーブル
+        # item_key: 通常ストアは SHA256(url)[:12]、メルカリは SHA256(keyword|cond)[:12]
+        # url: 通常ストアは固定、メルカリは最安商品 URL（動的に更新）
+        # search_keyword: メルカリ検索キーワード
+        # search_cond: メルカリ検索条件 JSON
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS items(
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                url_hash    TEXT NOT NULL UNIQUE,
-                url         TEXT NOT NULL,
-                name        TEXT NOT NULL,
-                store       TEXT NOT NULL,
-                thumb_url   TEXT,
-                created_at  TIMESTAMP DEFAULT(DATETIME('now','localtime')),
-                updated_at  TIMESTAMP DEFAULT(DATETIME('now','localtime'))
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_key        TEXT NOT NULL UNIQUE,
+                url             TEXT,
+                name            TEXT NOT NULL,
+                store           TEXT NOT NULL,
+                thumb_url       TEXT,
+                search_keyword  TEXT,
+                search_cond     TEXT,
+                created_at      TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                updated_at      TIMESTAMP DEFAULT(DATETIME('now','localtime'))
             )
             """
         )
@@ -440,7 +547,7 @@ def init(data_path: pathlib.Path | None = None) -> None:
         )
 
         # インデックス
-        cur.execute("CREATE INDEX IF NOT EXISTS idx_items_url_hash ON items(url_hash)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_items_item_key ON items(item_key)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_item_id ON events(item_id)")
@@ -450,6 +557,7 @@ def init(data_path: pathlib.Path | None = None) -> None:
     # 既存DBのマイグレーション
     migrate_to_nullable_price()
     migrate_add_crawl_status()
+    migrate_url_hash_to_item_key()
 
 
 def migrate_from_old_schema() -> None:
@@ -640,12 +748,90 @@ def migrate_add_crawl_status() -> None:
     logging.info("Migration to add crawl_status completed successfully")
 
 
-def get_item_id(url: str) -> int | None:
-    """URL からアイテム ID を取得."""
+def migrate_url_hash_to_item_key() -> None:
+    """url_hash カラムを item_key にリネームし、新カラムを追加するマイグレーション.
+
+    SQLite は ALTER COLUMN RENAME をサポートしていないため、
+    テーブルを再作成してデータを移行する。
+    """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         cur = conn.cursor()
-        url_hash = _url_hash(url)
-        cur.execute("SELECT id FROM items WHERE url_hash = ?", (url_hash,))
+
+        # テーブルが存在するか確認
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='items'")
+        if not cur.fetchone():
+            logging.info("No items table found")
+            return
+
+        # 現在のスキーマを確認（url_hash カラムが存在するか）
+        cur.execute("PRAGMA table_info(items)")
+        columns = [col[1] for col in cur.fetchall()]
+
+        if "item_key" in columns:
+            logging.info("item_key column already exists")
+            return
+
+        if "url_hash" not in columns:
+            logging.info("url_hash column not found, skipping migration")
+            return
+
+        logging.info("Starting migration from url_hash to item_key...")
+
+        # 新しいテーブルを作成
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS items_new(
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_key        TEXT NOT NULL UNIQUE,
+                url             TEXT,
+                name            TEXT NOT NULL,
+                store           TEXT NOT NULL,
+                thumb_url       TEXT,
+                search_keyword  TEXT,
+                search_cond     TEXT,
+                created_at      TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                updated_at      TIMESTAMP DEFAULT(DATETIME('now','localtime'))
+            )
+            """
+        )
+
+        # データを移行（url_hash を item_key にコピー）
+        cur.execute(
+            """
+            INSERT INTO items_new (id, item_key, url, name, store, thumb_url, created_at, updated_at)
+            SELECT id, url_hash, url, name, store, thumb_url, created_at, updated_at FROM items
+            """
+        )
+
+        # 旧テーブルを削除し、新テーブルをリネーム
+        cur.execute("DROP TABLE items")
+        cur.execute("ALTER TABLE items_new RENAME TO items")
+
+        # インデックスを再作成
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_items_item_key ON items(item_key)")
+
+        # 旧インデックスを削除（存在する場合）
+        cur.execute("DROP INDEX IF EXISTS idx_items_url_hash")
+
+    logging.info("Migration from url_hash to item_key completed successfully")
+
+
+def get_item_id(url: str | None = None, *, item_key: str | None = None) -> int | None:
+    """アイテム ID を取得.
+
+    Args:
+        url: URL（後方互換性のため残す）
+        item_key: アイテムキー（優先）
+
+    Returns:
+        アイテム ID、または None
+    """
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        key = item_key if item_key is not None else _url_hash(url) if url else None
+        if key is None:
+            return None
+        cur.execute("SELECT id FROM items WHERE item_key = ?", (key,))
         row = cur.fetchone()
         return row[0] if row else None
 
@@ -657,7 +843,8 @@ def get_item_by_id(item_id: int) -> dict[str, Any] | None:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, url_hash, url, name, store, thumb_url, created_at, updated_at
+            SELECT id, item_key, url, name, store, thumb_url,
+                   search_keyword, search_cond, created_at, updated_at
             FROM items
             WHERE id = ?
             """,
@@ -863,11 +1050,11 @@ def mark_event_notified(event_id: int) -> None:
         cur.execute("UPDATE events SET notified = 1 WHERE id = ?", (event_id,))
 
 
-def get_item_events(url_hash: str, limit: int = 50) -> list[dict[str, Any]]:
+def get_item_events(item_key: str, limit: int = 50) -> list[dict[str, Any]]:
     """指定アイテムのイベント履歴を取得（アイテム情報付き）.
 
     Args:
-        url_hash: アイテムの URL ハッシュ
+        item_key: アイテムキー
         limit: 取得件数上限
 
     Returns:
@@ -893,11 +1080,11 @@ def get_item_events(url_hash: str, limit: int = 50) -> list[dict[str, Any]]:
                 i.thumb_url
             FROM events e
             JOIN items i ON e.item_id = i.id
-            WHERE i.url_hash = ?
+            WHERE i.item_key = ?
             ORDER BY e.created_at DESC
             LIMIT ?
             """,
-            (url_hash, limit),
+            (item_key, limit),
         )
         return cur.fetchall()
 

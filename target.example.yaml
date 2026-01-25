@@ -3,6 +3,10 @@ store_list:
       check_method: my_lib.store.amazon.api
       color: "#ff9900" # Amazon オレンジ
 
+    - name: mercari.com
+      check_method: my_lib.store.mercari.search
+      color: "#ff0211" # メルカリ 赤
+
     - name: yodobashi.com
       price_xpath: '//span[@id="js_scl_unitPrice"]'
       thumb_img_xpath: '//img[@id="mainImg"]'
@@ -94,3 +98,19 @@ item_list:
     - name: Raspberry Pi Zero 2 W
       store: switch-science.com
       url: https://www.switch-science.com/products/7600
+
+    # メルカリ検索の例
+    - name: マキタ 充電式高圧洗浄機 40Vmax MHW001GZ
+      store: mercari.com
+      search_keyword: マキタ MHW001GZ # 省略時は name で検索
+      price:
+          - 60000 # price_min
+          - 100000 # price_max（省略可）
+      cond: NEW|LIKE_NEW # 商品状態: NEW, LIKE_NEW, GOOD, FAIR, POOR, BAD
+
+    - name: Raspberry Pi 5
+      store: mercari.com
+      # search_keyword 省略時は name で検索
+      price:
+          - 8000
+      cond: NEW|LIKE_NEW|GOOD

@@ -35,6 +35,7 @@ import price_watch.event
 import price_watch.history
 import price_watch.log_format
 import price_watch.notify
+import price_watch.store.mercari
 import price_watch.store.scrape
 import price_watch.target
 import price_watch.thumbnail
@@ -79,6 +80,9 @@ class AppRunner:
         self.error_count: dict[str, int] = {}
         self.loop = 0
         self._received_signal: int | None = None
+
+        # デバッグモード用: 各チェック方法の成功/失敗を追跡
+        self._debug_check_results: dict[str, bool] = {}
 
     def sig_handler(self, num: int, _frame: Any) -> None:
         """シグナルハンドラ.
@@ -298,8 +302,21 @@ class AppRunner:
         for item in items:
             item_dict = item.to_dict()
 
-            if item_dict["url"] not in self.error_count:
-                self.error_count[item_dict["url"]] = 0
+            # メルカリ検索の場合は item_key を事前に生成
+            if item_dict["check_method"] == price_watch.target.CheckMethod.MERCARI_SEARCH.value:
+                # search_keyword がなければ name を使用
+                search_keyword = item_dict.get("search_keyword") or item_dict["name"]
+                item_dict["search_keyword"] = search_keyword
+                # item_key を生成（エラーカウント用）
+                item_key = price_watch.history.generate_item_key(
+                    search_keyword=search_keyword,
+                    search_cond=item_dict.get("search_cond", ""),
+                )
+                if item_key not in self.error_count:
+                    self.error_count[item_key] = 0
+            else:
+                if item_dict["url"] not in self.error_count:
+                    self.error_count[item_dict["url"]] = 0
 
             result.append(item_dict)
 
@@ -310,11 +327,35 @@ class AppRunner:
         if self.config is None or self.driver is None:
             return
 
-        for item in filter(lambda item: item["check_method"] == "scrape", item_list):
+        # 1. スクレイピング対象
+        self._do_work_scrape(item_list)
+
+        # 2. Amazon PA-API 対象
+        self._do_work_amazon(item_list)
+
+        # 3. メルカリ検索対象
+        self._do_work_mercari(item_list)
+
+    def _do_work_scrape(self, item_list: list[dict[str, Any]]) -> None:
+        """スクレイピング対象アイテムを処理."""
+        if self.config is None or self.driver is None:
+            return
+
+        check_method = "scrape"
+        scrape_items = list(filter(lambda item: item["check_method"] == check_method, item_list))
+
+        # デバッグモードでは各ストアにつき1アイテムのみ
+        if self.debug_mode:
+            scrape_items = self._select_one_item_per_store(scrape_items)
+            if scrape_items:
+                logging.info("[デバッグモード] スクレイピング: %d件のアイテムをチェック", len(scrape_items))
+
+        for item in scrape_items:
             if self.should_terminate.is_set():
                 return
 
             logging.info(price_watch.log_format.format_crawl_start(item))
+            store_name = item.get("store", check_method)
 
             try:
                 price_watch.store.scrape.check(self.config, self.driver, item, self.loop)
@@ -333,12 +374,20 @@ class AppRunner:
                 if crawl_success:
                     self._update_liveness()
                     self.error_count[item["url"]] = 0
+                    # デバッグモード: このストアは成功
+                    if self.debug_mode:
+                        self._debug_check_results[store_name] = True
+                        logging.info("[デバッグモード] %s: 成功", store_name)
                 else:
                     # 価格要素が見つからなかった場合（例外は発生していない）
                     self.error_count[item["url"]] += 1
                     logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
                     if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
                         self.error_count[item["url"]] = 0
+                    # デバッグモード: このストアは失敗
+                    if self.debug_mode:
+                        self._debug_check_results[store_name] = False
+                        logging.warning("[デバッグモード] %s: 失敗（価格要素なし）", store_name)
             except Exception:
                 self.error_count[item["url"]] += 1
                 logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
@@ -354,33 +403,162 @@ class AppRunner:
 
                 if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
                     self.error_count[item["url"]] = 0
+
+                # デバッグモード: このストアは失敗
+                if self.debug_mode:
+                    self._debug_check_results[store_name] = False
+                    logging.warning("[デバッグモード] %s: 失敗（例外発生）", store_name)
+
             # wait() を使用してシグナル受信時に即座に終了できるようにする
             if self.should_terminate.wait(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
                 return
 
-        amazon_items = list(
-            filter(
-                lambda item: item["check_method"] == price_watch.target.CheckMethod.AMAZON_PAAPI.value,
-                item_list,
-            )
-        )
-        if amazon_items:
+    def _do_work_amazon(self, item_list: list[dict[str, Any]]) -> None:
+        """Amazon PA-API 対象アイテムを処理."""
+        if self.config is None:
+            return
+
+        check_method = price_watch.target.CheckMethod.AMAZON_PAAPI.value
+        amazon_items = list(filter(lambda item: item["check_method"] == check_method, item_list))
+
+        if not amazon_items:
+            return
+
+        # デバッグモードでは1アイテムのみ
+        if self.debug_mode:
+            amazon_items = amazon_items[:1]
+            logging.info("[デバッグモード] Amazon PA-API: 1件のアイテムをチェック")
+        else:
             logging.info("[Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
 
-        for item in price_watch.amazon.paapi.check_item_list(self.config, amazon_items):
-            self._process_data(
-                self.config.slack,
-                item,
-                price_watch.history.last(item["url"]),
-                crawl_status=1,
-            )
-        self._update_liveness()
+        store_name = "amazon.co.jp"
+        success = False
+
+        try:
+            for item in price_watch.amazon.paapi.check_item_list(self.config, amazon_items):
+                self._process_data(
+                    self.config.slack,
+                    item,
+                    price_watch.history.last(item["url"]),
+                    crawl_status=1,
+                )
+                success = True  # 少なくとも1つ成功
+            self._update_liveness()
+        except Exception:
+            logging.exception("Failed to check Amazon PA-API items")
+            success = False
+
+        # デバッグモード: 結果を記録
+        if self.debug_mode:
+            self._debug_check_results[store_name] = success
+            if success:
+                logging.info("[デバッグモード] %s: 成功", store_name)
+            else:
+                logging.warning("[デバッグモード] %s: 失敗", store_name)
+
+    def _do_work_mercari(self, item_list: list[dict[str, Any]]) -> None:
+        """メルカリ検索対象アイテムを処理."""
+        if self.config is None or self.driver is None:
+            return
+
+        check_method = price_watch.target.CheckMethod.MERCARI_SEARCH.value
+        mercari_items = list(filter(lambda item: item["check_method"] == check_method, item_list))
+
+        if not mercari_items:
+            return
+
+        store_name = "mercari.com"
+
+        # デバッグモードでは1アイテムのみ
+        if self.debug_mode:
+            mercari_items = mercari_items[:1]
+            logging.info("[デバッグモード] メルカリ検索: 1件のアイテムをチェック")
+        else:
+            logging.info("[メルカリ検索] %d件のアイテムをチェック中...", len(mercari_items))
+
+        for item in mercari_items:
+            if self.should_terminate.is_set():
+                return
+
+            try:
+                price_watch.store.mercari.check(self.config, self.driver, item)
+
+                crawl_success = item.get("crawl_success", False)
+                crawl_status = 1 if crawl_success else 0
+
+                # メルカリは item_key ベースで履歴を管理
+                item_key = price_watch.store.mercari.generate_item_key(item)
+                self._process_data(
+                    self.config.slack,
+                    item,
+                    price_watch.history.last(item_key=item_key),
+                    crawl_status=crawl_status,
+                )
+
+                if crawl_success:
+                    self._update_liveness()
+                    self.error_count[item_key] = 0
+                    # デバッグモード: 成功
+                    if self.debug_mode:
+                        self._debug_check_results[store_name] = True
+                        logging.info("[デバッグモード] %s: 成功", store_name)
+                else:
+                    self.error_count[item_key] += 1
+                    logging.warning(price_watch.log_format.format_error(item, self.error_count[item_key]))
+                    if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                        self.error_count[item_key] = 0
+                    # デバッグモード: 失敗
+                    if self.debug_mode:
+                        self._debug_check_results[store_name] = False
+                        logging.warning("[デバッグモード] %s: 失敗（検索結果なし）", store_name)
+            except Exception:
+                item_key = price_watch.store.mercari.generate_item_key(item)
+                self.error_count[item_key] += 1
+                logging.exception("Failed to check mercari item: %s", item["name"])
+
+                self._process_data(
+                    self.config.slack,
+                    item,
+                    price_watch.history.last(item_key=item_key),
+                    crawl_status=0,
+                )
+
+                if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                    self.error_count[item_key] = 0
+
+                # デバッグモード: 失敗
+                if self.debug_mode:
+                    self._debug_check_results[store_name] = False
+                    logging.warning("[デバッグモード] %s: 失敗（例外発生）", store_name)
+
+            if self.should_terminate.wait(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                return
+
+    def _select_one_item_per_store(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """各ストアから1アイテムずつ選択.
+
+        Args:
+            items: アイテムリスト
+
+        Returns:
+            各ストアから1アイテムずつ選択されたリスト
+        """
+        seen_stores: set[str] = set()
+        result: list[dict[str, Any]] = []
+
+        for item in items:
+            store = item.get("store", "unknown")
+            if store not in seen_stores:
+                seen_stores.add(store)
+                result.append(item)
+
+        return result
 
     def execute(self) -> bool:
         """メイン実行ループ.
 
         Returns:
-            正常終了の場合 True
+            正常終了の場合 True（デバッグモードでは全ストア成功時のみ True）
         """
         try:
             # config は run() で先に読み込まれている
@@ -392,6 +570,13 @@ class AppRunner:
         except Exception:
             logging.exception("Failed to initialize")
             return False
+
+        # デバッグモード: 1回だけ実行して終了
+        if self.debug_mode:
+            logging.info("[デバッグモード] 各ストア1アイテムのみチェックして終了します")
+            self._do_work(self._load_item_list())
+            self.cleanup()
+            return self._check_debug_results()
 
         while not self.should_terminate.is_set():
             start_time = time.time()
@@ -413,6 +598,31 @@ class AppRunner:
 
         return True
 
+    def _check_debug_results(self) -> bool:
+        """デバッグモードの結果を確認.
+
+        Returns:
+            全ストアが成功した場合 True
+        """
+        if not self._debug_check_results:
+            logging.warning("[デバッグモード] チェック対象のストアがありませんでした")
+            return False
+
+        all_success = all(self._debug_check_results.values())
+
+        logging.info("[デバッグモード] === チェック結果 ===")
+        for store, success in self._debug_check_results.items():
+            status = "OK" if success else "NG"
+            logging.info("[デバッグモード]   %s: %s", store, status)
+
+        if all_success:
+            logging.info("[デバッグモード] 全ストア成功")
+        else:
+            failed_stores = [s for s, ok in self._debug_check_results.items() if not ok]
+            logging.warning("[デバッグモード] 失敗したストア: %s", ", ".join(failed_stores))
+
+        return all_success
+
 
 def run(config_file: pathlib.Path, target_file: pathlib.Path, port: int, *, debug_mode: bool = False) -> None:
     """価格監視を実行.
@@ -429,12 +639,17 @@ def run(config_file: pathlib.Path, target_file: pathlib.Path, port: int, *, debu
     runner = AppRunner(config_file, target_file, port, debug_mode=debug_mode)
     runner.config = config
     runner.setup_signal_handlers()
-    runner.start_webui_server()
+
+    # デバッグモードでは WebUI サーバーを起動しない
+    if not debug_mode:
+        runner.start_webui_server()
 
     try:
-        if runner.execute():
+        success = runner.execute()
+        if success:
             sys.exit(0)
         else:
+            # デバッグモードで失敗した場合は終了コード 1
             sys.exit(1)
     except KeyboardInterrupt:
         logging.info("Received KeyboardInterrupt, shutting down...")

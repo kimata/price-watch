@@ -10,8 +10,8 @@ export async function fetchItems(days: Period): Promise<ItemsResponse> {
     return response.data;
 }
 
-export async function fetchItemHistory(urlHash: string, days: Period): Promise<HistoryResponse> {
-    const response = await axios.get<HistoryResponse>(`${API_BASE}/items/${urlHash}/history`, {
+export async function fetchItemHistory(itemKey: string, days: Period): Promise<HistoryResponse> {
+    const response = await axios.get<HistoryResponse>(`${API_BASE}/items/${itemKey}/history`, {
         params: { days },
     });
     return response.data;
@@ -24,8 +24,8 @@ export async function fetchEvents(limit: number = 10): Promise<EventsResponse> {
     return response.data;
 }
 
-export async function fetchItemEvents(urlHash: string, limit: number = 50): Promise<EventsResponse> {
-    const response = await axios.get<EventsResponse>(`${API_BASE}/items/${urlHash}/events`, {
+export async function fetchItemEvents(itemKey: string, limit: number = 50): Promise<EventsResponse> {
+    const response = await axios.get<EventsResponse>(`${API_BASE}/items/${itemKey}/events`, {
         params: { limit },
     });
     return response.data;
