@@ -344,9 +344,11 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         };
     }, [stores, sortedTimes, selectedLabel, handleLegendClick]);
 
-    // 全ストアに履歴がない場合
-    const hasHistory = stores.some((s) => s.history.length > 0);
-    if (!hasHistory) {
+    // 有効な価格データがあるかチェック（履歴があっても全て null なら価格情報なし）
+    const hasValidPriceData = stores.some((s) =>
+        s.history.some((h) => h.effective_price !== null)
+    );
+    if (!hasValidPriceData) {
         // 「価格情報なし」を中央に表示
         return (
             <div className={`${className} relative flex items-center justify-center bg-gray-100 rounded`}>
