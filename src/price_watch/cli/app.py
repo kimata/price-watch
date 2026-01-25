@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import logging
 import pathlib
-import re
 import signal
 import sys
 import threading
@@ -42,57 +41,6 @@ if TYPE_CHECKING:
     from price_watch.webapi.server import ServerHandle
 
 PROFILE_NAME = "Default"
-
-
-def _get_modified_user_agent(driver: my_lib.selenium_util.WebDriverType) -> str:
-    """ブラウザの User-Agent を取得し、ボット検出回避用に修正.
-
-    - OS 部分を Windows に変更
-    - HeadlessChrome を Chrome に変更
-
-    Args:
-        driver: WebDriver インスタンス
-
-    Returns:
-        修正された User-Agent 文字列
-    """
-    original_ua = driver.execute_script("return navigator.userAgent")
-    logging.debug("Original User-Agent: %s", original_ua)
-
-    # OS 部分を Windows に変更
-    pattern = r"\([^)]*(?:Linux|Macintosh|X11)[^)]*\)"
-    replacement = "(Windows NT 10.0; Win64; x64)"
-    modified_ua = re.sub(pattern, replacement, original_ua)
-
-    # HeadlessChrome を Chrome に変更
-    modified_ua = modified_ua.replace("HeadlessChrome", "Chrome")
-
-    logging.debug("Modified User-Agent: %s", modified_ua)
-    return modified_ua
-
-
-def _apply_stealth_settings(driver: my_lib.selenium_util.WebDriverType) -> None:
-    """ボット検出回避のための CDP 設定を適用.
-
-    ヨドバシ等のボット検出は User-Agent をチェックしているため、
-    OS を Windows に偽装し、HeadlessChrome を Chrome に変更することで回避できる。
-
-    Args:
-        driver: WebDriver インスタンス
-    """
-    try:
-        modified_ua = _get_modified_user_agent(driver)
-        driver.execute_cdp_cmd(
-            "Network.setUserAgentOverride",
-            {
-                "userAgent": modified_ua,
-                "acceptLanguage": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-                "platform": "Win32",
-            },
-        )
-        logging.debug("CDP User-Agent override applied")
-    except Exception:
-        logging.warning("Failed to apply CDP User-Agent override")
 
 
 class AppRunner:
@@ -205,6 +153,74 @@ class AppRunner:
             else:
                 time.sleep(SLEEP_UNIT)
 
+    def _should_update_history(self, item: dict[str, Any], last: dict[str, Any] | None) -> bool:
+        """履歴を更新するべきか判定."""
+        if last is None:
+            return item["stock"] == 1
+
+        price_changed = (item["stock"] == 1) and (item["price"] != last["price"])
+        stock_changed = item["stock"] != last["stock"]
+        return price_changed or stock_changed
+
+    def _log_watch_start(self, item: dict[str, Any]) -> None:
+        """監視開始時のログを出力."""
+        if item["stock"] == 1:
+            logging.warning(
+                "%s: watch start %d%s. (%s)",
+                item["name"],
+                item["price"],
+                item["price_unit"],
+                "in stock",
+            )
+        else:
+            logging.warning("%s: watch start (%s)", item["name"], "out of stock")
+
+    def _handle_price_decrease(
+        self,
+        slack_config: my_lib.notify.slack.SlackConfigTypes,
+        item: dict[str, Any],
+        last: dict[str, Any],
+    ) -> None:
+        """価格下落時の処理."""
+        logging.warning(
+            "%s: price updated %d%s ➡ %d%s.",
+            item["name"],
+            last["price"],
+            item["price_unit"],
+            item["price"],
+            item["price_unit"],
+        )
+        lowest = history.lowest(item["url"])
+        is_record = lowest is not None and item["price"] < lowest["price"]
+        notify.info(slack_config, item, is_record)
+
+    def _handle_back_in_stock(
+        self,
+        slack_config: my_lib.notify.slack.SlackConfigTypes,
+        item: dict[str, Any],
+    ) -> None:
+        """在庫復活時の処理."""
+        logging.warning(
+            "%s: back in stock %d%s.",
+            item["name"],
+            item["price"],
+            item["price_unit"],
+        )
+        notify.info(slack_config, item)
+
+    def _log_item_status(self, item: dict[str, Any]) -> None:
+        """アイテムの状態をログ出力."""
+        if item["stock"] == 1:
+            logging.info(
+                "%s: %d%s (%s).",
+                item["name"],
+                item["price"],
+                item["price_unit"],
+                "in stock",
+            )
+        else:
+            logging.info("%s: (%s).", item["name"], "out of stock")
+
     def _process_data(
         self,
         slack_config: my_lib.notify.slack.SlackConfigTypes,
@@ -212,59 +228,29 @@ class AppRunner:
         last: dict[str, Any] | None,
     ) -> bool:
         """データを処理."""
-        price_changed = (last is not None) and (item["stock"] == 1) and (item["price"] != last["price"])
-        stock_changed = (last is not None) and (item["stock"] != last["stock"])
-        if ((last is None) and (item["stock"] == 1)) or price_changed or stock_changed:
-            if (last is not None) and (item["stock"] == 0):
+        # 履歴の更新判定と登録
+        if self._should_update_history(item, last):
+            if last is not None and item["stock"] == 0:
                 item["price"] = last["price"]
-
             history.insert(item)
 
+        # 新規監視開始
         if last is None:
-            if item["stock"] == 1:
-                logging.warning(
-                    "%s: watch start %d%s. (%s)",
-                    item["name"],
-                    item["price"],
-                    item["price_unit"],
-                    "in stock",
-                )
-            else:
-                logging.warning("%s: watch start (%s)", item["name"], "out of stock")
-        else:
-            item["old_price"] = last["price"]
+            self._log_watch_start(item)
+            return True
 
-            if item["stock"] == 1:
-                if item["price"] < last["price"]:
-                    logging.warning(
-                        "%s: price updated %d%s ➡ %d%s.",
-                        item["name"],
-                        last["price"],
-                        item["price_unit"],
-                        item["price"],
-                        item["price_unit"],
-                    )
-                    lowest = history.lowest(item["url"])
-                    is_record = lowest is not None and item["price"] < lowest["price"]
-                    notify.info(slack_config, item, is_record)
-                elif last["stock"] == 0:
-                    logging.warning(
-                        "%s: back in stock %d%s.",
-                        item["name"],
-                        item["price"],
-                        item["price_unit"],
-                    )
-                    notify.info(slack_config, item)
-                else:
-                    logging.info(
-                        "%s: %d%s (%s).",
-                        item["name"],
-                        item["price"],
-                        item["price_unit"],
-                        "out of stock" if item["stock"] == 0 else "in stock",
-                    )
+        # 既存アイテムの更新
+        item["old_price"] = last["price"]
+
+        if item["stock"] == 1:
+            if item["price"] < last["price"]:
+                self._handle_price_decrease(slack_config, item, last)
+            elif last["stock"] == 0:
+                self._handle_back_in_stock(slack_config, item)
             else:
-                logging.info("%s: (%s).", item["name"], "out of stock")
+                self._log_item_status(item)
+        else:
+            self._log_item_status(item)
 
         return True
 
@@ -325,9 +311,6 @@ class AppRunner:
             history.init(self.config.data.price)
             thumbnail.init(self.config.data.thumb)
             self.driver = my_lib.selenium_util.create_driver(PROFILE_NAME, self.config.data.selenium)
-
-            # ボット検出回避のための設定を適用
-            _apply_stealth_settings(self.driver)
         except Exception:
             logging.exception("Failed to initialize")
             return False
