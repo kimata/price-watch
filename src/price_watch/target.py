@@ -161,7 +161,11 @@ class StoreDefinition:
 
         check_method = CheckMethod.SCRAPE
         if "check_method" in data:
-            check_method = CheckMethod(data["check_method"])
+            raw_method = data["check_method"]
+            # 後方互換性: 旧名称をサポート
+            if raw_method == "amazon-paapi":
+                raw_method = CheckMethod.AMAZON_PAAPI.value
+            check_method = CheckMethod(raw_method)
 
         # point_rate は assumption.point_rate またはトップレベルの point_rate から取得
         assumption = data.get("assumption", {})
