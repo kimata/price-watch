@@ -766,3 +766,74 @@ def ogp_image(item_key: str) -> flask.Response:
     except Exception:
         logging.exception("Error generating OGP image")
         return flask.Response("Internal server error", status=500)
+
+
+def _render_top_page_html(static_dir: pathlib.Path | None) -> str:
+    """トップページ用の OGP メタタグ付き HTML を生成."""
+    title = "Price Watch"
+    description = (
+        "複数のオンラインショップから商品価格を自動収集。価格変動や在庫復活をリアルタイムで通知します。"
+    )
+
+    # OGP メタタグ
+    ogp_tags = f"""
+    <!-- OGP メタタグ -->
+    <meta property="og:title" content="{_escape_html(title)}">
+    <meta property="og:description" content="{_escape_html(description)}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Price Watch">
+    <meta name="description" content="{_escape_html(description)}">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{_escape_html(title)}">
+    <meta name="twitter:description" content="{_escape_html(description)}">
+"""
+
+    # ビルド済み index.html を読み込む
+    index_html = None
+    if static_dir and (static_dir / "index.html").exists():
+        try:
+            index_html = (static_dir / "index.html").read_text(encoding="utf-8")
+        except Exception:
+            logging.warning("Failed to read index.html")
+
+    if index_html:
+        # </head> の前に OGP タグを挿入
+        index_html = index_html.replace("</head>", ogp_tags + "</head>")
+        return index_html
+
+    # フォールバック: 最小限の HTML を生成
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{_escape_html(title)}</title>
+    {ogp_tags}
+    <link rel="icon" type="image/svg+xml" href="/price/favicon.svg">
+</head>
+<body>
+    <div id="root">
+        <p>フロントエンド未ビルド: <code>cd frontend && npm run build</code></p>
+    </div>
+</body>
+</html>"""
+
+
+@blueprint.route("/")
+def top_page() -> flask.Response:
+    """トップページ（OGP メタタグ付き）."""
+    try:
+        # 設定からstatic_dirを取得
+        app_config = _get_app_config()
+        static_dir = app_config.webapp.static_dir_path if app_config else None
+
+        # HTML を生成
+        html = _render_top_page_html(static_dir)
+
+        return flask.Response(html, mimetype="text/html")
+
+    except Exception:
+        logging.exception("Error rendering top page")
+        return flask.Response("Internal server error", status=500)

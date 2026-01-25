@@ -59,13 +59,13 @@ def create_app(
     app.json.compat = True  # type: ignore[attr-defined]
 
     # ブループリント登録
+    # API エンドポイント（OGP 対応ルートを含むため、静的ファイルより先に登録）
+    app.register_blueprint(price_watch.webapi.page.blueprint, url_prefix=URL_PREFIX)
+
     # フロントエンド静的ファイル（React アプリ）
     if static_dir_path.exists():
         app.register_blueprint(my_lib.webapp.base.blueprint, url_prefix=URL_PREFIX)
         app.register_blueprint(my_lib.webapp.base.blueprint_default)
-
-    # API エンドポイント
-    app.register_blueprint(price_watch.webapi.page.blueprint, url_prefix=URL_PREFIX)
     app.register_blueprint(my_lib.webapp.event.blueprint, url_prefix=URL_PREFIX)
     app.register_blueprint(my_lib.webapp.util.blueprint, url_prefix=URL_PREFIX)
 
