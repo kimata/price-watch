@@ -9,6 +9,7 @@
 対応ショップ:
 
 - Amazon.co.jp（PA-API / スクレイピング）
+- メルカリ（キーワード検索）
 - ヨドバシ.com
 - Yahoo ショッピング
 - Switch Science
@@ -573,6 +574,9 @@ def get_price() -> dict[str, Any] | None:
         - `### 🧪 Tests`: テスト関連
         - `### 🔧 CI`: CI/CD 関連
         - `### 🏗️ Infrastructure`: インフラ関連
+    - **重要**: システムとしての新機能（新しいストア対応、新しい監視方式など）は漏らさず記載すること
+        - 細かい実装の改善よりも、ユーザー視点での機能追加を優先して記載
+        - 例: 「メルカリ対応」「アイテム詳細ページの実装」など
     - [Keep a Changelog](https://keepachangelog.com/) 形式を参考にする
 
 2. **タグを作成する**
