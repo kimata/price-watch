@@ -41,7 +41,13 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         return set()
 
     keys = set()
-    for item in target_config.resolve_items():
+    try:
+        resolved_items = target_config.resolve_items()
+    except Exception:
+        logging.warning("Failed to resolve target items")
+        return set()
+
+    for item in resolved_items:
         # メルカリ検索の場合は keyword + cond から item_key を生成
         if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
             keyword = item.search_keyword or item.name
@@ -272,7 +278,13 @@ def _group_items_by_name(
 
     # target.yaml にあるがDBにないアイテムを追加
     if target_config:
-        for resolved_item in target_config.resolve_items():
+        try:
+            resolved_items_list = target_config.resolve_items()
+        except Exception:
+            logging.warning("Failed to resolve target items in _group_items_by_name")
+            resolved_items_list = []
+
+        for resolved_item in resolved_items_list:
             # メルカリ検索の場合の item_key を生成
             if resolved_item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
                 keyword = resolved_item.search_keyword or resolved_item.name
