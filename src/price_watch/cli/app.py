@@ -34,7 +34,7 @@ import price_watch.event
 import price_watch.history
 import price_watch.log_format
 import price_watch.notify
-import price_watch.store.amazon_paapi
+import price_watch.amazon.paapi
 import price_watch.store.scrape
 import price_watch.target
 import price_watch.thumbnail
@@ -362,7 +362,7 @@ class AppRunner:
         if amazon_items:
             logging.info("[Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
 
-        for item in price_watch.store.amazon_paapi.check_item_list(self.config, amazon_items):
+        for item in price_watch.amazon.paapi.check_item_list(self.config, amazon_items):
             self._process_data(
                 self.config.slack,
                 item,
