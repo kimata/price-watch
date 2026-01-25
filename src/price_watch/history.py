@@ -546,18 +546,22 @@ def init(data_path: pathlib.Path | None = None) -> None:
             """
         )
 
-        # インデックス
+    # 既存DBのマイグレーション（インデックス作成前に実行）
+    # NOTE: url_hash → item_key のリネームが必要な場合があるため、
+    #       インデックス作成より先にマイグレーションを実行する
+    migrate_to_nullable_price()
+    migrate_add_crawl_status()
+    migrate_url_hash_to_item_key()
+
+    # インデックス（マイグレーション後に作成）
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_item_key ON items(item_key)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_item_id ON events(item_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
-
-    # 既存DBのマイグレーション
-    migrate_to_nullable_price()
-    migrate_add_crawl_status()
-    migrate_url_hash_to_item_key()
 
 
 def migrate_from_old_schema() -> None:
