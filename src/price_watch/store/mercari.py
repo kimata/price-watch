@@ -159,13 +159,37 @@ def check(
         # url は空のまま
         return
 
+    # 価格範囲でフィルタリング（Mercari がページに表示する「関連商品」等を除外）
+    filtered_results = results
+    if condition.price_min is not None or condition.price_max is not None:
+        original_count = len(results)
+        filtered_results = [
+            r
+            for r in results
+            if (condition.price_min is None or r.price >= condition.price_min)
+            and (condition.price_max is None or r.price <= condition.price_max)
+        ]
+        if len(filtered_results) < original_count:
+            logging.info(
+                "[メルカリ検索] %s: 価格範囲外の商品を除外 (%d件 -> %d件)",
+                item["name"],
+                original_count,
+                len(filtered_results),
+            )
+
+    if not filtered_results:
+        logging.info("[メルカリ検索] %s: 価格範囲内の商品なし", item["name"])
+        item["stock"] = 0
+        item["crawl_success"] = True
+        return
+
     # 最安値を探す
-    cheapest = min(results, key=lambda r: r.price)
+    cheapest = min(filtered_results, key=lambda r: r.price)
 
     logging.info(
         "[メルカリ検索] %s: %d件中最安値 ¥%s - %s",
         item["name"],
-        len(results),
+        len(filtered_results),
         f"{cheapest.price:,}",
         cheapest.title,
     )
