@@ -6,10 +6,10 @@ interface FooterProps {
 }
 
 export default function Footer({ storeDefinitions }: FooterProps) {
-    // ポイント還元があるストアのみフィルタ
-    const storesWithPoints = storeDefinitions.filter((s) => s.point_rate > 0);
+    // ポイント還元率が設定されているストアのみ表示
+    const storesWithPointRate = storeDefinitions.filter((store) => store.point_rate > 0);
 
-    if (storesWithPoints.length === 0) {
+    if (storesWithPointRate.length === 0) {
         return null;
     }
 
@@ -19,17 +19,27 @@ export default function Footer({ storeDefinitions }: FooterProps) {
                 <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
                     <div className="flex items-start gap-2">
                         <InformationCircleIcon className="h-5 w-5 text-gray-500 flex-shrink-0 mt-0.5" />
-                        <div>
-                            <h3 className="text-sm font-medium text-gray-700 mb-2">ポイント還元について</h3>
-                            <ul className="space-y-1">
-                                {storesWithPoints.map((store) => (
-                                    <li key={store.name} className="text-xs text-gray-600">
-                                        <span className="font-medium">{store.name}</span> は{" "}
-                                        <span className="font-medium">{store.point_rate}%</span>{" "}
-                                        のポイント還元を仮定して実質価格を計算しています。
-                                    </li>
-                                ))}
-                            </ul>
+                        <div className="space-y-3">
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-700 mb-1">実質価格について</h3>
+                                <p className="text-xs text-gray-600">
+                                    実質価格は、表示価格からポイント還元分を差し引いた価格です。
+                                    ポイント還元率はストア毎に以下の値を仮定しています。
+                                </p>
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-medium text-gray-700 mb-1">
+                                    ストア別ポイント還元率
+                                </h3>
+                                <ul className="space-y-1">
+                                    {storesWithPointRate.map((store) => (
+                                        <li key={store.name} className="text-xs text-gray-600">
+                                            <span className="font-medium">{store.name}</span>:{" "}
+                                            <span className="font-medium">{store.point_rate}%</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
