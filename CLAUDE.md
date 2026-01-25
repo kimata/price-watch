@@ -136,12 +136,15 @@ src/
     ├── target.py               # ターゲット設定クラス（dataclass + Protocol）
     ├── item.py                 # アイテムリスト管理
     │
-    ├── store/                  # ストア別価格取得
-    │   ├── scrape.py           # スクレイピングによる価格チェック
-    │   ├── amazon_paapi.py     # Amazon PA-API による価格取得
+    ├── amazon/                 # Amazon 関連モジュール
+    │   ├── paapi.py            # Amazon PA-API による価格取得
     │   └── paapi_rate_limiter.py # PA-API レート制限
     │
+    ├── store/                  # ストア別価格取得（スクレイピング）
+    │   └── scrape.py           # スクレイピングによる価格チェック
+    │
     ├── captcha.py              # CAPTCHA 処理（reCAPTCHA 音声認識）
+    ├── event.py                # イベント検出・記録（価格変動、在庫復活等）
     ├── notify.py               # Slack 通知
     ├── history.py              # 価格履歴管理（SQLite）
     ├── thumbnail.py            # サムネイル画像管理
@@ -182,7 +185,7 @@ price-watch (cli/app.py)
 │   ├── _load_item_list() → target.yaml からアイテム読み込み
 │   ├── _do_work() → 各アイテムの価格チェック
 │   │   ├── scrape.check() → スクレイピング
-│   │   └── amazon_paapi.check_item_list() → PA-API
+│   │   └── amazon.paapi.check_item_list() → PA-API
 │   ├── _process_data() → 価格変動検出・履歴保存
 │   │   └── notify.info() → Slack 通知
 │   └── _sleep_until() → 次回チェックまで待機
@@ -424,7 +427,7 @@ match check_method:
     case CheckMethod.SCRAPE:
         scrape.check(...)
     case CheckMethod.AMAZON_PAAPI:
-        amazon_paapi.check(...)
+        amazon.paapi.check(...)
     case _:
         raise ValueError(f"Unknown check method: {check_method}")
 
