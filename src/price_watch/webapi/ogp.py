@@ -150,15 +150,15 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
     ax.set_facecolor("white")
 
     all_prices: list[int] = []
-    all_times: list[str] = set()  # type: ignore[assignment]
+    all_times_set: set[str] = set()
 
     for sh in store_histories:
         for h in sh.history:
             if h.get("effective_price") is not None:
                 all_prices.append(h["effective_price"])
-            all_times.add(h["time"])  # type: ignore[union-attr]
+            all_times_set.add(h["time"])
 
-    all_times = sorted(all_times)  # type: ignore[assignment]
+    all_times: list[str] = sorted(all_times_set)
 
     if not all_prices or not all_times:
         # データがない場合は空のグラフを返す
@@ -235,29 +235,30 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
                     price_map[hour_key] = h.get("effective_price")
 
         # ソートされた時間に沿ってデータを配列化
-        times = []
-        prices = []
-        for t in sorted_times:
-            dt = time_to_dt.get(t)
-            if dt:
-                hour_key = dt.strftime("%Y-%m-%d %H:00")
+        times: list[datetime] = []
+        prices: list[int | None] = []
+        for time_str in sorted_times:
+            dt_or_none = time_to_dt.get(time_str)
+            if dt_or_none is not None:
+                hour_key = dt_or_none.strftime("%Y-%m-%d %H:00")
                 if hour_key in price_map:
-                    times.append(dt)
+                    times.append(dt_or_none)
                     prices.append(price_map[hour_key])
 
         if times and any(p is not None for p in prices):
             # None を除外してプロット（Chart.js の spanGaps: true 相当）
-            valid_times = []
-            valid_prices = []
-            for t, p in zip(times, prices, strict=False):
-                if p is not None:
-                    valid_times.append(t)
-                    valid_prices.append(p)
+            valid_times: list[datetime] = []
+            valid_prices: list[int] = []
+            for time_dt, price in zip(times, prices, strict=False):
+                if price is not None:
+                    valid_times.append(time_dt)
+                    valid_prices.append(price)
 
             if valid_times:
                 color = sh.color
+                # matplotlib の型スタブは datetime を受け付けないが、実行時は動作する
                 ax.plot(
-                    valid_times,
+                    valid_times,  # type: ignore[arg-type]
                     valid_prices,
                     label=sh.store_name,
                     color=color,
