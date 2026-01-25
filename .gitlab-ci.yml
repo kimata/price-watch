@@ -193,6 +193,10 @@ test-webui:
         - docker exec ${CI_JOB_NAME}-${CI_JOB_ID} mkdir -p /opt/price_watch/data
         - docker cp test_data/price_history.db ${CI_JOB_NAME}-${CI_JOB_ID}:/opt/price_watch/data/
 
+        # target.yaml を削除してテストDBのアイテムが表示されるようにする
+        # (target.yaml があると、その URL リストでフィルタリングされる)
+        - docker exec ${CI_JOB_NAME}-${CI_JOB_ID} rm -f /opt/price_watch/target.yaml
+
         # webui を起動
         - docker exec --detach ${CI_JOB_NAME}-${CI_JOB_ID} uv run --no-group dev price-watch-webui
 
