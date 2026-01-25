@@ -7,6 +7,25 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-01-26
+
+### ✨ Added
+
+- メルカリ検索機能の改善
+    - 検索結果から関連商品（item-grid 外のアイテム）を除外
+    - PR（広告）アイテムの自動除外
+    - 検索後の価格範囲フィルタリング追加
+
+### 🔄 Changed
+
+- 価格情報がないアイテムに「価格情報なし」を表示するよう改善
+- イベント履歴の日時表示を日本語形式（「YYYY年M月D日 H:mm」）に変更
+- トップページのイベントバナーを横長レイアウトに変更
+
+### 🐛 Fixed
+
+- メルカリ検索で設定した価格範囲外のアイテムが表示される問題を修正
+
 ## [0.1.1] - 2026-01-25
 
 ### ✨ Added
@@ -53,6 +72,7 @@
 - pre-commit 設定
 - Renovate 設定
 
-[Unreleased]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.1...HEAD
+[Unreleased]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.2...HEAD
+[0.1.2]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.1...v0.1.2
 [0.1.1]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.0...v0.1.1
 [0.1.0]: https://gitlab.green-rabbit.net/kimata/price-watch/commits/v0.1.0
