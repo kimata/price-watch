@@ -39,7 +39,7 @@ class EventResult:
 
 def check_back_in_stock(
     item_id: int,
-    current_stock: int,
+    current_stock: int | None,
     last_stock: int | None,
     ignore_hours: int,
 ) -> EventResult | None:
@@ -47,14 +47,19 @@ def check_back_in_stock(
 
     Args:
         item_id: アイテム ID
-        current_stock: 現在の在庫状態（0: なし, 1: あり）
-        last_stock: 前回の在庫状態
+        current_stock: 現在の在庫状態（None: 不明, 0: なし, 1: あり）
+        last_stock: 前回の在庫状態（None: 不明, 0: なし, 1: あり）
         ignore_hours: 無視する時間数
 
     Returns:
         イベント結果。該当しない場合は None。
     """
+    # 現在の在庫状態が不明（クロール失敗）の場合はスキップ
+    if current_stock is None:
+        return None
+
     # 在庫なし → 在庫あり の変化がない場合はスキップ
+    # last_stock が None（前回クロール失敗）の場合も、在庫復活とは判定しない
     if last_stock is None or last_stock != 0 or current_stock != 1:
         return None
 

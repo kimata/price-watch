@@ -125,7 +125,16 @@ def _check_impl(
     item: dict[str, Any],
     loop: int,
 ) -> dict[str, Any] | bool:
-    """価格チェック実装."""
+    """価格チェック実装.
+
+    価格の扱いロジック:
+    | 価格取得成否 | 在庫取得成否 | 在庫有無 | 価格の扱い |
+    |-------------|-------------|---------|-----------|
+    | False       | *           | *       | None      |
+    | True        | False       | *       | None      |
+    | True        | True        | False   | None      |
+    | True        | True        | True    | 有効な価格 |
+    """
     By = selenium.webdriver.common.by.By
     WebDriverWait = selenium.webdriver.support.wait.WebDriverWait
 
@@ -143,21 +152,33 @@ def _check_impl(
 
     logging.info("parse: %s", item["name"])
 
-    # 価格要素の存在確認
-    price_found = my_lib.selenium_util.xpath_exists(driver, item["price_xpath"])
+    # 状態を初期化
+    price_found = False
+    stock_found = False
+    parsed_price: int | None = None
 
-    if not price_found:
-        logging.warning("%s: price not found.", item["name"])
-        item["stock"] = 0
+    # 価格要素の存在確認
+    price_xpath_exists = my_lib.selenium_util.xpath_exists(driver, item["price_xpath"])
+
+    if not price_xpath_exists:
+        # 価格要素が見つからない → クロール失敗
+        logging.warning("%s: price element not found (crawl failure).", item["name"])
         my_lib.selenium_util.dump_page(driver, int(random.random() * 100), price_watch.const.DUMP_PATH)
+        # price_found=False, stock_found=False のまま
+        # stock, price は設定しない（history.py で NULL として記録される）
+        item["crawl_success"] = False
     else:
-        # 在庫状態を確認
+        # 価格要素が見つかった → 在庫状態を確認
         if "unavailable_xpath" in item:
+            # unavailable_xpath が定義されている場合、在庫状態を判定可能
+            stock_found = True
             if driver.find_elements(By.XPATH, item["unavailable_xpath"]):
                 item["stock"] = 0
             else:
                 item["stock"] = 1
         else:
+            # unavailable_xpath がない場合、価格要素があれば在庫ありと仮定
+            stock_found = True
             item["stock"] = 1
 
         # 価格を取得
@@ -166,13 +187,24 @@ def _check_impl(
             m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
             if m is None:
                 raise ValueError(f"Invalid price format: {price_text}")
-            item["price"] = int(m.group(1).replace(",", ""))
+            parsed_price = int(m.group(1).replace(",", ""))
+            price_found = True
         except Exception:
             if item["stock"] == 0:
-                pass
+                # 在庫なしの場合、価格パース失敗は許容
+                price_found = False
             else:
+                # 在庫ありで価格パース失敗はエラー
                 logging.debug("unable to parse price: '%s'", price_text)
                 raise
+
+        # 価格の設定ロジック:
+        # 価格取得成功 AND 在庫取得成功 AND 在庫あり の場合のみ有効な価格を設定
+        if price_found and stock_found and item["stock"] == 1:
+            item["price"] = parsed_price
+        # それ以外は price を設定しない（None 扱い）
+
+        item["crawl_success"] = True
 
     # サムネイル画像を取得（価格が取得できなくても実行）
     if "thumb_url" not in item:
@@ -239,5 +271,4 @@ def check(
         return _check_impl(config, driver, item, loop)
 
     # error_handler が reraise=True なので例外発生時はここに到達しない
-    # 型チェックのためのフォールバック
-    return False
+    raise AssertionError("Unreachable: error_handler should have reraised exception")

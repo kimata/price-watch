@@ -86,7 +86,11 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
     1時間に1回の記録を保持する。同一時間帯で複数回取得した場合:
     - より安い価格で更新（価格がある場合のみ）
     - 収集時刻は常に最新に更新
-    - 価格が取得できない場合（在庫なし等）も stock=0, price=NULL で記録
+
+    データモデル:
+    - crawl_status=0: クロール失敗 → stock=NULL, price=NULL
+    - crawl_status=1, stock=0: 在庫なし → price=NULL
+    - crawl_status=1, stock=1: 在庫あり → price=有効な価格
 
     Args:
         item: アイテム情報
@@ -111,8 +115,13 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
         # 現在時刻の「時」の開始時刻（例: 14:35 → 14:00:00）
         hour_start = now.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
 
-        new_price = item.get("price")  # None の場合がある
-        new_stock = item.get("stock", 0)
+        # crawl_status=0 の場合は stock=NULL, price=NULL
+        if crawl_status == 0:
+            new_stock: int | None = None
+            new_price: int | None = None
+        else:
+            new_stock = item.get("stock", 0)
+            new_price = item.get("price")  # 在庫なしの場合は None
 
         # 同一時間帯の既存レコードを確認
         cur.execute(
@@ -131,37 +140,46 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
         if existing:
             existing_id, existing_price, existing_stock, existing_crawl_status = existing
 
-            # 更新ロジック
-            should_update_price = False
+            # 更新判定
+            should_update = False
             final_price = new_price
+            final_stock = new_stock
 
-            if new_price is not None and existing_price is not None:
-                # 両方価格がある場合: より安い価格を採用（在庫ありの場合のみ）
-                if new_stock == 1:
-                    final_price = min(new_price, existing_price)
-                    should_update_price = new_price < existing_price
-                else:
-                    should_update_price = True
-            elif new_price is not None and existing_price is None:
-                # 新しく価格が取得できた場合
-                should_update_price = True
-            elif new_price is None and existing_price is not None:
-                # 価格が取得できなくなった場合: 既存の価格を維持
-                final_price = existing_price
-                should_update_price = False
+            # クロール成功時のロジック
+            if crawl_status == 1:
+                if existing_crawl_status == 0:
+                    # 失敗→成功: 新しいデータで上書き
+                    should_update = True
+                elif new_price is not None and existing_price is not None:
+                    # 両方価格がある場合: より安い価格を採用（在庫ありの場合のみ）
+                    if new_stock == 1:
+                        final_price = min(new_price, existing_price)
+                        should_update = new_price < existing_price
+                    else:
+                        should_update = True
+                elif new_price is not None and existing_price is None:
+                    # 新しく価格が取得できた場合
+                    should_update = True
+                elif new_stock != existing_stock:
+                    # 在庫状態が変わった場合
+                    should_update = True
+            else:
+                # クロール失敗時
+                if existing_crawl_status == 1:
+                    # 成功→失敗: 既存のデータを維持、crawl_status のみ更新
+                    final_price = existing_price
+                    final_stock = existing_stock
+                    should_update = True
+                # 失敗→失敗: 時刻のみ更新
 
-            # crawl_status が成功に変わった場合も更新
-            crawl_status_changed = crawl_status != existing_crawl_status
-
-            # 在庫状態が変わった場合、価格が更新される場合、またはクロール状態が変わった場合
-            if should_update_price or new_stock != existing_stock or crawl_status_changed:
+            if should_update:
                 cur.execute(
                     """
                     UPDATE price_history
                     SET price = ?, stock = ?, crawl_status = ?, time = ?
                     WHERE id = ?
                     """,
-                    (final_price, new_stock, crawl_status, now_str, existing_id),
+                    (final_price, final_stock, crawl_status, now_str, existing_id),
                 )
             else:
                 # 時刻だけは更新
@@ -174,7 +192,7 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
                     (now_str, existing_id),
                 )
         else:
-            # 新規挿入（価格が None でも挿入）
+            # 新規挿入
             cur.execute(
                 """
                 INSERT INTO price_history (item_id, price, stock, crawl_status, time)
@@ -386,15 +404,16 @@ def init(data_path: pathlib.Path | None = None) -> None:
         )
 
         # price_history テーブル
-        # price は NULL を許可（在庫なしで価格が取得できない場合）
         # crawl_status: 0=失敗, 1=成功
+        # stock: NULL=不明（crawl_status=0時）, 0=在庫なし, 1=在庫あり
+        # price: NULL=取得不可/在庫なし, INTEGER=有効な価格（crawl_status=1 AND stock=1 時のみ）
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS price_history(
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id      INTEGER NOT NULL,
                 price        INTEGER,
-                stock        INTEGER NOT NULL,
+                stock        INTEGER,
                 crawl_status INTEGER NOT NULL DEFAULT 1,
                 time         TIMESTAMP DEFAULT(DATETIME('now','localtime')),
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE

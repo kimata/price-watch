@@ -176,8 +176,10 @@ class AppRunner:
     ) -> bool:
         """データを処理.
 
-        価格が取得できない場合（在庫なし等）も stock=0, price=None で記録する。
-        イベント判定を行い、該当する場合は通知を送信する。
+        データモデル:
+        - crawl_status=0: クロール失敗 → stock=NULL, price=NULL
+        - crawl_status=1, stock=0: 在庫なし → price=NULL
+        - crawl_status=1, stock=1: 在庫あり → price=有効な価格
 
         Args:
             slack_config: Slack 設定
@@ -185,16 +187,7 @@ class AppRunner:
             last: 前回の記録
             crawl_status: クロール状態（0: 失敗, 1: 成功）
         """
-        # 価格が取得できなかった場合の処理
-        # 在庫ありで価格が取得できた場合、または前回の価格がある場合のみ price を設定
-        if "price" not in item:
-            if last is not None and last["price"] is not None:
-                # 前回の価格を引き継ぐ（在庫切れだが過去に価格があった場合）
-                item["price"] = last["price"]
-            # 価格がない場合は price キーなし（None）のまま price_watch.history.insert() に渡す
-
-        # 履歴を記録（1時間に1回、より安い価格で更新）
-        # 価格がない場合も stock=0, price=NULL として記録される
+        # 履歴を記録（history.py 側で stock/price の処理を行う）
         item_id = price_watch.history.insert(item, crawl_status=crawl_status)
 
         # 新規監視開始
@@ -202,8 +195,8 @@ class AppRunner:
             self._log_watch_start(item)
             return True
 
-        # 既存アイテムの更新
-        if last["price"] is not None:
+        # 既存アイテムの更新（old_price は last から取得）
+        if last.get("price") is not None:
             item["old_price"] = last["price"]
 
         # イベント判定
@@ -239,20 +232,19 @@ class AppRunner:
         windows = judge_config.windows if judge_config else []
 
         current_price = item.get("price")
-        current_stock = item.get("stock", 0)
-        last_stock = last.get("stock")
+        # stock は None（クロール失敗時）の場合がある
+        current_stock: int | None = item.get("stock")
+        last_stock: int | None = last.get("stock")
 
         # クロール成功時のイベント判定
         if crawl_status == 1:
             # 1. 在庫復活判定
-            result = price_watch.event.check_back_in_stock(
-                item_id, current_stock, last_stock, ignore_hours
-            )
+            result = price_watch.event.check_back_in_stock(item_id, current_stock, last_stock, ignore_hours)
             if result is not None and result.should_notify:
                 result.price = current_price
                 self._notify_and_record_event(slack_config, result, item, item_id)
 
-            # 価格がある場合のみ価格関連イベントを判定
+            # 価格がある場合のみ価格関連イベントを判定（stock=1 かつ price があるとき）
             if current_price is not None and current_stock == 1:
                 # 2. 過去最安値判定
                 result = price_watch.event.check_lowest_price(item_id, current_price, ignore_hours)
@@ -326,21 +318,33 @@ class AppRunner:
 
             try:
                 price_watch.store.scrape.check(self.config, self.driver, item, self.loop)
+
+                # crawl_success フラグで成功/失敗を判定
+                crawl_success = item.get("crawl_success", False)
+                crawl_status = 1 if crawl_success else 0
+
                 self._process_data(
                     self.config.slack,
                     item,
                     price_watch.history.last(item["url"]),
-                    crawl_status=1,
+                    crawl_status=crawl_status,
                 )
 
-                self._update_liveness()
-                self.error_count[item["url"]] = 0
+                if crawl_success:
+                    self._update_liveness()
+                    self.error_count[item["url"]] = 0
+                else:
+                    # 価格要素が見つからなかった場合（例外は発生していない）
+                    self.error_count[item["url"]] += 1
+                    logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
+                    if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                        self.error_count[item["url"]] = 0
             except Exception:
                 self.error_count[item["url"]] += 1
                 logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
                 # スクリーンショット付きのエラー通知は scrape.py の error_handler で送信済み
 
-                # クロール失敗時も履歴を記録（crawl_status=0）
+                # 例外発生時も履歴を記録（crawl_status=0）
                 self._process_data(
                     self.config.slack,
                     item,

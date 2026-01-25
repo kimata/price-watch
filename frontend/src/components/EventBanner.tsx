@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { fetchEvents } from "../services/apiService";
 import type { Event, EventType } from "../types";
 
@@ -8,101 +8,48 @@ interface EventBannerProps {
 
 const EVENT_CONFIG: Record<
     EventType,
-    { icon: string; bgColor: string; borderColor: string; textColor: string }
+    {
+        emoji: string;
+        icon: string;
+        bgColor: string;
+        borderColor: string;
+        textColor: string;
+        label: string;
+    }
 > = {
     back_in_stock: {
+        emoji: "📦",
         icon: "cube",
-        bgColor: "bg-green-50",
-        borderColor: "border-green-200",
-        textColor: "text-green-700",
+        bgColor: "bg-emerald-50",
+        borderColor: "border-emerald-300",
+        textColor: "text-emerald-700",
+        label: "在庫復活",
     },
     crawl_failure: {
+        emoji: "⚠️",
         icon: "exclamation-triangle",
-        bgColor: "bg-yellow-50",
-        borderColor: "border-yellow-200",
-        textColor: "text-yellow-700",
+        bgColor: "bg-amber-50",
+        borderColor: "border-amber-300",
+        textColor: "text-amber-700",
+        label: "取得失敗",
     },
     lowest_price: {
+        emoji: "🔥",
         icon: "fire",
-        bgColor: "bg-red-50",
-        borderColor: "border-red-200",
-        textColor: "text-red-700",
+        bgColor: "bg-rose-50",
+        borderColor: "border-rose-300",
+        textColor: "text-rose-700",
+        label: "最安値更新",
     },
     price_drop: {
+        emoji: "📉",
         icon: "trending-down",
-        bgColor: "bg-blue-50",
-        borderColor: "border-blue-200",
-        textColor: "text-blue-700",
+        bgColor: "bg-sky-50",
+        borderColor: "border-sky-300",
+        textColor: "text-sky-700",
+        label: "値下げ",
     },
 };
-
-function getEventIcon(eventType: EventType): React.ReactElement {
-    const config = EVENT_CONFIG[eventType];
-
-    switch (config.icon) {
-        case "cube":
-            return (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                    />
-                </svg>
-            );
-        case "exclamation-triangle":
-            return (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                </svg>
-            );
-        case "fire":
-            return (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"
-                    />
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"
-                    />
-                </svg>
-            );
-        case "trending-down":
-            return (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"
-                    />
-                </svg>
-            );
-        default:
-            return (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
-                </svg>
-            );
-    }
-}
 
 function formatTimeAgo(dateStr: string): string {
     const date = new Date(dateStr);
@@ -168,25 +115,42 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
     }
 
     if (error) {
-        return null; // エラー時は非表示
+        return (
+            <div className="mb-6">
+                <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <span className="text-xl">🔔</span>
+                    最新イベント
+                </h2>
+                <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-center">
+                    <span className="text-2xl mb-2 block">❌</span>
+                    <p className="text-red-600 text-sm">{error}</p>
+                </div>
+            </div>
+        );
     }
 
     if (events.length === 0) {
-        return null; // イベントがない場合は非表示
+        return (
+            <div className="mb-6">
+                <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <span className="text-xl">🔔</span>
+                    最新イベント
+                </h2>
+                <div className="p-6 bg-gray-50 border border-gray-200 rounded-xl text-center">
+                    <span className="text-2xl mb-2 block">📭</span>
+                    <p className="text-gray-500 text-sm">まだイベントはありません</p>
+                    <p className="text-gray-400 text-xs mt-1">価格変動や在庫復活があると、ここに表示されます</p>
+                </div>
+            </div>
+        );
     }
 
     return (
         <div className="mb-6">
             <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
-                </svg>
+                <span className="text-xl">🔔</span>
                 最新イベント
+                <span className="text-sm font-normal text-gray-400">({events.length}件)</span>
             </h2>
             <div className="flex space-x-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                 {events.map((event) => {
@@ -198,43 +162,48 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
                             href={event.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`flex-shrink-0 w-80 p-4 rounded-lg border-2 ${config.bgColor} ${config.borderColor} hover:shadow-md transition-shadow cursor-pointer`}
+                            className={`flex-shrink-0 w-80 p-4 rounded-xl border-2 ${config.bgColor} ${config.borderColor} hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
                         >
                             <div className="flex items-start gap-3">
                                 {/* サムネイル */}
-                                {event.thumb_url ? (
-                                    <img
-                                        src={event.thumb_url}
-                                        alt={event.item_name}
-                                        className="w-12 h-12 object-cover rounded flex-shrink-0"
-                                    />
-                                ) : (
-                                    <div className="w-12 h-12 bg-gray-200 rounded flex-shrink-0 flex items-center justify-center">
-                                        <svg
-                                            className="w-6 h-6 text-gray-400"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                        >
-                                            <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                            />
-                                        </svg>
-                                    </div>
-                                )}
+                                <div className="relative flex-shrink-0">
+                                    {event.thumb_url ? (
+                                        <img
+                                            src={event.thumb_url}
+                                            alt={event.item_name}
+                                            className="w-14 h-14 object-cover rounded-lg"
+                                        />
+                                    ) : (
+                                        <div className="w-14 h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                                            <svg
+                                                className="w-7 h-7 text-gray-400"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <path
+                                                    strokeLinecap="round"
+                                                    strokeLinejoin="round"
+                                                    strokeWidth={2}
+                                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                                />
+                                            </svg>
+                                        </div>
+                                    )}
+                                    {/* 絵文字バッジ */}
+                                    <span className="absolute -top-1 -right-1 text-lg drop-shadow-sm">
+                                        {config.emoji}
+                                    </span>
+                                </div>
 
                                 {/* コンテンツ */}
                                 <div className="flex-1 min-w-0">
                                     {/* タイトル行 */}
                                     <div className="flex items-center gap-2 mb-1">
-                                        <span className={config.textColor}>
-                                            {getEventIcon(event.event_type)}
-                                        </span>
-                                        <span className={`text-sm font-medium ${config.textColor}`}>
-                                            {event.title}
+                                        <span
+                                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${config.bgColor} ${config.textColor} border ${config.borderColor}`}
+                                        >
+                                            {config.label}
                                         </span>
                                         <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
                                             {formatTimeAgo(event.created_at)}
@@ -254,17 +223,27 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
                                                     <span className="text-xs text-gray-400 line-through">
                                                         {formatPrice(event.old_price)}
                                                     </span>
-                                                    <span className="text-xs text-gray-400">→</span>
+                                                    <span className="text-gray-400">→</span>
                                                 </>
                                             )}
-                                            <span className={`text-sm font-bold ${config.textColor}`}>
+                                            <span className={`text-base font-bold ${config.textColor}`}>
                                                 {formatPrice(event.price)}
                                             </span>
+                                            {event.old_price !== null && event.old_price > event.price && (
+                                                <span className="text-xs text-rose-500 font-medium">
+                                                    -{((event.old_price - event.price) / event.old_price * 100).toFixed(0)}%
+                                                </span>
+                                            )}
                                         </div>
                                     )}
 
                                     {/* ストア名 */}
-                                    <p className="text-xs text-gray-400 mt-1">{event.store}</p>
+                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                        </svg>
+                                        {event.store}
+                                    </p>
                                 </div>
                             </div>
                         </a>
