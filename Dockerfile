@@ -47,7 +47,7 @@ ENV UV_LINK_MODE=copy
 # ubuntu ユーザーで uv をインストール
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
-WORKDIR /opt/price_watch
+WORKDIR /opt/price-watch
 
 RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=.python-version,target=.python-version \
@@ -56,7 +56,7 @@ RUN --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=src,target=src \
     --mount=type=bind,source=.git,target=.git \
     --mount=type=cache,target=/home/ubuntu/.cache/uv,uid=1000,gid=1000 \
-    git config --global --add safe.directory /opt/price_watch && \
+    git config --global --add safe.directory /opt/price-watch && \
     uv sync --no-editable --no-group dev
 
 ARG IMAGE_BUILD_DATE
