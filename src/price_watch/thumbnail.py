@@ -115,7 +115,7 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
         response.raise_for_status()
 
         # 画像を開いて PNG 形式で保存
-        image = PIL.Image.open(io.BytesIO(response.content))
+        image: PIL.Image.Image = PIL.Image.open(io.BytesIO(response.content))
 
         # RGBA に変換（透過対応）
         if image.mode != "RGBA":
