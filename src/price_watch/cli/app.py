@@ -27,6 +27,7 @@ import my_lib.footprint
 import my_lib.logger
 import my_lib.notify.slack
 import my_lib.selenium_util
+import selenium.common.exceptions
 
 import price_watch.amazon.paapi
 import price_watch.config
@@ -84,6 +85,9 @@ class AppRunner:
         # デバッグモード用: 各チェック方法の成功/失敗を追跡
         self._debug_check_results: dict[str, bool] = {}
 
+        # ドライバー作成の連続失敗回数
+        self._driver_create_failures: int = 0
+
     def sig_handler(self, num: int, _frame: Any) -> None:
         """シグナルハンドラ.
 
@@ -131,6 +135,63 @@ class AppRunner:
         # Chrome プロファイルのロックファイルをクリーンアップ
         if self.config is not None:
             my_lib.chrome_util.cleanup_profile_lock(PROFILE_NAME, self.config.data.selenium)
+
+    def _create_driver_with_retry(self, max_retries: int = 2) -> WebDriver | None:
+        """プロファイル削除を伴うリトライ付きでドライバーを作成.
+
+        Args:
+            max_retries: プロファイル削除後のリトライ回数
+
+        Returns:
+            成功時は WebDriver、全て失敗時は None
+        """
+        assert self.config is not None  # noqa: S101
+
+        for attempt in range(max_retries + 1):
+            try:
+                driver = my_lib.selenium_util.create_driver(PROFILE_NAME, self.config.data.selenium)
+                self._driver_create_failures = 0
+                return driver
+            except Exception as e:
+                self._driver_create_failures += 1
+                logging.warning(
+                    "ドライバー作成失敗（%d/%d）: %s",
+                    attempt + 1,
+                    max_retries + 1,
+                    e,
+                )
+
+                if attempt < max_retries:
+                    # プロファイルを削除してリトライ
+                    logging.warning("プロファイルを削除してリトライします")
+                    my_lib.chrome_util.delete_profile(PROFILE_NAME, self.config.data.selenium)
+
+        logging.error("ドライバー作成に %d 回失敗しました", max_retries + 1)
+        return None
+
+    def _recreate_driver(self) -> bool:
+        """ドライバーを再作成.
+
+        セッションエラー発生時にプロファイルを削除して再作成します。
+
+        Returns:
+            成功時 True
+        """
+        if self.config is None:
+            return False
+
+        logging.warning("ドライバーを再作成します")
+
+        # 既存ドライバーを終了
+        my_lib.selenium_util.quit_driver_gracefully(self.driver)
+        self.driver = None
+
+        # プロファイルを削除
+        my_lib.chrome_util.delete_profile(PROFILE_NAME, self.config.data.selenium)
+
+        # 新しいドライバーを作成
+        self.driver = self._create_driver_with_retry()
+        return self.driver is not None
 
     def _update_liveness(self) -> None:
         """liveness を更新."""
@@ -388,6 +449,25 @@ class AppRunner:
                     if self.debug_mode:
                         self._debug_check_results[store_name] = False
                         logging.warning("[デバッグモード] %s: 失敗（価格要素なし）", store_name)
+            except selenium.common.exceptions.InvalidSessionIdException:
+                # セッションが無効になった場合はドライバーを再作成
+                logging.warning("セッションが無効になりました。ドライバーを再作成します")
+                if not self._recreate_driver():
+                    logging.error("ドライバーの再作成に失敗しました")
+                    return
+
+                # 履歴を記録（crawl_status=0）
+                self._process_data(
+                    self.config.slack,
+                    item,
+                    price_watch.history.last(item["url"]),
+                    crawl_status=0,
+                )
+
+                # デバッグモード: このストアは失敗
+                if self.debug_mode:
+                    self._debug_check_results[store_name] = False
+                    logging.warning("[デバッグモード] %s: 失敗（セッションエラー）", store_name)
             except Exception:
                 self.error_count[item["url"]] += 1
                 logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
@@ -511,6 +591,26 @@ class AppRunner:
                     if self.debug_mode:
                         self._debug_check_results[store_name] = False
                         logging.warning("[デバッグモード] %s: 失敗（検索結果なし）", store_name)
+            except selenium.common.exceptions.InvalidSessionIdException:
+                # セッションが無効になった場合はドライバーを再作成
+                logging.warning("セッションが無効になりました。ドライバーを再作成します")
+                if not self._recreate_driver():
+                    logging.error("ドライバーの再作成に失敗しました")
+                    return
+
+                # 履歴を記録（crawl_status=0）
+                item_key = price_watch.store.mercari.generate_item_key(item)
+                self._process_data(
+                    self.config.slack,
+                    item,
+                    price_watch.history.last(item_key=item_key),
+                    crawl_status=0,
+                )
+
+                # デバッグモード: 失敗
+                if self.debug_mode:
+                    self._debug_check_results[store_name] = False
+                    logging.warning("[デバッグモード] %s: 失敗（セッションエラー）", store_name)
             except Exception:
                 item_key = price_watch.store.mercari.generate_item_key(item)
                 self.error_count[item_key] += 1
@@ -566,7 +666,10 @@ class AppRunner:
                 self.config = price_watch.config.load(self.config_file)
             price_watch.history.init(self.config.data.price)
             price_watch.thumbnail.init(self.config.data.thumb)
-            self.driver = my_lib.selenium_util.create_driver(PROFILE_NAME, self.config.data.selenium)
+            self.driver = self._create_driver_with_retry()
+            if self.driver is None:
+                logging.error("ドライバーの作成に失敗しました")
+                return False
         except Exception:
             logging.exception("Failed to initialize")
             return False
