@@ -28,6 +28,7 @@ data:
     price: ./data/price # 価格履歴DBを保存するディレクトリ
     thumb: ./data/thumb # サムネイル画像を保存するディレクトリ
     metrics: ./data/metrics # メトリクスを保存するディレクトリ
+    cache: ./data/cache # OGP画像等のキャッシュを保存するディレクトリ
 
 target:
     define: target.yaml # 監視対象の設定ファイル

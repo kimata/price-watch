@@ -111,6 +111,7 @@ class DataConfig:
     price: pathlib.Path
     thumb: pathlib.Path
     metrics: pathlib.Path
+    cache: pathlib.Path
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> DataConfig:
@@ -122,6 +123,7 @@ class DataConfig:
             price=pathlib.Path(data.get("price", str(default_path))),
             thumb=pathlib.Path(data.get("thumb", str(default_path / "thumb"))),
             metrics=pathlib.Path(data.get("metrics", str(default_path / "metrics"))),
+            cache=pathlib.Path(data.get("cache", str(default_path / "cache"))),
         )
 
 

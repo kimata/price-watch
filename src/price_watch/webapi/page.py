@@ -2,16 +2,19 @@
 """API エンドポイント."""
 
 import logging
+import pathlib
 from typing import Any
 
 import flask
 from flask_pydantic import validate
 
+import price_watch.config
 import price_watch.event
 import price_watch.file_cache
 import price_watch.history
 import price_watch.target
 import price_watch.thumbnail
+import price_watch.webapi.ogp
 import price_watch.webapi.schemas
 
 blueprint = flask.Blueprint("page", __name__)
@@ -21,6 +24,14 @@ _target_config_cache: price_watch.file_cache.FileCache[price_watch.target.Target
     price_watch.file_cache.FileCache(
         price_watch.target.TARGET_FILE_PATH,
         lambda path: price_watch.target.load(path),
+    )
+)
+
+# config.yaml のキャッシュ
+_config_cache: price_watch.file_cache.FileCache[price_watch.config.AppConfig] = (
+    price_watch.file_cache.FileCache(
+        price_watch.config.CONFIG_FILE_PATH,
+        lambda path: price_watch.config.load(path),
     )
 )
 
@@ -487,3 +498,271 @@ def get_events() -> flask.Response | tuple[flask.Response, int]:
         logging.exception("Error getting events")
         error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
         return flask.jsonify(error.model_dump()), 500
+
+
+def _get_app_config() -> price_watch.config.AppConfig | None:
+    """config.yaml の設定を取得（キャッシュ使用）."""
+    try:
+        return _config_cache.get()
+    except Exception:
+        logging.warning("Failed to load config.yaml")
+        return None
+
+
+def _build_ogp_data(
+    item_name: str,
+    stores: list[price_watch.webapi.schemas.StoreEntry],
+    target_config: price_watch.target.TargetConfig | None,
+    thumb_dir: pathlib.Path,
+) -> price_watch.webapi.ogp.OgpData:
+    """OGP 用データを構築."""
+    # 最安ストアを特定
+    best_store = _find_best_store(stores)
+
+    # 全ストアの最安値を取得
+    all_lowest = [s.lowest_price for s in stores if s.lowest_price is not None]
+    lowest_price = min(all_lowest) if all_lowest else None
+
+    # サムネイルパスを取得
+    thumb_path: pathlib.Path | None = None
+    for s in stores:
+        if s.item_key:
+            potential_path = thumb_dir / f"{s.item_key}.png"
+            if potential_path.exists():
+                thumb_path = potential_path
+                break
+
+    # ストアごとの履歴を構築
+    store_histories: list[price_watch.webapi.ogp.StoreHistory] = []
+    for i, s in enumerate(stores):
+        # ストアの色を取得
+        color = price_watch.webapi.ogp.DEFAULT_COLORS[i % len(price_watch.webapi.ogp.DEFAULT_COLORS)]
+        if target_config:
+            store_def = target_config.get_store(s.store)
+            if store_def and store_def.color:
+                color = store_def.color
+
+        # 履歴を変換
+        history = [
+            {"time": h.time, "price": h.price, "effective_price": h.effective_price} for h in s.history
+        ]
+
+        store_histories.append(
+            price_watch.webapi.ogp.StoreHistory(
+                store_name=s.store,
+                color=color,
+                history=history,
+            )
+        )
+
+    return price_watch.webapi.ogp.OgpData(
+        item_name=item_name,
+        best_price=best_store.effective_price,
+        best_store=best_store.store,
+        lowest_price=lowest_price,
+        thumb_path=thumb_path,
+        store_histories=store_histories,
+    )
+
+
+def _get_item_data_for_ogp(
+    item_key: str,
+    days: int | None = 30,
+) -> tuple[str | None, list[price_watch.webapi.schemas.StoreEntry]]:
+    """OGP 用のアイテムデータを取得.
+
+    Returns:
+        (アイテム名, ストアエントリリスト) のタプル。アイテムが見つからない場合は (None, [])
+    """
+    target_config = _get_target_config()
+
+    # DB から全アイテムを取得
+    all_items = price_watch.history.get_all_items()
+
+    # item_key に一致するアイテムを検索
+    matching_items = [item for item in all_items if item["item_key"] == item_key]
+
+    if not matching_items:
+        return None, []
+
+    item_name = matching_items[0]["name"]
+    stores: list[price_watch.webapi.schemas.StoreEntry] = []
+
+    for item in matching_items:
+        store_data = _process_item(item, days, target_config)
+        if store_data:
+            stores.append(store_data["store_entry"])
+
+    return item_name, stores
+
+
+def _render_ogp_html(
+    item_key: str,
+    item_name: str,
+    best_store: price_watch.webapi.schemas.StoreEntry,
+    ogp_image_url: str,
+    page_url: str,
+    static_dir: pathlib.Path | None,
+) -> str:
+    """OGP メタタグ付き HTML を生成.
+
+    ビルド済みの index.html をベースに、OGP メタタグを挿入する。
+    """
+    # 価格のフォーマット
+    price_text = f"¥{best_store.effective_price:,}" if best_store.effective_price else "価格未取得"
+    description = f"最安値: {price_text} ({best_store.store})"
+
+    # OGP メタタグ
+    ogp_tags = f"""
+    <!-- OGP メタタグ -->
+    <meta property="og:title" content="{_escape_html(item_name)}">
+    <meta property="og:description" content="{_escape_html(description)}">
+    <meta property="og:image" content="{_escape_html(ogp_image_url)}">
+    <meta property="og:url" content="{_escape_html(page_url)}">
+    <meta property="og:type" content="product">
+    <meta property="og:site_name" content="Price Watch">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{_escape_html(item_name)}">
+    <meta name="twitter:description" content="{_escape_html(description)}">
+    <meta name="twitter:image" content="{_escape_html(ogp_image_url)}">
+"""
+
+    # item_key を渡すスクリプト
+    item_key_script = f"""
+    <script>
+        // React アプリに item_key を渡す
+        window.__ITEM_KEY__ = "{_escape_js(item_key)}";
+    </script>
+"""
+
+    # ビルド済み index.html を読み込む
+    index_html = None
+    if static_dir and (static_dir / "index.html").exists():
+        try:
+            index_html = (static_dir / "index.html").read_text(encoding="utf-8")
+        except Exception:
+            logging.warning("Failed to read index.html")
+
+    if index_html:
+        # タイトルを更新
+        index_html = index_html.replace(
+            "<title>Price Watch</title>",
+            f"<title>{_escape_html(item_name)} - Price Watch</title>",
+        )
+        # </head> の前に OGP タグを挿入
+        index_html = index_html.replace("</head>", ogp_tags + "</head>")
+        # <div id="root"></div> の前に item_key スクリプトを挿入
+        index_html = index_html.replace(
+            '<div id="root"></div>',
+            item_key_script + '<div id="root"></div>',
+        )
+        return index_html
+
+    # フォールバック: 最小限の HTML を生成
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{_escape_html(item_name)} - Price Watch</title>
+    {ogp_tags}
+    <link rel="icon" type="image/svg+xml" href="/price/favicon.svg">
+</head>
+<body>
+    {item_key_script}
+    <div id="root">
+        <p>フロントエンド未ビルド: <code>cd frontend && npm run build</code></p>
+    </div>
+</body>
+</html>"""
+
+
+def _escape_html(text: str) -> str:
+    """HTML エスケープ."""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#x27;")
+    )
+
+
+def _escape_js(text: str) -> str:
+    """JavaScript 文字列エスケープ."""
+    return text.replace("\\", "\\\\").replace('"', '\\"').replace("'", "\\'").replace("\n", "\\n")
+
+
+@blueprint.route("/items/<item_key>")
+def item_detail_page(item_key: str) -> flask.Response | tuple[flask.Response, int]:
+    """アイテム詳細ページ（OGP メタタグ付き）."""
+    try:
+        # アイテムデータを取得
+        item_name, stores = _get_item_data_for_ogp(item_key)
+
+        if item_name is None or not stores:
+            return flask.Response("Item not found", status=404)
+
+        # 最安ストアを特定
+        best_store = _find_best_store(stores)
+
+        # URL を構築
+        page_url = flask.request.url
+        ogp_image_url = flask.request.url_root.rstrip("/") + f"/price/ogp/{item_key}.png"
+
+        # 設定からstatic_dirを取得
+        app_config = _get_app_config()
+        static_dir = app_config.webapp.static_dir_path if app_config else None
+
+        # HTML を生成
+        html = _render_ogp_html(item_key, item_name, best_store, ogp_image_url, page_url, static_dir)
+
+        return flask.Response(html, mimetype="text/html")
+
+    except Exception:
+        logging.exception("Error rendering item detail page")
+        return flask.Response("Internal server error", status=500)
+
+
+@blueprint.route("/ogp/<item_key>.png")
+def ogp_image(item_key: str) -> flask.Response:
+    """OGP 画像を配信."""
+    try:
+        # 設定を取得
+        app_config = _get_app_config()
+        if app_config is None:
+            return flask.Response("Configuration not found", status=500)
+
+        cache_dir = app_config.data.cache
+        thumb_dir = app_config.data.thumb
+
+        # アイテムデータを取得
+        item_name, stores = _get_item_data_for_ogp(item_key)
+
+        if item_name is None or not stores:
+            return flask.Response("Item not found", status=404)
+
+        # target.yaml の設定を取得
+        target_config = _get_target_config()
+
+        # OGP データを構築
+        ogp_data = _build_ogp_data(item_name, stores, target_config, thumb_dir)
+
+        # 画像を生成/キャッシュから取得
+        image_path = price_watch.webapi.ogp.get_or_generate_ogp_image(
+            item_key,
+            ogp_data,
+            cache_dir,
+        )
+
+        return flask.send_file(
+            image_path,
+            mimetype="image/png",
+            max_age=3600,  # 1時間キャッシュ
+        )
+
+    except Exception:
+        logging.exception("Error generating OGP image")
+        return flask.Response("Internal server error", status=500)
