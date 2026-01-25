@@ -2,18 +2,25 @@
 """API エンドポイント."""
 
 import logging
+import pathlib
 from typing import Any
 
 import flask
 from flask_pydantic import validate
 
 import price_watch.history
-import price_watch.item
 import price_watch.target
 import price_watch.thumbnail
 import price_watch.webapi.schemas as schemas
+from price_watch.file_cache import FileCache
 
 blueprint = flask.Blueprint("page", __name__)
+
+# target.yaml のキャッシュ（ファイル更新時刻が変わった場合のみ再読み込み）
+_target_config_cache: FileCache[price_watch.target.TargetConfig] = FileCache(
+    pathlib.Path(price_watch.target.TARGET_FILE_PATH),
+    lambda path: price_watch.target.load(str(path)),
+)
 
 
 def _parse_days(days_str: str | None) -> int | None:
@@ -26,19 +33,17 @@ def _parse_days(days_str: str | None) -> int | None:
         return 30
 
 
-def _get_target_urls() -> set[str]:
+def _get_target_urls(target_config: price_watch.target.TargetConfig | None) -> set[str]:
     """target.yaml から監視対象URLのセットを取得."""
-    try:
-        return price_watch.item.get_target_urls()
-    except Exception:
-        logging.warning("Failed to load target.yaml, showing all items")
+    if target_config is None:
         return set()
+    return {item.url for item in target_config.resolve_items()}
 
 
 def _get_target_config() -> price_watch.target.TargetConfig | None:
-    """target.yaml の設定を取得."""
+    """target.yaml の設定を取得（キャッシュ使用）."""
     try:
-        return price_watch.target.load()
+        return _target_config_cache.get()
     except Exception:
         logging.warning("Failed to load target.yaml config")
         return None
@@ -52,15 +57,25 @@ def _get_point_rate(target_config: price_watch.target.TargetConfig | None, store
     return store.point_rate if store else 0.0
 
 
-def _calc_effective_price(price: int, point_rate: float) -> int:
-    """実質価格を計算（ポイント還元考慮）."""
+def _calc_effective_price(price: int | None, point_rate: float) -> int | None:
+    """実質価格を計算（ポイント還元考慮）.
+
+    price が None の場合は None を返す。
+    """
+    if price is None:
+        return None
     return int(price * (1 - point_rate / 100))
 
 
-def _build_history_entries(history: list[dict[str, Any]], point_rate: float) -> list[schemas.HistoryEntry]:
-    """履歴エントリリストを構築."""
+def _build_history_entries(
+    history: list[dict[str, Any]], point_rate: float
+) -> list[schemas.PriceHistoryPoint]:
+    """履歴エントリリストを構築.
+
+    price が None の場合（在庫なし）も含めて返す。
+    """
     return [
-        schemas.HistoryEntry(
+        schemas.PriceHistoryPoint(
             time=h["time"],
             price=h["price"],
             effective_price=_calc_effective_price(h["price"], point_rate),
@@ -78,7 +93,7 @@ def _build_store_entry(
     point_rate: float,
 ) -> schemas.StoreEntry:
     """ストアエントリを構築."""
-    current_price = latest["price"]
+    current_price = latest["price"]  # None の場合がある
     effective_price = _calc_effective_price(current_price, point_rate)
 
     return schemas.StoreEntry(
@@ -97,12 +112,19 @@ def _build_store_entry(
 
 
 def _find_best_store(stores: list[schemas.StoreEntry]) -> schemas.StoreEntry:
-    """最安ストアを決定（在庫ありの中で effective_price が最小）."""
-    in_stock_stores = [s for s in stores if s.stock > 0]
+    """最安ストアを決定（在庫ありの中で effective_price が最小）.
+
+    effective_price が None の場合は最後に配置する。
+    """
+    in_stock_stores = [s for s in stores if s.stock > 0 and s.effective_price is not None]
     if in_stock_stores:
-        return min(in_stock_stores, key=lambda s: s.effective_price)
-    # 在庫なしの場合も effective_price 最小を選択
-    return min(stores, key=lambda s: s.effective_price)
+        return min(in_stock_stores, key=lambda s: s.effective_price or 0)
+    # 在庫なし、または全て価格なしの場合は effective_price が有効なものを優先
+    stores_with_price = [s for s in stores if s.effective_price is not None]
+    if stores_with_price:
+        return min(stores_with_price, key=lambda s: s.effective_price or 0)
+    # 全て価格なしの場合は最初のストアを返す
+    return stores[0]
 
 
 def _find_first_thumb_url(store_data_list: list[dict[str, Any]]) -> str | None:
@@ -135,9 +157,29 @@ def _get_store_definitions(
     if not target_config:
         return []
     return [
-        schemas.StoreDefinition(name=store.name, point_rate=store.point_rate)
+        schemas.StoreDefinition(name=store.name, point_rate=store.point_rate, color=store.color)
         for store in target_config.stores
     ]
+
+
+def _build_store_entry_without_history(
+    item: dict[str, Any],
+    point_rate: float,
+) -> schemas.StoreEntry:
+    """履歴がないアイテム用のストアエントリを構築."""
+    return schemas.StoreEntry(
+        url_hash=item.get("url_hash", ""),
+        store=item["store"],
+        url=item["url"],
+        current_price=None,  # 価格未取得
+        effective_price=None,  # 価格未取得
+        point_rate=point_rate,
+        lowest_price=None,
+        highest_price=None,
+        stock=0,  # 履歴がない = まだ在庫確認できていない
+        last_updated="",
+        history=[],
+    )
 
 
 def _process_item(
@@ -146,19 +188,32 @@ def _process_item(
     target_config: price_watch.target.TargetConfig | None,
 ) -> dict[str, Any] | None:
     """1つのアイテムを処理してストアデータを構築."""
+    # ポイント還元率を取得
+    point_rate = _get_point_rate(target_config, item["store"])
+
+    # item に id がない場合（target.yaml のみにあるアイテム）
+    if "id" not in item:
+        store_entry = _build_store_entry_without_history(item, point_rate)
+        return {
+            "store_entry": store_entry,
+            "thumb_url": item.get("thumb_url"),
+        }
+
     # 最新価格を取得
     latest = price_watch.history.get_latest_price(item["id"])
     if not latest:
-        return None
+        # 履歴がないアイテムも表示（在庫なしとして）
+        store_entry = _build_store_entry_without_history(item, point_rate)
+        return {
+            "store_entry": store_entry,
+            "thumb_url": item.get("thumb_url"),
+        }
 
     # 統計情報を取得
     stats = price_watch.history.get_item_stats(item["id"], days)
 
     # 価格履歴を取得
     _, hist = price_watch.history.get_item_history(item["url_hash"], days)
-
-    # ポイント還元率を取得
-    point_rate = _get_point_rate(target_config, item["store"])
 
     store_entry = _build_store_entry(item, latest, stats, hist, point_rate)
 
@@ -176,7 +231,9 @@ def _group_items_by_name(
 ) -> dict[str, list[dict[str, Any]]]:
     """アイテムを名前でグルーピング."""
     items_by_name: dict[str, list[dict[str, Any]]] = {}
+    processed_urls: set[str] = set()
 
+    # DBにあるアイテムを処理
     for item in all_items:
         # target.yaml に含まれないアイテムはスキップ
         if target_urls and item["url"] not in target_urls:
@@ -190,20 +247,45 @@ def _group_items_by_name(
         if item_name not in items_by_name:
             items_by_name[item_name] = []
         items_by_name[item_name].append(store_data)
+        processed_urls.add(item["url"])
+
+    # target.yaml にあるがDBにないアイテムを追加
+    if target_config:
+        for resolved_item in target_config.resolve_items():
+            if resolved_item.url in processed_urls:
+                continue
+
+            # target.yaml のアイテムを dict 形式に変換
+            item_dict = {
+                "name": resolved_item.name,
+                "store": resolved_item.store,
+                "url": resolved_item.url,
+                "url_hash": price_watch.history.url_hash(resolved_item.url),
+                "thumb_url": getattr(resolved_item, "thumb_url", None),
+            }
+
+            store_data = _process_item(item_dict, days, target_config)
+            if not store_data:
+                continue
+
+            item_name = resolved_item.name
+            if item_name not in items_by_name:
+                items_by_name[item_name] = []
+            items_by_name[item_name].append(store_data)
 
     return items_by_name
 
 
 @blueprint.route("/api/items")
 @validate()
-def get_items(query: schemas.ItemsQueryParams) -> flask.Response:
+def get_items(query: schemas.ItemsQueryParams) -> flask.Response | tuple[flask.Response, int]:
     """アイテム一覧を取得（複数ストア対応・実質価格付き）."""
     try:
         days = _parse_days(query.days)
 
-        # target.yaml の設定を取得
+        # target.yaml の設定を取得（キャッシュ使用）
         target_config = _get_target_config()
-        target_urls = _get_target_urls()
+        target_urls = _get_target_urls(target_config)
 
         all_items = price_watch.history.get_all_items()
 
@@ -248,7 +330,9 @@ def serve_thumb(filename: str) -> flask.Response:
 
 @blueprint.route("/api/items/<url_hash>/history")
 @validate()
-def get_item_history(url_hash: str, query: schemas.ItemsQueryParams) -> flask.Response:
+def get_item_history(
+    url_hash: str, query: schemas.HistoryQueryParams
+) -> flask.Response | tuple[flask.Response, int]:
     """アイテム別価格履歴を取得."""
     try:
         days = _parse_days(query.days)
@@ -259,16 +343,14 @@ def get_item_history(url_hash: str, query: schemas.ItemsQueryParams) -> flask.Re
             error = schemas.ErrorResponse(error="Item not found")
             return flask.jsonify(error.model_dump()), 404
 
-        formatted_history = [
-            schemas.ItemHistoryEntry(
-                time=h["time"],
-                price=h["price"],
-                stock=h["stock"],
-            )
-            for h in hist
-        ]
+        # ポイント還元率を取得（キャッシュ使用）
+        target_config = _get_target_config()
+        point_rate = _get_point_rate(target_config, item["store"])
 
-        response = schemas.ItemHistoryResponse(history=formatted_history)
+        # 履歴を構築（effective_price 付き）
+        formatted_history = _build_history_entries(hist, point_rate)
+
+        response = schemas.HistoryResponse(history=formatted_history)
         return flask.jsonify(response.model_dump())
 
     except Exception:

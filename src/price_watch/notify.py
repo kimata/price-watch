@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import my_lib.notify.slack
+
+if TYPE_CHECKING:
+    import PIL.Image
 
 MESSAGE_TMPL = """\
 [
@@ -112,4 +115,44 @@ def error(
         return my_lib.notify.slack.send(slack_config, slack_config.error.channel.name, formatted)  # type: ignore[union-attr]
     except Exception:
         logging.exception("Failed to send error notification")
+        return None
+
+
+def error_with_page(
+    slack_config: my_lib.notify.slack.SlackConfigTypes,
+    item: dict[str, Any],
+    exception: Exception,
+    screenshot: PIL.Image.Image | None = None,
+    page_source: str | None = None,
+) -> str | None:
+    """スクリーンショットとページソース付きでエラーを通知.
+
+    my_lib.selenium_util.error_handler のコールバックとして使用します。
+    スクリーンショットはメッセージに添付、ページソースは gzip 圧縮してスレッドに添付します。
+
+    Args:
+        slack_config: Slack 設定
+        item: アイテム情報
+        exception: 発生した例外
+        screenshot: スクリーンショット画像（PIL.Image）
+        page_source: ページの HTML ソース
+
+    Returns:
+        スレッドのタイムスタンプ、または通知失敗時は None
+    """
+    if isinstance(slack_config, my_lib.notify.slack.SlackEmptyConfig):
+        return None
+
+    title = f"[{item.get('store', 'unknown')}] {item.get('name', 'unknown')}"
+
+    try:
+        return my_lib.notify.slack.notify_error_with_page(
+            slack_config,
+            title,
+            exception,
+            screenshot,
+            page_source,
+        )
+    except Exception:
+        logging.exception("Failed to send error notification with page")
         return None

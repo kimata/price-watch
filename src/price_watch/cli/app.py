@@ -20,17 +20,16 @@ import signal
 import sys
 import threading
 import time
-import traceback
 from typing import TYPE_CHECKING, Any
 
+import my_lib.chrome_util
 import my_lib.footprint
 import my_lib.logger
 import my_lib.notify.slack
-import my_lib.proc_util
 import my_lib.selenium_util
 
 from price_watch import config as config_module
-from price_watch import history, notify, thumbnail
+from price_watch import history, log_format, notify, thumbnail
 from price_watch import target as target_module
 from price_watch.config import AppConfig
 from price_watch.const import ERROR_NOTIFY_COUNT, SCRAPE_INTERVAL_SEC, SLEEP_UNIT
@@ -115,19 +114,13 @@ class AppRunner:
             webapi_server.term(self.server_handle)
             self.server_handle = None
 
-        # ブラウザを終了
-        if self.driver is not None:
-            try:
-                self.driver.quit()
-            except Exception:
-                logging.exception("Failed to quit driver")
-            self.driver = None
+        # ブラウザを確実に終了（プロセス終了待機・強制終了も含む）
+        my_lib.selenium_util.quit_driver_gracefully(self.driver)
+        self.driver = None
 
-        # Chrome がファイル（SingletonLock等）を削除する時間を確保
-        time.sleep(2)
-
-        # 子プロセスを終了
-        my_lib.proc_util.kill_child()
+        # Chrome プロファイルのロックファイルをクリーンアップ
+        if self.config is not None:
+            my_lib.chrome_util.cleanup_profile_lock(PROFILE_NAME, self.config.data.selenium)
 
     def _update_liveness(self) -> None:
         """liveness を更新."""
@@ -135,7 +128,10 @@ class AppRunner:
             my_lib.footprint.update(self.config.liveness.file.crawler)
 
     def _sleep_until(self, end_time: float) -> None:
-        """指定時刻までスリープ."""
+        """指定時刻までスリープ.
+
+        threading.Event.wait() を使用することで、シグナル受信時に即座に終了できる。
+        """
         sleep_remain = end_time - time.time()
         logging.info("sleep %d sec...", int(sleep_remain))
 
@@ -149,31 +145,16 @@ class AppRunner:
             if sleep_remain < 0:
                 return
             elif sleep_remain < SLEEP_UNIT:
-                time.sleep(sleep_remain)
+                # wait() は should_terminate.set() で即座に解除される
+                if self.should_terminate.wait(timeout=sleep_remain):
+                    return
             else:
-                time.sleep(SLEEP_UNIT)
-
-    def _should_update_history(self, item: dict[str, Any], last: dict[str, Any] | None) -> bool:
-        """履歴を更新するべきか判定."""
-        if last is None:
-            return item["stock"] == 1
-
-        price_changed = (item["stock"] == 1) and (item["price"] != last["price"])
-        stock_changed = item["stock"] != last["stock"]
-        return price_changed or stock_changed
+                if self.should_terminate.wait(timeout=SLEEP_UNIT):
+                    return
 
     def _log_watch_start(self, item: dict[str, Any]) -> None:
         """監視開始時のログを出力."""
-        if item["stock"] == 1:
-            logging.warning(
-                "%s: watch start %d%s. (%s)",
-                item["name"],
-                item["price"],
-                item["price_unit"],
-                "in stock",
-            )
-        else:
-            logging.warning("%s: watch start (%s)", item["name"], "out of stock")
+        logging.info(log_format.format_watch_start(item))
 
     def _handle_price_decrease(
         self,
@@ -182,14 +163,7 @@ class AppRunner:
         last: dict[str, Any],
     ) -> None:
         """価格下落時の処理."""
-        logging.warning(
-            "%s: price updated %d%s ➡ %d%s.",
-            item["name"],
-            last["price"],
-            item["price_unit"],
-            item["price"],
-            item["price_unit"],
-        )
+        logging.warning(log_format.format_price_decrease(item, last["price"]))
         lowest = history.lowest(item["url"])
         is_record = lowest is not None and item["price"] < lowest["price"]
         notify.info(slack_config, item, is_record)
@@ -200,26 +174,12 @@ class AppRunner:
         item: dict[str, Any],
     ) -> None:
         """在庫復活時の処理."""
-        logging.warning(
-            "%s: back in stock %d%s.",
-            item["name"],
-            item["price"],
-            item["price_unit"],
-        )
+        logging.warning(log_format.format_back_in_stock(item))
         notify.info(slack_config, item)
 
     def _log_item_status(self, item: dict[str, Any]) -> None:
         """アイテムの状態をログ出力."""
-        if item["stock"] == 1:
-            logging.info(
-                "%s: %d%s (%s).",
-                item["name"],
-                item["price"],
-                item["price_unit"],
-                "in stock",
-            )
-        else:
-            logging.info("%s: (%s).", item["name"], "out of stock")
+        logging.info(log_format.format_item_status(item))
 
     def _process_data(
         self,
@@ -227,12 +187,21 @@ class AppRunner:
         item: dict[str, Any],
         last: dict[str, Any] | None,
     ) -> bool:
-        """データを処理."""
-        # 履歴の更新判定と登録
-        if self._should_update_history(item, last):
-            if last is not None and item["stock"] == 0:
+        """データを処理.
+
+        価格が取得できない場合（在庫なし等）も stock=0, price=None で記録する。
+        """
+        # 価格が取得できなかった場合の処理
+        # 在庫ありで価格が取得できた場合、または前回の価格がある場合のみ price を設定
+        if "price" not in item:
+            if last is not None and last["price"] is not None:
+                # 前回の価格を引き継ぐ（在庫切れだが過去に価格があった場合）
                 item["price"] = last["price"]
-            history.insert(item)
+            # 価格がない場合は price キーなし（None）のまま history.insert() に渡す
+
+        # 履歴を記録（1時間に1回、より安い価格で更新）
+        # 価格がない場合も stock=0, price=NULL として記録される
+        history.insert(item)
 
         # 新規監視開始
         if last is None:
@@ -240,10 +209,11 @@ class AppRunner:
             return True
 
         # 既存アイテムの更新
-        item["old_price"] = last["price"]
+        if last["price"] is not None:
+            item["old_price"] = last["price"]
 
-        if item["stock"] == 1:
-            if item["price"] < last["price"]:
+        if item["stock"] == 1 and "price" in item:
+            if last["price"] is not None and item["price"] < last["price"]:
                 self._handle_price_decrease(slack_config, item, last)
             elif last["stock"] == 0:
                 self._handle_back_in_stock(slack_config, item)
@@ -279,6 +249,8 @@ class AppRunner:
             if self.should_terminate.is_set():
                 return
 
+            logging.info(log_format.format_crawl_start(item))
+
             try:
                 scrape.check(self.config, self.driver, item, self.loop)
                 self._process_data(self.config.slack, item, history.last(item["url"]))
@@ -287,16 +259,19 @@ class AppRunner:
                 self.error_count[item["url"]] = 0
             except Exception:
                 self.error_count[item["url"]] += 1
-                logging.debug("error_count = %d.", self.error_count[item["url"]])
+                logging.warning(log_format.format_error(item, self.error_count[item["url"]]))
+                # スクリーンショット付きのエラー通知は scrape.py の error_handler で送信済み
                 if self.error_count[item["url"]] >= ERROR_NOTIFY_COUNT:
-                    notify.error(self.config.slack, item, traceback.format_exc())
                     self.error_count[item["url"]] = 0
-            time.sleep(SCRAPE_INTERVAL_SEC)
+            # wait() を使用してシグナル受信時に即座に終了できるようにする
+            if self.should_terminate.wait(timeout=SCRAPE_INTERVAL_SEC):
+                return
 
-        for item in amazon_paapi.check_item_list(
-            self.config,
-            list(filter(lambda item: item["check_method"] == "amazon-paapi", item_list)),
-        ):
+        amazon_items = list(filter(lambda item: item["check_method"] == "amazon-paapi", item_list))
+        if amazon_items:
+            logging.info("🛒 [Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
+
+        for item in amazon_paapi.check_item_list(self.config, amazon_items):
             self._process_data(self.config.slack, item, history.last(item["url"]))
         self._update_liveness()
 
