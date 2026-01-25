@@ -36,7 +36,7 @@ class ServerHandle:
 
 
 def create_app(
-    static_dir_path: pathlib.Path | None = None,
+    static_dir_path: pathlib.Path,
 ) -> flask.Flask:
     """Flask アプリケーションを作成.
 
@@ -60,7 +60,7 @@ def create_app(
 
     # ブループリント登録
     # フロントエンド静的ファイル（React アプリ）
-    if static_dir_path is not None:
+    if static_dir_path.exists():
         app.register_blueprint(my_lib.webapp.base.blueprint, url_prefix=URL_PREFIX)
         app.register_blueprint(my_lib.webapp.base.blueprint_default)
 
@@ -76,7 +76,7 @@ def create_app(
 
 def start(
     port: int,
-    static_dir_path: pathlib.Path | None = None,
+    static_dir_path: pathlib.Path,
 ) -> ServerHandle:
     """サーバーを開始.
 
@@ -116,23 +116,25 @@ def term(handle: ServerHandle) -> None:
 def main() -> None:
     """エントリポイント."""
     import docopt
-    import my_lib.config
     import my_lib.logger
+
+    import price_watch.config
 
     args = docopt.docopt(__doc__)
 
+    config_file = pathlib.Path(args["-c"])
     port = int(args["-p"])
     debug_mode = args["-D"]
 
     my_lib.logger.init("price-watch-webui", level=logging.DEBUG if debug_mode else logging.INFO)
 
-    # 静的ファイルのパス
-    static_dir_path = pathlib.Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
+    # 設定を読み込む
+    config = price_watch.config.load(config_file)
+    static_dir_path = config.webapp.static_dir_path
 
     if not static_dir_path.exists():
         logging.warning("Static directory not found: %s", static_dir_path)
         logging.warning("Run 'cd frontend && npm run build' to build the frontend")
-        static_dir_path = None
 
     server_handle = start(port, static_dir_path=static_dir_path)
 

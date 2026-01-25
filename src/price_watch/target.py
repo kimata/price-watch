@@ -8,13 +8,14 @@ Protocol を使って型階層を構成しています。
 
 from __future__ import annotations
 
+import pathlib
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
 import my_lib.config
 
-TARGET_FILE_PATH = "target.yaml"
+TARGET_FILE_PATH = pathlib.Path("target.yaml")
 
 
 # =============================================================================
@@ -342,7 +343,13 @@ class TargetConfig:
         return resolved
 
 
-def load(target_file: str = TARGET_FILE_PATH) -> TargetConfig:
-    """ターゲット設定ファイルを読み込んで TargetConfig を返す"""
-    raw = my_lib.config.load(target_file)
+def load(target_file: pathlib.Path | None = None) -> TargetConfig:
+    """ターゲット設定ファイルを読み込んで TargetConfig を返す.
+
+    Args:
+        target_file: ターゲット設定ファイルパス。省略時は TARGET_FILE_PATH を使用。
+    """
+    if target_file is None:
+        target_file = TARGET_FILE_PATH
+    raw = my_lib.config.load(str(target_file))
     return TargetConfig.parse(raw)

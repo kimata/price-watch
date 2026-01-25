@@ -15,8 +15,57 @@ from typing import Any
 import my_lib.config
 import my_lib.notify.slack
 import my_lib.store.amazon.config
+import my_lib.webapp.config
 
-CONFIG_FILE_PATH = "config.yaml"
+CONFIG_FILE_PATH = pathlib.Path("config.yaml")
+
+
+@dataclass(frozen=True)
+class PriceDropWindow:
+    """価格下落判定ウィンドウ"""
+
+    days: int
+    rate: float | None = None  # パーセント（例: 5.0 = 5%）
+    value: int | None = None  # 絶対値（例: 1000 = 1000円）
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> PriceDropWindow:
+        """dict から PriceDropWindow を生成"""
+        return cls(
+            days=data.get("days", 30),
+            rate=data.get("rate"),
+            value=data.get("value"),
+        )
+
+
+@dataclass(frozen=True)
+class IgnoreConfig:
+    """無視区間設定"""
+
+    hour: int = 24
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> IgnoreConfig:
+        """dict から IgnoreConfig を生成"""
+        return cls(hour=data.get("hour", 24))
+
+
+@dataclass(frozen=True)
+class JudgeConfig:
+    """イベント判定設定"""
+
+    ignore: IgnoreConfig
+    windows: list[PriceDropWindow]
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> JudgeConfig:
+        """dict から JudgeConfig を生成"""
+        ignore = IgnoreConfig.parse(data.get("ignore", {}))
+        windows_data = data.get("windows", [])
+        windows = [PriceDropWindow.parse(w) for w in windows_data]
+        # days が小さい順にソート
+        windows = sorted(windows, key=lambda w: w.days)
+        return cls(ignore=ignore, windows=windows)
 
 
 @dataclass(frozen=True)
@@ -24,11 +73,18 @@ class CheckConfig:
     """チェック間隔設定"""
 
     interval_sec: int = 1800
+    judge: JudgeConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> CheckConfig:
         """dict から CheckConfig を生成"""
-        return cls(interval_sec=data.get("interval_sec", 1800))
+        judge = None
+        if "judge" in data:
+            judge = JudgeConfig.parse(data["judge"])
+        return cls(
+            interval_sec=data.get("interval_sec", 1800),
+            judge=judge,
+        )
 
 
 @dataclass(frozen=True)
@@ -123,6 +179,7 @@ class AppConfig:
     slack: my_lib.notify.slack.SlackConfigTypes
     store: StoreConfig
     data: DataConfig
+    webapp: my_lib.webapp.config.WebappConfig
     target: TargetConfig
     liveness: LivenessConfig
 
@@ -145,6 +202,9 @@ class AppConfig:
         # Data 設定
         data_config = DataConfig.parse(data.get("data", {}))
 
+        # Webapp 設定（必須）
+        webapp = my_lib.webapp.config.WebappConfig.parse(data["webapp"])
+
         # Target 設定
         target = TargetConfig.parse(data.get("target", {}))
 
@@ -156,12 +216,19 @@ class AppConfig:
             slack=slack,
             store=store,
             data=data_config,
+            webapp=webapp,
             target=target,
             liveness=liveness,
         )
 
 
-def load(config_file: str = CONFIG_FILE_PATH) -> AppConfig:
-    """設定ファイルを読み込んで AppConfig を返す"""
-    raw = my_lib.config.load(config_file)
+def load(config_file: pathlib.Path | None = None) -> AppConfig:
+    """設定ファイルを読み込んで AppConfig を返す.
+
+    Args:
+        config_file: 設定ファイルパス。省略時は CONFIG_FILE_PATH を使用。
+    """
+    if config_file is None:
+        config_file = CONFIG_FILE_PATH
+    raw = my_lib.config.load(str(config_file))
     return AppConfig.parse(raw)

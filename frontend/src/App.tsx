@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import Header from "./components/Header";
+import EventBanner from "./components/EventBanner";
 import PeriodSelector from "./components/PeriodSelector";
 import ItemCard from "./components/ItemCard";
 import LoadingSpinner from "./components/LoadingSpinner";
@@ -41,6 +42,8 @@ export default function App() {
         <div className="min-h-screen bg-gray-100">
             <Header />
             <main className="max-w-7xl mx-auto px-4 py-6">
+                <EventBanner />
+
                 <div className="mb-6">
                     <PeriodSelector selected={period} onChange={handlePeriodChange} />
                 </div>

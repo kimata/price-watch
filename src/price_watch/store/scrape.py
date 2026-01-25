@@ -22,6 +22,9 @@ import price_watch.notify
 import price_watch.thumbnail
 
 if TYPE_CHECKING:
+    from selenium.webdriver.remote.webdriver import WebDriver
+    from selenium.webdriver.support.wait import WebDriverWait as WebDriverWaitType
+
     from price_watch.config import AppConfig
 
 TIMEOUT_SEC = 4
@@ -35,7 +38,7 @@ def _resolve_template(template: str, item: dict[str, Any]) -> str:
 
 def _process_action(
     config: AppConfig,
-    driver: my_lib.selenium_util.WebDriverType,
+    driver: WebDriver,
     wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
     item: dict[str, Any],
     action_list: list[dict[str, Any]],
@@ -95,7 +98,7 @@ def _process_action(
 
 def _process_preload(
     config: AppConfig,
-    driver: my_lib.selenium_util.WebDriverType,
+    driver: WebDriver,
     wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
     item: dict[str, Any],
     loop: int,
@@ -118,7 +121,7 @@ def _process_preload(
 
 def _check_impl(
     config: AppConfig,
-    driver: my_lib.selenium_util.WebDriverType,
+    driver: WebDriver,
     item: dict[str, Any],
     loop: int,
 ) -> dict[str, Any] | bool:
@@ -126,7 +129,7 @@ def _check_impl(
     By = selenium.webdriver.common.by.By
     WebDriverWait = selenium.webdriver.support.wait.WebDriverWait
 
-    wait: WebDriverWait = WebDriverWait(driver, TIMEOUT_SEC)  # type: ignore[type-arg]
+    wait: WebDriverWaitType = WebDriverWait(driver, TIMEOUT_SEC)  # type: ignore[type-arg]
 
     _process_preload(config, driver, wait, item, loop)
 
@@ -182,7 +185,7 @@ def _check_impl(
         driver, item["thumb_block_xpath"]
     ):
         style_text = driver.find_element(By.XPATH, item["thumb_block_xpath"]).get_attribute("style")
-        m = re.match(r"background-image: url\([\"'](.*)[\"']\)", style_text)
+        m = re.match(r"background-image: url\([\"'](.*)[\"']\)", style_text or "")
         if m:
             thumb_url = m.group(1)
             if not re.compile(r"^\.\.").search(thumb_url):
@@ -200,7 +203,7 @@ def _check_impl(
 
 def check(
     config: AppConfig,
-    driver: my_lib.selenium_util.WebDriverType,
+    driver: WebDriver,
     item: dict[str, Any],
     loop: int,
 ) -> dict[str, Any] | bool:

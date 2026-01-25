@@ -80,13 +80,20 @@ def _get_or_create_item(
     return cur.lastrowid or 0
 
 
-def insert(item: dict[str, Any]) -> None:
+def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
     """価格履歴を挿入または更新.
 
     1時間に1回の記録を保持する。同一時間帯で複数回取得した場合:
     - より安い価格で更新（価格がある場合のみ）
     - 収集時刻は常に最新に更新
     - 価格が取得できない場合（在庫なし等）も stock=0, price=NULL で記録
+
+    Args:
+        item: アイテム情報
+        crawl_status: クロール状態（0: 失敗, 1: 成功）
+
+    Returns:
+        アイテムID
     """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         cur = conn.cursor()
@@ -110,7 +117,7 @@ def insert(item: dict[str, Any]) -> None:
         # 同一時間帯の既存レコードを確認
         cur.execute(
             """
-            SELECT id, price, stock
+            SELECT id, price, stock, crawl_status
             FROM price_history
             WHERE item_id = ?
               AND time >= ?
@@ -122,7 +129,7 @@ def insert(item: dict[str, Any]) -> None:
         existing = cur.fetchone()
 
         if existing:
-            existing_id, existing_price, existing_stock = existing
+            existing_id, existing_price, existing_stock, existing_crawl_status = existing
 
             # 更新ロジック
             should_update_price = False
@@ -143,15 +150,18 @@ def insert(item: dict[str, Any]) -> None:
                 final_price = existing_price
                 should_update_price = False
 
-            # 在庫状態が変わった場合、または価格が更新される場合
-            if should_update_price or new_stock != existing_stock:
+            # crawl_status が成功に変わった場合も更新
+            crawl_status_changed = crawl_status != existing_crawl_status
+
+            # 在庫状態が変わった場合、価格が更新される場合、またはクロール状態が変わった場合
+            if should_update_price or new_stock != existing_stock or crawl_status_changed:
                 cur.execute(
                     """
                     UPDATE price_history
-                    SET price = ?, stock = ?, time = ?
+                    SET price = ?, stock = ?, crawl_status = ?, time = ?
                     WHERE id = ?
                     """,
-                    (final_price, new_stock, now_str, existing_id),
+                    (final_price, new_stock, crawl_status, now_str, existing_id),
                 )
             else:
                 # 時刻だけは更新
@@ -167,11 +177,13 @@ def insert(item: dict[str, Any]) -> None:
             # 新規挿入（価格が None でも挿入）
             cur.execute(
                 """
-                INSERT INTO price_history (item_id, price, stock, time)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO price_history (item_id, price, stock, crawl_status, time)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (item_id, new_price, new_stock, now_str),
+                (item_id, new_price, new_stock, crawl_status, now_str),
             )
+
+        return item_id
 
 
 def last(url: str) -> dict[str, Any] | None:
@@ -375,14 +387,34 @@ def init(data_path: pathlib.Path | None = None) -> None:
 
         # price_history テーブル
         # price は NULL を許可（在庫なしで価格が取得できない場合）
+        # crawl_status: 0=失敗, 1=成功
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS price_history(
-                id      INTEGER PRIMARY KEY AUTOINCREMENT,
-                item_id INTEGER NOT NULL,
-                price   INTEGER,
-                stock   INTEGER NOT NULL,
-                time    TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id      INTEGER NOT NULL,
+                price        INTEGER,
+                stock        INTEGER NOT NULL,
+                crawl_status INTEGER NOT NULL DEFAULT 1,
+                time         TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # events テーブル（イベント記録用）
+        # メッセージは保存せず、パラメータのみを保存
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS events(
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id        INTEGER NOT NULL,
+                event_type     TEXT NOT NULL,
+                price          INTEGER,
+                old_price      INTEGER,
+                threshold_days INTEGER,
+                created_at     TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                notified       INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
             )
             """
@@ -392,9 +424,13 @@ def init(data_path: pathlib.Path | None = None) -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_url_hash ON items(url_hash)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_events_item_id ON events(item_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
 
-    # 既存DBのマイグレーション（price カラムを NULL 許可に変更）
+    # 既存DBのマイグレーション
     migrate_to_nullable_price()
+    migrate_add_crawl_status()
 
 
 def migrate_from_old_schema() -> None:
@@ -556,6 +592,256 @@ def migrate_to_nullable_price() -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
 
     logging.info("Migration to nullable price completed successfully")
+
+
+def migrate_add_crawl_status() -> None:
+    """crawl_status カラムを追加するマイグレーション."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+
+        # テーブルが存在するか確認
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='price_history'")
+        if not cur.fetchone():
+            logging.info("No price_history table found")
+            return
+
+        # 現在のスキーマを確認（crawl_status カラムが存在するか）
+        cur.execute("PRAGMA table_info(price_history)")
+        columns = [col[1] for col in cur.fetchall()]
+
+        if "crawl_status" in columns:
+            logging.info("crawl_status column already exists")
+            return
+
+        logging.info("Adding crawl_status column to price_history...")
+
+        # カラムを追加（デフォルト値 1 = 成功）
+        cur.execute("ALTER TABLE price_history ADD COLUMN crawl_status INTEGER NOT NULL DEFAULT 1")
+
+    logging.info("Migration to add crawl_status completed successfully")
+
+
+def get_item_id(url: str) -> int | None:
+    """URL からアイテム ID を取得."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        url_hash = _url_hash(url)
+        cur.execute("SELECT id FROM items WHERE url_hash = ?", (url_hash,))
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
+def get_item_by_id(item_id: int) -> dict[str, Any] | None:
+    """アイテム ID からアイテム情報を取得."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        conn.row_factory = _dict_factory
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, url_hash, url, name, store, thumb_url, created_at, updated_at
+            FROM items
+            WHERE id = ?
+            """,
+            (item_id,),
+        )
+        return cur.fetchone()
+
+
+def get_lowest_price_in_period(item_id: int, days: int | None = None) -> int | None:
+    """指定期間内の最安値を取得.
+
+    Args:
+        item_id: アイテム ID
+        days: 期間（日数）。None の場合は全期間。
+
+    Returns:
+        最安値。レコードがない場合は None。
+    """
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+
+        if days and days > 0:
+            cur.execute(
+                """
+                SELECT MIN(price)
+                FROM price_history
+                WHERE item_id = ?
+                  AND time >= datetime('now', 'localtime', ?)
+                  AND price IS NOT NULL
+                  AND crawl_status = 1
+                """,
+                (item_id, f"-{days} days"),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT MIN(price)
+                FROM price_history
+                WHERE item_id = ?
+                  AND price IS NOT NULL
+                  AND crawl_status = 1
+                """,
+                (item_id,),
+            )
+
+        row = cur.fetchone()
+        return row[0] if row and row[0] is not None else None
+
+
+def has_successful_crawl_in_hours(item_id: int, hours: int) -> bool:
+    """指定時間内に成功したクロールがあるか確認.
+
+    Args:
+        item_id: アイテム ID
+        hours: 確認する時間数
+
+    Returns:
+        成功したクロールがあれば True
+    """
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM price_history
+            WHERE item_id = ?
+              AND time >= datetime('now', 'localtime', ?)
+              AND crawl_status = 1
+            """,
+            (item_id, f"-{hours} hours"),
+        )
+        row = cur.fetchone()
+        return row[0] > 0 if row else False
+
+
+def get_last_successful_crawl(item_id: int) -> dict[str, Any] | None:
+    """最後に成功したクロールを取得."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        conn.row_factory = _dict_factory
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT price, stock, crawl_status, time
+            FROM price_history
+            WHERE item_id = ?
+              AND crawl_status = 1
+            ORDER BY time DESC
+            LIMIT 1
+            """,
+            (item_id,),
+        )
+        return cur.fetchone()
+
+
+# --- イベント関連 ---
+
+
+def insert_event(
+    item_id: int,
+    event_type: str,
+    *,
+    price: int | None = None,
+    old_price: int | None = None,
+    threshold_days: int | None = None,
+    notified: bool = False,
+) -> int:
+    """イベントを記録.
+
+    Args:
+        item_id: アイテム ID
+        event_type: イベントタイプ
+        price: 現在価格
+        old_price: 以前の価格
+        threshold_days: 判定に使用した期間
+        notified: 通知済みフラグ
+
+    Returns:
+        イベント ID
+    """
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        now_str = my_lib.time.now().strftime("%Y-%m-%d %H:%M:%S")
+        cur.execute(
+            """
+            INSERT INTO events (item_id, event_type, price, old_price, threshold_days, created_at, notified)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (item_id, event_type, price, old_price, threshold_days, now_str, 1 if notified else 0),
+        )
+        return cur.lastrowid or 0
+
+
+def get_last_event(item_id: int, event_type: str) -> dict[str, Any] | None:
+    """指定タイプの最新イベントを取得."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        conn.row_factory = _dict_factory
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, item_id, event_type, price, old_price, threshold_days, created_at, notified
+            FROM events
+            WHERE item_id = ? AND event_type = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (item_id, event_type),
+        )
+        return cur.fetchone()
+
+
+def has_event_in_hours(item_id: int, event_type: str, hours: int) -> bool:
+    """指定時間内に同じイベントが発生しているか確認."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM events
+            WHERE item_id = ?
+              AND event_type = ?
+              AND created_at >= datetime('now', 'localtime', ?)
+            """,
+            (item_id, event_type, f"-{hours} hours"),
+        )
+        row = cur.fetchone()
+        return row[0] > 0 if row else False
+
+
+def get_recent_events(limit: int = 10) -> list[dict[str, Any]]:
+    """最新のイベントを取得（アイテム情報付き）."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        conn.row_factory = _dict_factory
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                e.id,
+                e.item_id,
+                e.event_type,
+                e.price,
+                e.old_price,
+                e.threshold_days,
+                e.created_at,
+                e.notified,
+                i.name as item_name,
+                i.store,
+                i.url,
+                i.thumb_url
+            FROM events e
+            JOIN items i ON e.item_id = i.id
+            ORDER BY e.created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+        return cur.fetchall()
+
+
+def mark_event_notified(event_id: int) -> None:
+    """イベントを通知済みにする."""
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        cur.execute("UPDATE events SET notified = 1 WHERE id = ?", (event_id,))
 
 
 if __name__ == "__main__":

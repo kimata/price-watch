@@ -56,3 +56,25 @@ export const PERIOD_OPTIONS: PeriodOption[] = [
     { value: "365", label: "1年" },
     { value: "all", label: "全期間" },
 ];
+
+// イベント関連の型
+export type EventType = "back_in_stock" | "crawl_failure" | "lowest_price" | "price_drop";
+
+export interface Event {
+    id: number;
+    item_name: string;
+    store: string;
+    url: string;
+    thumb_url: string | null;
+    event_type: EventType;
+    price: number | null;
+    old_price: number | null;
+    threshold_days: number | null;
+    created_at: string;
+    message: string;
+    title: string;
+}
+
+export interface EventsResponse {
+    events: Event[];
+}

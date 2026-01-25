@@ -18,35 +18,43 @@ import pathlib
 import signal
 import sys
 
+import price_watch.config
 import price_watch.webapi.server
 
 
 class WebUIRunner:
     """WebUI サーバーの実行を管理するクラス."""
 
-    def __init__(self, port: int, *, debug_mode: bool = False):
+    def __init__(
+        self,
+        config_file: pathlib.Path,
+        port: int,
+        *,
+        debug_mode: bool = False,
+    ):
         """WebUIRunner を初期化.
 
         Args:
+            config_file: 設定ファイルパス
             port: ポート番号
             debug_mode: デバッグモード
         """
+        self.config_file = config_file
         self.port = port
         self.debug_mode = debug_mode
         self.server_handle: price_watch.webapi.server.ServerHandle | None = None
-
-        # 静的ファイルのパス
-        self.static_dir_path = pathlib.Path(__file__).parent.parent.parent.parent / "frontend" / "dist"
+        self.config: price_watch.config.AppConfig | None = None
 
     def start(self) -> None:
         """サーバーを開始."""
-        static_path = self.static_dir_path if self.static_dir_path.exists() else None
+        self.config = price_watch.config.load(self.config_file)
+        static_dir_path = self.config.webapp.static_dir_path
 
-        if static_path is None:
-            logging.warning("Static directory not found: %s", self.static_dir_path)
+        if not static_dir_path.exists():
+            logging.warning("Static directory not found: %s", static_dir_path)
             logging.warning("Run 'cd frontend && npm run build' to build the frontend")
 
-        self.server_handle = price_watch.webapi.server.start(self.port, static_dir_path=static_path)
+        self.server_handle = price_watch.webapi.server.start(self.port, static_dir_path=static_dir_path)
 
     def term(self) -> None:
         """サーバーを停止."""
@@ -84,7 +92,7 @@ def main() -> None:
     assert __doc__ is not None  # noqa: S101
     args = docopt.docopt(__doc__)
 
-    config_file = args["-c"]
+    config_file = pathlib.Path(args["-c"])
     port = int(args["-p"])
     debug_mode = args["-D"]
 
@@ -92,7 +100,7 @@ def main() -> None:
 
     logging.info("Using config: %s", config_file)
 
-    runner = WebUIRunner(port, debug_mode=debug_mode)
+    runner = WebUIRunner(config_file, port, debug_mode=debug_mode)
     runner.run()
 
 

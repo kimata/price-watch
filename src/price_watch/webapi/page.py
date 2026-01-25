@@ -2,24 +2,26 @@
 """API エンドポイント."""
 
 import logging
-import pathlib
 from typing import Any
 
 import flask
 from flask_pydantic import validate
 
+import price_watch.event
+import price_watch.file_cache
 import price_watch.history
 import price_watch.target
 import price_watch.thumbnail
-import price_watch.webapi.schemas as schemas
-from price_watch.file_cache import FileCache
+import price_watch.webapi.schemas
 
 blueprint = flask.Blueprint("page", __name__)
 
 # target.yaml のキャッシュ（ファイル更新時刻が変わった場合のみ再読み込み）
-_target_config_cache: FileCache[price_watch.target.TargetConfig] = FileCache(
-    pathlib.Path(price_watch.target.TARGET_FILE_PATH),
-    lambda path: price_watch.target.load(str(path)),
+_target_config_cache: price_watch.file_cache.FileCache[
+    price_watch.target.TargetConfig
+] = price_watch.file_cache.FileCache(
+    price_watch.target.TARGET_FILE_PATH,
+    lambda path: price_watch.target.load(path),
 )
 
 
@@ -69,13 +71,13 @@ def _calc_effective_price(price: int | None, point_rate: float) -> int | None:
 
 def _build_history_entries(
     history: list[dict[str, Any]], point_rate: float
-) -> list[schemas.PriceHistoryPoint]:
+) -> list[price_watch.webapi.schemas.PriceHistoryPoint]:
     """履歴エントリリストを構築.
 
     price が None の場合（在庫なし）も含めて返す。
     """
     return [
-        schemas.PriceHistoryPoint(
+        price_watch.webapi.schemas.PriceHistoryPoint(
             time=h["time"],
             price=h["price"],
             effective_price=_calc_effective_price(h["price"], point_rate),
@@ -91,12 +93,12 @@ def _build_store_entry(
     stats: dict[str, Any],
     history: list[dict[str, Any]],
     point_rate: float,
-) -> schemas.StoreEntry:
+) -> price_watch.webapi.schemas.StoreEntry:
     """ストアエントリを構築."""
     current_price = latest["price"]  # None の場合がある
     effective_price = _calc_effective_price(current_price, point_rate)
 
-    return schemas.StoreEntry(
+    return price_watch.webapi.schemas.StoreEntry(
         url_hash=item["url_hash"],
         store=item["store"],
         url=item["url"],
@@ -111,7 +113,9 @@ def _build_store_entry(
     )
 
 
-def _find_best_store(stores: list[schemas.StoreEntry]) -> schemas.StoreEntry:
+def _find_best_store(
+    stores: list[price_watch.webapi.schemas.StoreEntry],
+) -> price_watch.webapi.schemas.StoreEntry:
     """最安ストアを決定（在庫ありの中で effective_price が最小）.
 
     effective_price が None の場合は最後に配置する。
@@ -135,13 +139,15 @@ def _find_first_thumb_url(store_data_list: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def _build_result_item(name: str, store_data_list: list[dict[str, Any]]) -> schemas.ResultItem:
+def _build_result_item(
+    name: str, store_data_list: list[dict[str, Any]]
+) -> price_watch.webapi.schemas.ResultItem:
     """グルーピングされたアイテムから結果アイテムを構築."""
     stores = [sd["store_entry"] for sd in store_data_list]
     best_store_entry = _find_best_store(stores)
     thumb_url = _find_first_thumb_url(store_data_list)
 
-    return schemas.ResultItem(
+    return price_watch.webapi.schemas.ResultItem(
         name=name,
         thumb_url=thumb_url,
         stores=stores,
@@ -152,12 +158,14 @@ def _build_result_item(name: str, store_data_list: list[dict[str, Any]]) -> sche
 
 def _get_store_definitions(
     target_config: price_watch.target.TargetConfig | None,
-) -> list[schemas.StoreDefinition]:
+) -> list[price_watch.webapi.schemas.StoreDefinition]:
     """ストア定義を生成."""
     if not target_config:
         return []
     return [
-        schemas.StoreDefinition(name=store.name, point_rate=store.point_rate, color=store.color)
+        price_watch.webapi.schemas.StoreDefinition(
+            name=store.name, point_rate=store.point_rate, color=store.color
+        )
         for store in target_config.stores
     ]
 
@@ -165,9 +173,9 @@ def _get_store_definitions(
 def _build_store_entry_without_history(
     item: dict[str, Any],
     point_rate: float,
-) -> schemas.StoreEntry:
+) -> price_watch.webapi.schemas.StoreEntry:
     """履歴がないアイテム用のストアエントリを構築."""
-    return schemas.StoreEntry(
+    return price_watch.webapi.schemas.StoreEntry(
         url_hash=item.get("url_hash", ""),
         store=item["store"],
         url=item["url"],
@@ -278,7 +286,9 @@ def _group_items_by_name(
 
 @blueprint.route("/api/items")
 @validate()
-def get_items(query: schemas.ItemsQueryParams) -> flask.Response | tuple[flask.Response, int]:
+def get_items(
+    query: price_watch.webapi.schemas.ItemsQueryParams,
+) -> flask.Response | tuple[flask.Response, int]:
     """アイテム一覧を取得（複数ストア対応・実質価格付き）."""
     try:
         days = _parse_days(query.days)
@@ -297,7 +307,7 @@ def get_items(query: schemas.ItemsQueryParams) -> flask.Response | tuple[flask.R
             _build_result_item(name, store_data_list) for name, store_data_list in items_by_name.items()
         ]
 
-        response = schemas.ItemsResponse(
+        response = price_watch.webapi.schemas.ItemsResponse(
             items=result_items,
             store_definitions=_get_store_definitions(target_config),
         )
@@ -306,7 +316,7 @@ def get_items(query: schemas.ItemsQueryParams) -> flask.Response | tuple[flask.R
 
     except Exception:
         logging.exception("Error getting items")
-        error = schemas.ErrorResponse(error="Internal server error")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
         return flask.jsonify(error.model_dump()), 500
 
 
@@ -331,7 +341,7 @@ def serve_thumb(filename: str) -> flask.Response:
 @blueprint.route("/api/items/<url_hash>/history")
 @validate()
 def get_item_history(
-    url_hash: str, query: schemas.HistoryQueryParams
+    url_hash: str, query: price_watch.webapi.schemas.HistoryQueryParams
 ) -> flask.Response | tuple[flask.Response, int]:
     """アイテム別価格履歴を取得."""
     try:
@@ -340,7 +350,7 @@ def get_item_history(
         item, hist = price_watch.history.get_item_history(url_hash, days)
 
         if item is None:
-            error = schemas.ErrorResponse(error="Item not found")
+            error = price_watch.webapi.schemas.ErrorResponse(error="Item not found")
             return flask.jsonify(error.model_dump()), 404
 
         # ポイント還元率を取得（キャッシュ使用）
@@ -350,10 +360,50 @@ def get_item_history(
         # 履歴を構築（effective_price 付き）
         formatted_history = _build_history_entries(hist, point_rate)
 
-        response = schemas.HistoryResponse(history=formatted_history)
+        response = price_watch.webapi.schemas.HistoryResponse(history=formatted_history)
         return flask.jsonify(response.model_dump())
 
     except Exception:
         logging.exception("Error getting item history")
-        error = schemas.ErrorResponse(error="Internal server error")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        return flask.jsonify(error.model_dump()), 500
+
+
+@blueprint.route("/api/events")
+def get_events() -> flask.Response | tuple[flask.Response, int]:
+    """最新イベント一覧を取得."""
+    try:
+        limit = flask.request.args.get("limit", 10, type=int)
+        # 上限を設定
+        if limit > 100:
+            limit = 100
+        if limit < 1:
+            limit = 1
+
+        events = price_watch.event.get_recent_events(limit)
+
+        # イベントにメッセージを追加
+        formatted_events = []
+        for evt in events:
+            formatted_event = {
+                "id": evt["id"],
+                "item_name": evt["item_name"],
+                "store": evt["store"],
+                "url": evt["url"],
+                "thumb_url": evt["thumb_url"],
+                "event_type": evt["event_type"],
+                "price": evt["price"],
+                "old_price": evt["old_price"],
+                "threshold_days": evt["threshold_days"],
+                "created_at": evt["created_at"],
+                "message": price_watch.event.format_event_message(evt),
+                "title": price_watch.event.format_event_title(evt["event_type"]),
+            }
+            formatted_events.append(formatted_event)
+
+        return flask.jsonify({"events": formatted_events})
+
+    except Exception:
+        logging.exception("Error getting events")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
         return flask.jsonify(error.model_dump()), 500

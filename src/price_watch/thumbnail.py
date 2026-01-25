@@ -119,7 +119,7 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
 
         # RGBA に変換（透過対応）
         if image.mode != "RGBA":
-            image = image.convert("RGBA")
+            image = image.convert("RGBA")  # type: ignore[assignment]
 
         # リサイズ（アスペクト比維持）
         image.thumbnail(THUMB_SIZE, PIL.Image.Resampling.LANCZOS)

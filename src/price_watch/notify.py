@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 import my_lib.notify.slack
 
+import price_watch.event
+
 if TYPE_CHECKING:
     import PIL.Image
 
@@ -87,7 +89,7 @@ def info(
         json=json.loads(message_json),
     )
 
-    return my_lib.notify.slack.send(slack_config, slack_config.info.channel.name, formatted)  # type: ignore[union-attr]
+    return my_lib.notify.slack.send(slack_config, slack_config.info.channel.name, formatted)  # type: ignore[union-attr, return-value]
 
 
 def error(
@@ -112,7 +114,7 @@ def error(
     )
 
     try:
-        return my_lib.notify.slack.send(slack_config, slack_config.error.channel.name, formatted)  # type: ignore[union-attr]
+        return my_lib.notify.slack.send(slack_config, slack_config.error.channel.name, formatted)  # type: ignore[union-attr, return-value]
     except Exception:
         logging.exception("Failed to send error notification")
         return None
@@ -147,7 +149,7 @@ def error_with_page(
 
     try:
         return my_lib.notify.slack.notify_error_with_page(
-            slack_config,
+            slack_config,  # type: ignore[arg-type]
             title,
             exception,
             screenshot,
@@ -156,3 +158,160 @@ def error_with_page(
     except Exception:
         logging.exception("Failed to send error notification with page")
         return None
+
+
+# --- イベント通知テンプレート ---
+
+EVENT_TMPL = """\
+[
+    {{
+        "type": "header",
+        "text": {{
+            "type": "plain_text",
+            "text": {title},
+            "emoji": true
+        }}
+    }},
+    {{
+        "type": "section",
+        "text": {{
+            "type": "mrkdwn",
+            "text": {message}
+        }},
+        "accessory": {{
+            "type": "image",
+            "image_url": {thumb_url},
+            "alt_text": {name}
+        }}
+    }}
+]
+"""
+
+EVENT_TMPL_NO_THUMB = """\
+[
+    {{
+        "type": "header",
+        "text": {{
+            "type": "plain_text",
+            "text": {title},
+            "emoji": true
+        }}
+    }},
+    {{
+        "type": "section",
+        "text": {{
+            "type": "mrkdwn",
+            "text": {message}
+        }}
+    }}
+]
+"""
+
+
+def event(
+    slack_config: my_lib.notify.slack.SlackConfigTypes,
+    event_result: price_watch.event.EventResult,
+    item: dict[str, Any],
+) -> str | None:
+    """イベントを通知.
+
+    Args:
+        slack_config: Slack 設定
+        event_result: イベント判定結果
+        item: アイテム情報
+
+    Returns:
+        スレッドのタイムスタンプ、または通知失敗時は None
+    """
+    if isinstance(slack_config, my_lib.notify.slack.SlackEmptyConfig):
+        return None
+
+    # イベントタイプに応じたアイコンを選択
+    icon = _get_event_icon(event_result.event_type)
+    title = f"{icon} {price_watch.event.format_event_title(event_result.event_type.value)}"
+
+    # メッセージを構築
+    message_text = _build_event_message(event_result, item)
+
+    # テンプレートを選択
+    thumb_url = item.get("thumb_url", "")
+    if thumb_url:
+        message_json = EVENT_TMPL.format(
+            title=json.dumps(title),
+            message=json.dumps(message_text),
+            thumb_url=json.dumps(thumb_url),
+            name=json.dumps(item["name"]),
+        )
+    else:
+        message_json = EVENT_TMPL_NO_THUMB.format(
+            title=json.dumps(title),
+            message=json.dumps(message_text),
+        )
+
+    formatted = my_lib.notify.slack.FormattedMessage(
+        text=f"{title}: {item['name']}",
+        json=json.loads(message_json),
+    )
+
+    try:
+        return my_lib.notify.slack.send(slack_config, slack_config.info.channel.name, formatted)  # type: ignore[union-attr, return-value]
+    except Exception:
+        logging.exception("Failed to send event notification")
+        return None
+
+
+def _get_event_icon(event_type: price_watch.event.EventType) -> str:
+    """イベントタイプに応じたアイコンを取得."""
+    match event_type:
+        case price_watch.event.EventType.BACK_IN_STOCK:
+            return ":package:"
+        case price_watch.event.EventType.CRAWL_FAILURE:
+            return ":warning:"
+        case price_watch.event.EventType.LOWEST_PRICE:
+            return ":fire:"
+        case price_watch.event.EventType.PRICE_DROP:
+            return ":chart_with_downwards_trend:"
+        case _:
+            return ":bell:"
+
+
+def _build_event_message(
+    event_result: price_watch.event.EventResult,
+    item: dict[str, Any],
+) -> str:
+    """イベント通知メッセージを構築."""
+    parts: list[str] = []
+
+    match event_result.event_type:
+        case price_watch.event.EventType.BACK_IN_STOCK:
+            parts.append("*在庫が復活しました*")
+            if event_result.price is not None:
+                parts.append(f"価格: *{event_result.price:,}円*")
+
+        case price_watch.event.EventType.CRAWL_FAILURE:
+            parts.append("*24時間以上クロールに失敗しています*")
+            parts.append("サイトの構造が変わった可能性があります")
+
+        case price_watch.event.EventType.LOWEST_PRICE:
+            if event_result.old_price is not None and event_result.price is not None:
+                drop = event_result.old_price - event_result.price
+                parts.append(f"*過去最安値を更新！*")
+                parts.append(f"{event_result.old_price:,}円 → *{event_result.price:,}円* (-{drop:,}円)")
+            else:
+                parts.append("*過去最安値を更新しました*")
+
+        case price_watch.event.EventType.PRICE_DROP:
+            if (
+                event_result.old_price is not None
+                and event_result.price is not None
+                and event_result.threshold_days is not None
+            ):
+                drop = event_result.old_price - event_result.price
+                parts.append(f"*{event_result.threshold_days}日間の最安値から値下げ*")
+                parts.append(f"{event_result.old_price:,}円 → *{event_result.price:,}円* (-{drop:,}円)")
+            else:
+                parts.append("*価格が下がりました*")
+
+    parts.append(f"<{item['url']}|詳細を見る>")
+
+    return "\n".join(parts)

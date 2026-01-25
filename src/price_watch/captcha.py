@@ -7,6 +7,7 @@ import os
 import tempfile
 import time
 import urllib.request
+from typing import TYPE_CHECKING
 
 import my_lib.selenium_util
 import pydub
@@ -15,6 +16,9 @@ import selenium.webdriver.common.keys
 import selenium.webdriver.support.expected_conditions
 import selenium.webdriver.support.wait
 import speech_recognition
+
+if TYPE_CHECKING:
+    from selenium.webdriver.remote.webdriver import WebDriver
 
 
 def _recog_audio(audio_url: str) -> str:
@@ -39,7 +43,7 @@ def _recog_audio(audio_url: str) -> str:
 
 
 def resolve_mp3(
-    driver: my_lib.selenium_util.WebDriverType,
+    driver: WebDriver,
     wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
 ) -> None:
     """reCAPTCHA を音声認識で解決."""
