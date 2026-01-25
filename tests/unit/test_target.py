@@ -4,14 +4,9 @@
 target.py のユニットテスト
 """
 
-import pytest
-
 from price_watch.target import (
-    ActionStep,
-    ActionType,
     CheckMethod,
     ItemDefinition,
-    PreloadConfig,
     ResolvedItem,
     StoreDefinition,
     TargetConfig,

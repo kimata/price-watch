@@ -19,10 +19,10 @@
 - Poetry から uv に移行
 - src/price_watch/ パッケージ構成に変更
 - CLAUDE.md 準拠のコーディング規約に基づきリファクタリング
-  - インポートスタイルを `import xxx` 形式に統一
-  - `datetime.now()` を `my_lib.time.now()` に変更
-  - 空チェックを bool 評価に変更
-  - if-elif チェーンを match 文に変換
+    - インポートスタイルを `import xxx` 形式に統一
+    - `datetime.now()` を `my_lib.time.now()` に変更
+    - 空チェックを bool 評価に変更
+    - if-elif チェーンを match 文に変換
 - pytest によるテストを追加
 - ruff による linter/formatter 設定
 - GitLab CI 設定を追加
@@ -37,9 +37,9 @@
 ### ✨ Added
 
 - 商品価格監視機能
-  - スクレイピングによる価格取得（ヨドバシ、Yahoo ショッピング、Switch Science、Ubiquiti Store USA、Lenovo）
-  - Amazon PA-API による価格取得
-  - サムネイル画像の自動取得
+    - スクレイピングによる価格取得（ヨドバシ、Yahoo ショッピング、Switch Science、Ubiquiti Store USA、Lenovo）
+    - Amazon PA-API による価格取得
+    - サムネイル画像の自動取得
 - 価格変動・在庫復活の Slack 通知
 - 最低価格更新時の通知機能
 - 価格履歴の SQLite 保存

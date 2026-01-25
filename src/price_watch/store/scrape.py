@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: S311
 """スクレイピングによる価格チェック."""
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ def _resolve_template(template: str, item: dict[str, Any]) -> str:
 def _process_action(
     config: AppConfig,
     driver: WebDriver,
-    wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
+    wait: selenium.webdriver.support.wait.WebDriverWait,
     item: dict[str, Any],
     action_list: list[dict[str, Any]],
     name: str = "action",
@@ -99,7 +100,7 @@ def _process_action(
 def _process_preload(
     config: AppConfig,
     driver: WebDriver,
-    wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
+    wait: selenium.webdriver.support.wait.WebDriverWait,
     item: dict[str, Any],
     loop: int,
 ) -> None:
@@ -138,8 +139,7 @@ def _check_impl(
     By = selenium.webdriver.common.by.By
     WebDriverWait = selenium.webdriver.support.wait.WebDriverWait
 
-    wait: WebDriverWaitType = WebDriverWait(driver, TIMEOUT_SEC)  # type: ignore[type-arg]
-
+    wait: WebDriverWaitType = WebDriverWait(driver, TIMEOUT_SEC)
     _process_preload(config, driver, wait, item, loop)
 
     logging.info("fetch: %s", item["url"])

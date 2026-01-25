@@ -207,7 +207,7 @@ def insert(item: dict[str, Any], *, crawl_status: int = 1) -> int:
 def last(url: str) -> dict[str, Any] | None:
     """最新の価格履歴を取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
         url_hash = _url_hash(url)
@@ -229,7 +229,7 @@ def last(url: str) -> dict[str, Any] | None:
 def lowest(url: str) -> dict[str, Any] | None:
     """最安値の価格履歴を取得（価格がNULLのレコードは除外）."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
         url_hash = _url_hash(url)
@@ -251,7 +251,7 @@ def lowest(url: str) -> dict[str, Any] | None:
 def get_all_items() -> list[dict[str, Any]]:
     """全アイテムを取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
         cur.execute(
@@ -270,7 +270,7 @@ def get_item_history(
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """アイテムの価格履歴を取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
         # アイテム情報を取得
@@ -316,7 +316,7 @@ def get_item_history(
 def get_item_stats(item_id: int, days: int | None = None) -> dict[str, Any]:
     """アイテムの統計情報を取得（価格がNULLのレコードは除外）."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
         if days and days > 0:
@@ -354,7 +354,7 @@ def get_item_stats(item_id: int, days: int | None = None) -> dict[str, Any]:
 def get_latest_price(item_id: int) -> dict[str, Any] | None:
     """アイテムの最新価格を取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
 
         cur.execute(
@@ -653,7 +653,7 @@ def get_item_id(url: str) -> int | None:
 def get_item_by_id(item_id: int) -> dict[str, Any] | None:
     """アイテム ID からアイテム情報を取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
         cur.execute(
             """
@@ -736,7 +736,7 @@ def has_successful_crawl_in_hours(item_id: int, hours: int) -> bool:
 def get_last_successful_crawl(item_id: int) -> dict[str, Any] | None:
     """最後に成功したクロールを取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
         cur.execute(
             """
@@ -793,7 +793,7 @@ def insert_event(
 def get_last_event(item_id: int, event_type: str) -> dict[str, Any] | None:
     """指定タイプの最新イベントを取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
         cur.execute(
             """
@@ -829,7 +829,7 @@ def has_event_in_hours(item_id: int, event_type: str, hours: int) -> bool:
 def get_recent_events(limit: int = 10) -> list[dict[str, Any]]:
     """最新のイベントを取得（アイテム情報付き）."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
-        conn.row_factory = _dict_factory
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
         cur.execute(
             """

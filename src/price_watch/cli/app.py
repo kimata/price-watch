@@ -28,13 +28,13 @@ import my_lib.logger
 import my_lib.notify.slack
 import my_lib.selenium_util
 
+import price_watch.amazon.paapi
 import price_watch.config
 import price_watch.const
 import price_watch.event
 import price_watch.history
 import price_watch.log_format
 import price_watch.notify
-import price_watch.amazon.paapi
 import price_watch.store.scrape
 import price_watch.target
 import price_watch.thumbnail
@@ -100,7 +100,7 @@ class AppRunner:
 
     def start_webui_server(self) -> None:
         """WebUI サーバーを起動."""
-        assert self.config is not None
+        assert self.config is not None  # noqa: S101
 
         static_dir_path = self.config.webapp.static_dir_path
 

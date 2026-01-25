@@ -17,11 +17,11 @@ import price_watch.webapi.schemas
 blueprint = flask.Blueprint("page", __name__)
 
 # target.yaml のキャッシュ（ファイル更新時刻が変わった場合のみ再読み込み）
-_target_config_cache: price_watch.file_cache.FileCache[
-    price_watch.target.TargetConfig
-] = price_watch.file_cache.FileCache(
-    price_watch.target.TARGET_FILE_PATH,
-    lambda path: price_watch.target.load(path),
+_target_config_cache: price_watch.file_cache.FileCache[price_watch.target.TargetConfig] = (
+    price_watch.file_cache.FileCache(
+        price_watch.target.TARGET_FILE_PATH,
+        lambda path: price_watch.target.load(path),
+    )
 )
 
 

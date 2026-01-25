@@ -6,12 +6,12 @@
 
 下記のようなオンラインショップで使えることを確認しています．(これら以外のショップにも使えます)
 
--   Amazon.co.jp
--   ヨドバシ.com
--   Yahoo ショッピング
--   Switch Science
--   Ubiquiti Store USA
--   Lenovo
+- Amazon.co.jp
+- ヨドバシ.com
+- Yahoo ショッピング
+- Switch Science
+- Ubiquiti Store USA
+- Lenovo
 
 ## 準備
 

@@ -181,16 +181,15 @@ def check_price_drop(
                     window.days,
                 )
 
-        if window.value is not None:
-            # 絶対値での判定
-            if drop_amount >= window.value:
-                should_notify = True
-                logging.info(
-                    "Price drop detected: %d yen drop (threshold: %d yen) in %d days",
-                    drop_amount,
-                    window.value,
-                    window.days,
-                )
+        # 絶対値での判定
+        if window.value is not None and drop_amount >= window.value:
+            should_notify = True
+            logging.info(
+                "Price drop detected: %d yen drop (threshold: %d yen) in %d days",
+                drop_amount,
+                window.value,
+                window.days,
+            )
 
         if should_notify:
             return EventResult(

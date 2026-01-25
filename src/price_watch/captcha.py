@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: PTH108, S310, SIM115
 """CAPTCHA 解決処理."""
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ def _recog_audio(audio_url: str) -> str:
         with recaptcha_audio as source:
             audio = recognizer.record(source)
 
-        return recognizer.recognize_google(audio, language="en-US")
+        return recognizer.recognize_google(audio, language="en-US")  # type: ignore[attr-defined]
     finally:
         os.unlink(mp3_file.name)
         os.unlink(wav_file.name)
@@ -44,7 +45,7 @@ def _recog_audio(audio_url: str) -> str:
 
 def resolve_mp3(
     driver: WebDriver,
-    wait: selenium.webdriver.support.wait.WebDriverWait,  # type: ignore[type-arg]
+    wait: selenium.webdriver.support.wait.WebDriverWait,
 ) -> None:
     """reCAPTCHA を音声認識で解決."""
     By = selenium.webdriver.common.by.By
@@ -67,6 +68,7 @@ def resolve_mp3(
     time.sleep(0.5)
 
     audio_url = driver.find_element(By.XPATH, '//audio[@id="audio-source"]').get_attribute("src")
+    assert audio_url is not None  # noqa: S101
 
     text = _recog_audio(audio_url)
 

@@ -120,6 +120,7 @@ def main() -> None:
 
     import price_watch.config
 
+    assert __doc__ is not None  # noqa: S101
     args = docopt.docopt(__doc__)
 
     config_file = pathlib.Path(args["-c"])

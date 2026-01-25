@@ -1,90 +1,96 @@
 store_list:
-  - name: amazon.co.jp
-    check_method: amazon-paapi
-    color: "#ff9900"  # Amazon オレンジ
+    - name: amazon.co.jp
+      check_method: amazon-paapi
+      color: "#ff9900" # Amazon オレンジ
 
-  - name: yodobashi.com
-    price_xpath: '//span[@id="js_scl_unitPrice"]'
-    thumb_img_xpath: '//img[@id="mainImg"]'
-    unavailable_xpath: '//p[contains(text(), "販売休止中")]'
-    color: "#e60012"  # ヨドバシ 赤
-    assumption:
-      point_rate: 10  # 10% 還元
+    - name: yodobashi.com
+      price_xpath: '//span[@id="js_scl_unitPrice"]'
+      thumb_img_xpath: '//img[@id="mainImg"]'
+      unavailable_xpath: '//p[contains(text(), "販売休止中")]'
+      color: "#e60012" # ヨドバシ 赤
+      assumption:
+          point_rate: 10 # 10% 還元
 
-  - name: shopping.yahoo.co.jp
-    price_xpath: '//span[@class="elPriceNumber"]'
-    thumb_img_xpath: '//img[@class="elPanelImage"][1]'
-    unavailable_xpath: '//button[contains(@class, "isDisabled")]/span[contains(text(), "在庫がありません")]'
-    color: "#ff0033"  # Yahoo 赤
-    assumption:
-      point_rate: 5  # 5% 還元
+    - name: shopping.yahoo.co.jp
+      price_xpath: '//span[@class="elPriceNumber"]'
+      thumb_img_xpath: '//img[@class="elPanelImage"][1]'
+      unavailable_xpath: '//button[contains(@class, "isDisabled")]/span[contains(text(), "在庫がありません")]'
+      color: "#ff0033" # Yahoo 赤
+      assumption:
+          point_rate: 5 # 5% 還元
 
-  - name: switch-science.com
-    price_xpath: '//div[contains(@class, "price__current")]/span[contains(@class, "money")]'
-    thumb_img_xpath: '//div[@class="product-gallery--image-background"]/img'
-    unavailable_xpath: '//div[@class="product-pricing"]/span[contains(@class, "soldout") and contains(text(), "売り切れ")]'
-    color: "#00a0e9"  # スイッチサイエンス 青
+    - name: switch-science.com
+      price_xpath: '//div[contains(@class, "price__current")]/span[contains(@class, "money")]'
+      thumb_img_xpath: '//div[@class="product-gallery--image-background"]/img'
+      unavailable_xpath: >-
+          //div[@class="product-pricing"]/span[contains(@class, "soldout")
+          and contains(text(), "売り切れ")]
+      color: "#00a0e9" # スイッチサイエンス 青
 
-  - name: store.ui.com
-    price_xpath: '(//div[contains(@class, "comProduct__price")]/span[1] | //div[contains(@class, "highlight")]//span[contains(@class, "relatedProducts__item__data__price")][.//span])[1]'
-    thumb_img_xpath: '//li[@class="flex-active-slide"][1]//img'
-    price_unit: ドル
-    color: "#0559c9"  # Ubiquiti 青
-    action:
-      - type: click
-        xpath: '//a[@id="headerLoginLink"]'
-      - type: input
-        xpath: '//input[@name="username"]'
-        value: XXXXXX # ユーザ名
-      - type: input
-        xpath: '//input[@name="password"]'
-        value: XXXXXX # パスワード
-      - type: click
-        xpath: '//button[@type="submit"]'
-      - type: sixdigit
-      - type: click
-        xpath: '//button[contains(@title, "Close")]'
-    unavailable_xpath: '//span[contains(text(), "Sold Out")]'
+    - name: store.ui.com
+      price_xpath: >-
+          (//div[contains(@class, "comProduct__price")]/span[1] |
+          //div[contains(@class, "highlight")]//span[contains(@class,
+          "relatedProducts__item__data__price")][.//span])[1]
+      thumb_img_xpath: '//li[@class="flex-active-slide"][1]//img'
+      price_unit: ドル
+      color: "#0559c9" # Ubiquiti 青
+      action:
+          - type: click
+            xpath: '//a[@id="headerLoginLink"]'
+          - type: input
+            xpath: '//input[@name="username"]'
+            value: XXXXXX # ユーザ名
+          - type: input
+            xpath: '//input[@name="password"]'
+            value: XXXXXX # パスワード
+          - type: click
+            xpath: '//button[@type="submit"]'
+          - type: sixdigit
+          - type: click
+            xpath: '//button[contains(@title, "Close")]'
+      unavailable_xpath: '//span[contains(text(), "Sold Out")]'
 
-  - name: lenovo.com/jp
-    color: "#e2231a"  # Lenovo 赤
-    action:
-      - type: input
-        xpath: '//input[@class="input-passcode"]'
-        value: XXXXXX # パスコード
-      - type: recaptcha
-        xpath: '//div[@class="g-recaptcha"]'
-      - type: click
-        xpath: '//div[@class="login-sign-in-button"]'
-    price_xpath: '//span[@class="final-price"]'
-    thumb_img_xpath: '//div[@class="image-pic"]//img[@class="srcImg"]'
+    - name: lenovo.com/jp
+      color: "#e2231a" # Lenovo 赤
+      action:
+          - type: input
+            xpath: '//input[@class="input-passcode"]'
+            value: XXXXXX # パスコード
+          - type: recaptcha
+            xpath: '//div[@class="g-recaptcha"]'
+          - type: click
+            xpath: '//div[@class="login-sign-in-button"]'
+      price_xpath: '//span[@class="final-price"]'
+      thumb_img_xpath: '//div[@class="image-pic"]//img[@class="srcImg"]'
 
 item_list:
-  - name: Connect Display 13
-    store: store.ui.com
-    url: https://store.ui.com/collections/early-access/products/unifi-connect-display-13-ea
+    - name: Connect Display 13
+      store: store.ui.com
+      url: https://store.ui.com/collections/early-access/products/unifi-connect-display-13-ea
 
-  - name: BOOX Mira Pro
-    store: shopping.yahoo.co.jp
-    url: https://store.shopping.yahoo.co.jp/skt/boox-mirapro.html
+    - name: BOOX Mira Pro
+      store: shopping.yahoo.co.jp
+      url: https://store.shopping.yahoo.co.jp/skt/boox-mirapro.html
 
-  - name: ThinkPad X1 Carbon (学生モデル)
-    store: lenovo.com/jp
-    price_xpath:  '//p[@class="present"]'
-    url: https://www.lenovo.com/jp/edu/ja/configurator/cto/index.html?mainCode=21CBCTO1WWJP1&groupId=jpeducation
+    - name: ThinkPad X1 Carbon (学生モデル)
+      store: lenovo.com/jp
+      price_xpath: '//p[@class="present"]'
+      url: https://www.lenovo.com/jp/edu/ja/configurator/cto/index.html?mainCode=21CBCTO1WWJP1&groupId=jpeducation
 
-  - name: ThinkPad X1 Carbon
-    store: lenovo.com/jp
-    url: https://www.lenovo.com/jp/ja/p/laptops/thinkpad/thinkpadx1/thinkpad-x1-carbon-gen-10-(14-inch-intel)/21cccto1wwjp4
+    - name: ThinkPad X1 Carbon
+      store: lenovo.com/jp
+      # yamllint disable-line rule:line-length
+      url: https://www.lenovo.com/jp/ja/p/laptops/thinkpad/thinkpadx1/thinkpad-x1-carbon-gen-10-(14-inch-intel)/21cccto1wwjp4
 
-  - name: Fractal Design North Charcoal Black TG Dark
-    store: amazon.co.jp
-    asin: B0BPBXPCT5
+    - name: Fractal Design North Charcoal Black TG Dark
+      store: amazon.co.jp
+      asin: B0BPBXPCT5
 
-  - name: Fractal Design North Charcoal Black TG Dark (ヨドバシ)
-    store: yodobashi.com
-    url: https://www.yodobashi.com/product/100000001007535004/
+    - name: Fractal Design North Charcoal Black TG Dark (ヨドバシ)
+      store: yodobashi.com
+      url: https://www.yodobashi.com/product/100000001007535004/
 
-  - name: Raspberry Pi Zero 2 W
-    store: switch-science.com
-    url: https://www.switch-science.com/products/7600
+    - name: Raspberry Pi Zero 2 W
+      store: switch-science.com
+      url: https://www.switch-science.com/products/7600

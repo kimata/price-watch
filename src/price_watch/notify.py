@@ -295,7 +295,7 @@ def _build_event_message(
         case price_watch.event.EventType.LOWEST_PRICE:
             if event_result.old_price is not None and event_result.price is not None:
                 drop = event_result.old_price - event_result.price
-                parts.append(f"*過去最安値を更新！*")
+                parts.append("*過去最安値を更新！*")
                 parts.append(f"{event_result.old_price:,}円 → *{event_result.price:,}円* (-{drop:,}円)")
             else:
                 parts.append("*過去最安値を更新しました*")

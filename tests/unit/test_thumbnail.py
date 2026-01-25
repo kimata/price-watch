@@ -4,8 +4,6 @@
 thumbnail.py のユニットテスト
 """
 
-import pytest
-
 from price_watch.thumbnail import (
     get_thumb_filename,
     get_thumb_url,
