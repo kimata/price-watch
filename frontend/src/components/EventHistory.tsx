@@ -74,7 +74,7 @@ export default function EventHistory({ events }: EventHistoryProps) {
                         return (
                             <tr key={event.id} className="border-b border-gray-100 hover:bg-gray-50">
                                 <td className="py-2 px-3 text-gray-600 whitespace-nowrap">
-                                    {dayjs(event.created_at).format("YYYY/M/D H:mm")}
+                                    {dayjs(event.created_at).format("YYYY年M月D日 H:mm")}
                                 </td>
                                 <td className="py-2 px-3 text-gray-700">
                                     {event.store}

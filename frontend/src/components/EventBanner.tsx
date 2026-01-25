@@ -162,21 +162,21 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
                             href={event.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className={`flex-shrink-0 w-80 p-4 rounded-xl border-2 ${config.bgColor} ${config.borderColor} hover:shadow-lg hover:scale-[1.02] transition-all duration-200 cursor-pointer`}
+                            className={`flex-shrink-0 w-[480px] p-3 rounded-xl border-2 ${config.bgColor} ${config.borderColor} hover:shadow-lg hover:scale-[1.01] transition-all duration-200 cursor-pointer`}
                         >
-                            <div className="flex items-start gap-3">
+                            <div className="flex items-center gap-3">
                                 {/* サムネイル */}
                                 <div className="relative flex-shrink-0">
                                     {event.thumb_url ? (
                                         <img
                                             src={event.thumb_url}
                                             alt={event.item_name}
-                                            className="w-14 h-14 object-cover rounded-lg"
+                                            className="w-12 h-12 object-cover rounded-lg"
                                         />
                                     ) : (
-                                        <div className="w-14 h-14 bg-gray-200 rounded-lg flex items-center justify-center">
+                                        <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
                                             <svg
-                                                className="w-7 h-7 text-gray-400"
+                                                className="w-6 h-6 text-gray-400"
                                                 fill="none"
                                                 stroke="currentColor"
                                                 viewBox="0 0 24 24"
@@ -191,60 +191,49 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
                                         </div>
                                     )}
                                     {/* 絵文字バッジ */}
-                                    <span className="absolute -top-1 -right-1 text-lg drop-shadow-sm">
+                                    <span className="absolute -top-1 -right-1 text-base drop-shadow-sm">
                                         {config.emoji}
                                     </span>
                                 </div>
 
-                                {/* コンテンツ */}
-                                <div className="flex-1 min-w-0">
-                                    {/* タイトル行 */}
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span
-                                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${config.bgColor} ${config.textColor} border ${config.borderColor}`}
-                                        >
-                                            {config.label}
-                                        </span>
-                                        <span className="text-xs text-gray-400 ml-auto flex-shrink-0">
-                                            {formatTimeAgo(event.created_at)}
-                                        </span>
-                                    </div>
+                                {/* イベントラベル */}
+                                <span
+                                    className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${config.bgColor} ${config.textColor} border ${config.borderColor}`}
+                                >
+                                    {config.label}
+                                </span>
 
-                                    {/* 商品名 */}
-                                    <p className="text-sm text-gray-800 font-medium truncate">
-                                        {event.item_name}
-                                    </p>
+                                {/* 商品名 */}
+                                <p className="flex-1 text-sm text-gray-800 font-medium truncate min-w-0">
+                                    {event.item_name}
+                                </p>
 
-                                    {/* 価格情報 */}
-                                    {event.price !== null && (
-                                        <div className="flex items-center gap-2 mt-1">
-                                            {event.old_price !== null && (
-                                                <>
-                                                    <span className="text-xs text-gray-400 line-through">
-                                                        {formatPrice(event.old_price)}
-                                                    </span>
-                                                    <span className="text-gray-400">→</span>
-                                                </>
-                                            )}
-                                            <span className={`text-base font-bold ${config.textColor}`}>
-                                                {formatPrice(event.price)}
-                                            </span>
-                                            {event.old_price !== null && event.old_price > event.price && (
-                                                <span className="text-xs text-rose-500 font-medium">
-                                                    -{((event.old_price - event.price) / event.old_price * 100).toFixed(0)}%
+                                {/* 価格情報 */}
+                                {event.price !== null && (
+                                    <div className="flex-shrink-0 flex items-center gap-1">
+                                        {event.old_price !== null && (
+                                            <>
+                                                <span className="text-xs text-gray-400 line-through">
+                                                    {formatPrice(event.old_price)}
                                                 </span>
-                                            )}
-                                        </div>
-                                    )}
+                                                <span className="text-gray-400 text-xs">→</span>
+                                            </>
+                                        )}
+                                        <span className={`text-sm font-bold ${config.textColor}`}>
+                                            {formatPrice(event.price)}
+                                        </span>
+                                        {event.old_price !== null && event.old_price > event.price && (
+                                            <span className="text-xs text-rose-500 font-medium">
+                                                -{((event.old_price - event.price) / event.old_price * 100).toFixed(0)}%
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
 
-                                    {/* ストア名 */}
-                                    <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                        </svg>
-                                        {event.store}
-                                    </p>
-                                </div>
+                                {/* 時間 */}
+                                <span className="flex-shrink-0 text-xs text-gray-400">
+                                    {formatTimeAgo(event.created_at)}
+                                </span>
                             </div>
                         </a>
                     );
