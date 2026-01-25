@@ -36,6 +36,11 @@ def _url_hash(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:12]
 
 
+def url_hash(url: str) -> str:
+    """URLからハッシュを生成（公開API）."""
+    return _url_hash(url)
+
+
 def _get_or_create_item(
     cur: sqlite3.Cursor, url: str, name: str, store: str, thumb_url: str | None = None
 ) -> int:
@@ -76,7 +81,13 @@ def _get_or_create_item(
 
 
 def insert(item: dict[str, Any]) -> None:
-    """価格履歴を挿入."""
+    """価格履歴を挿入または更新.
+
+    1時間に1回の記録を保持する。同一時間帯で複数回取得した場合:
+    - より安い価格で更新（価格がある場合のみ）
+    - 収集時刻は常に最新に更新
+    - 価格が取得できない場合（在庫なし等）も stock=0, price=NULL で記録
+    """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         cur = conn.cursor()
 
@@ -88,13 +99,79 @@ def insert(item: dict[str, Any]) -> None:
             item.get("thumb_url"),
         )
 
+        now = my_lib.time.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        # 現在時刻の「時」の開始時刻（例: 14:35 → 14:00:00）
+        hour_start = now.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+        new_price = item.get("price")  # None の場合がある
+        new_stock = item.get("stock", 0)
+
+        # 同一時間帯の既存レコードを確認
         cur.execute(
             """
-            INSERT INTO price_history (item_id, price, stock)
-            VALUES (?, ?, ?)
+            SELECT id, price, stock
+            FROM price_history
+            WHERE item_id = ?
+              AND time >= ?
+            ORDER BY time DESC
+            LIMIT 1
             """,
-            (item_id, item["price"], item["stock"]),
+            (item_id, hour_start),
         )
+        existing = cur.fetchone()
+
+        if existing:
+            existing_id, existing_price, existing_stock = existing
+
+            # 更新ロジック
+            should_update_price = False
+            final_price = new_price
+
+            if new_price is not None and existing_price is not None:
+                # 両方価格がある場合: より安い価格を採用（在庫ありの場合のみ）
+                if new_stock == 1:
+                    final_price = min(new_price, existing_price)
+                    should_update_price = new_price < existing_price
+                else:
+                    should_update_price = True
+            elif new_price is not None and existing_price is None:
+                # 新しく価格が取得できた場合
+                should_update_price = True
+            elif new_price is None and existing_price is not None:
+                # 価格が取得できなくなった場合: 既存の価格を維持
+                final_price = existing_price
+                should_update_price = False
+
+            # 在庫状態が変わった場合、または価格が更新される場合
+            if should_update_price or new_stock != existing_stock:
+                cur.execute(
+                    """
+                    UPDATE price_history
+                    SET price = ?, stock = ?, time = ?
+                    WHERE id = ?
+                    """,
+                    (final_price, new_stock, now_str, existing_id),
+                )
+            else:
+                # 時刻だけは更新
+                cur.execute(
+                    """
+                    UPDATE price_history
+                    SET time = ?
+                    WHERE id = ?
+                    """,
+                    (now_str, existing_id),
+                )
+        else:
+            # 新規挿入（価格が None でも挿入）
+            cur.execute(
+                """
+                INSERT INTO price_history (item_id, price, stock, time)
+                VALUES (?, ?, ?, ?)
+                """,
+                (item_id, new_price, new_stock, now_str),
+            )
 
 
 def last(url: str) -> dict[str, Any] | None:
@@ -120,7 +197,7 @@ def last(url: str) -> dict[str, Any] | None:
 
 
 def lowest(url: str) -> dict[str, Any] | None:
-    """最安値の価格履歴を取得."""
+    """最安値の価格履歴を取得（価格がNULLのレコードは除外）."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         conn.row_factory = _dict_factory
         cur = conn.cursor()
@@ -131,7 +208,7 @@ def lowest(url: str) -> dict[str, Any] | None:
             SELECT i.url, i.name, i.store, i.thumb_url, ph.price, ph.stock, ph.time
             FROM items i
             JOIN price_history ph ON i.id = ph.item_id
-            WHERE i.url_hash = ?
+            WHERE i.url_hash = ? AND ph.price IS NOT NULL
             ORDER BY ph.price ASC
             LIMIT 1
             """,
@@ -207,7 +284,7 @@ def get_item_history(
 
 
 def get_item_stats(item_id: int, days: int | None = None) -> dict[str, Any]:
-    """アイテムの統計情報を取得."""
+    """アイテムの統計情報を取得（価格がNULLのレコードは除外）."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         conn.row_factory = _dict_factory
         cur = conn.cursor()
@@ -222,6 +299,7 @@ def get_item_stats(item_id: int, days: int | None = None) -> dict[str, Any]:
                 FROM price_history
                 WHERE item_id = ?
                   AND time >= datetime('now', 'localtime', ?)
+                  AND price IS NOT NULL
                 """,
                 (item_id, f"-{days} days"),
             )
@@ -234,6 +312,7 @@ def get_item_stats(item_id: int, days: int | None = None) -> dict[str, Any]:
                     COUNT(*) as data_count
                 FROM price_history
                 WHERE item_id = ?
+                  AND price IS NOT NULL
                 """,
                 (item_id,),
             )
@@ -295,12 +374,13 @@ def init(data_path: pathlib.Path | None = None) -> None:
         )
 
         # price_history テーブル
+        # price は NULL を許可（在庫なしで価格が取得できない場合）
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS price_history(
                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
                 item_id INTEGER NOT NULL,
-                price   INTEGER NOT NULL,
+                price   INTEGER,
                 stock   INTEGER NOT NULL,
                 time    TIMESTAMP DEFAULT(DATETIME('now','localtime')),
                 FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
@@ -312,6 +392,9 @@ def init(data_path: pathlib.Path | None = None) -> None:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_items_url_hash ON items(url_hash)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
         cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
+
+    # 既存DBのマイグレーション（price カラムを NULL 許可に変更）
+    migrate_to_nullable_price()
 
 
 def migrate_from_old_schema() -> None:
@@ -411,11 +494,78 @@ def migrate_from_old_schema() -> None:
     logging.info("Migration completed successfully")
 
 
+def migrate_to_nullable_price() -> None:
+    """price カラムを NULL 許可に変更するマイグレーション.
+
+    SQLite は ALTER COLUMN をサポートしていないため、
+    テーブルを再作成してデータを移行する。
+    """
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+
+        # テーブルが存在するか確認
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='price_history'")
+        if not cur.fetchone():
+            logging.info("No price_history table found")
+            return
+
+        # 現在のスキーマを確認（price カラムが NOT NULL かどうか）
+        cur.execute("PRAGMA table_info(price_history)")
+        columns = cur.fetchall()
+        price_col = next((col for col in columns if col[1] == "price"), None)
+
+        if price_col is None:
+            logging.info("price column not found")
+            return
+
+        # notnull フラグ: 1 = NOT NULL, 0 = NULL 許可
+        if price_col[3] == 0:
+            logging.info("price column already allows NULL")
+            return
+
+        logging.info("Starting migration to allow NULL in price column...")
+
+        # 新しいテーブルを作成（price に NULL を許可）
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS price_history_new(
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                price   INTEGER,
+                stock   INTEGER NOT NULL,
+                time    TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+            )
+            """
+        )
+
+        # データを移行
+        cur.execute(
+            """
+            INSERT INTO price_history_new (id, item_id, price, stock, time)
+            SELECT id, item_id, price, stock, time FROM price_history
+            """
+        )
+
+        # 旧テーブルを削除し、新テーブルをリネーム
+        cur.execute("DROP TABLE price_history")
+        cur.execute("ALTER TABLE price_history_new RENAME TO price_history")
+
+        # インデックスを再作成
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
+
+    logging.info("Migration to nullable price completed successfully")
+
+
 if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] == "migrate":
         logging.basicConfig(level=logging.INFO)
         migrate_from_old_schema()
+    elif len(sys.argv) > 1 and sys.argv[1] == "migrate-nullable-price":
+        logging.basicConfig(level=logging.INFO)
+        migrate_to_nullable_price()
     else:
         init()

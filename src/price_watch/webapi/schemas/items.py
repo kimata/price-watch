@@ -38,11 +38,12 @@ class PriceHistoryPoint(BaseSchema):
     """Price history entry.
 
     Matches frontend's PriceHistoryPoint interface.
+    price と effective_price は在庫なし時に None になる場合がある。
     """
 
     time: str
-    price: int
-    effective_price: int
+    price: int | None
+    effective_price: int | None
     stock: int
 
 
@@ -50,13 +51,14 @@ class StoreEntry(BaseSchema):
     """Store information for an item.
 
     Matches frontend's StoreEntry interface.
+    current_price と effective_price は在庫なし時に None になる場合がある。
     """
 
     url_hash: str
     store: str
     url: str
-    current_price: int
-    effective_price: int
+    current_price: int | None
+    effective_price: int | None
     point_rate: float
     lowest_price: int | None
     highest_price: int | None
@@ -69,23 +71,25 @@ class ResultItem(BaseSchema):
     """Item result with multiple stores.
 
     Matches frontend's Item interface.
+    best_effective_price は全ストア在庫なし時に None になる場合がある。
     """
 
     name: str
     thumb_url: str | None
     stores: list[StoreEntry]
     best_store: str
-    best_effective_price: int
+    best_effective_price: int | None
 
 
 class StoreDefinition(BaseSchema):
-    """Store definition with point rate.
+    """Store definition with point rate and color.
 
     Matches frontend's StoreDefinition interface.
     """
 
     name: str
     point_rate: float
+    color: str | None = None
 
 
 class ItemsResponse(BaseSchema):
