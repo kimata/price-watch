@@ -112,13 +112,13 @@ class TestWebuiE2E:
         if len(items_data.get("items", [])) == 0:
             pytest.skip("No items available for history test")
 
-        # 最初のアイテムの最初のストアの url_hash を取得
+        # 最初のアイテムの最初のストアの item_key を取得
         first_item = items_data["items"][0]
         if "stores" not in first_item or len(first_item["stores"]) == 0:
             pytest.skip("No stores available for history test")
 
-        url_hash = first_item["stores"][0]["url_hash"]
-        response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items/{url_hash}/history")
+        item_key = first_item["stores"][0]["item_key"]
+        response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items/{item_key}/history")
 
         assert response.ok
         data = response.json()
@@ -144,7 +144,7 @@ class TestWebuiE2E:
             # ストアエントリの構造を確認
             if len(item["stores"]) > 0:
                 store = item["stores"][0]
-                assert "url_hash" in store
+                assert "item_key" in store
                 assert "store" in store
                 assert "current_price" in store
                 assert "effective_price" in store
@@ -236,13 +236,13 @@ class TestWebuiE2E:
         if len(items_data.get("items", [])) == 0:
             pytest.skip("No items available for events test")
 
-        # 最初のアイテムの最初のストアの url_hash を取得
+        # 最初のアイテムの最初のストアの item_key を取得
         first_item = items_data["items"][0]
         if "stores" not in first_item or len(first_item["stores"]) == 0:
             pytest.skip("No stores available for events test")
 
-        url_hash = first_item["stores"][0]["url_hash"]
-        response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items/{url_hash}/events")
+        item_key = first_item["stores"][0]["item_key"]
+        response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items/{item_key}/events")
 
         assert response.ok
         data = response.json()
