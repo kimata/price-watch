@@ -63,7 +63,7 @@ class TestHistoryInsert:
         price_watch.history.insert(sample_item)
 
         items = price_watch.history.get_all_items()
-        _, history = price_watch.history.get_item_history(items[0]["url_hash"])
+        _, history = price_watch.history.get_item_history(items[0]["item_key"])
 
         assert len(history) == 1
         assert history[0]["price"] == sample_item["price"]
@@ -87,7 +87,7 @@ class TestHistoryInsert:
         items = price_watch.history.get_all_items()
         assert len(items) == 1  # アイテムは1つ
 
-        _, history = price_watch.history.get_item_history(items[0]["url_hash"])
+        _, history = price_watch.history.get_item_history(items[0]["item_key"])
         assert len(history) == 2  # 履歴は2つ
 
 

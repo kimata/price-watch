@@ -28,7 +28,7 @@ class TestItemsEndpoint:
     def test_get_items_empty(self, client: flask.testing.FlaskClient) -> None:
         """アイテムがない場合は空のリストを返す"""
         with (
-            unittest.mock.patch("price_watch.webapi.page._get_target_urls", return_value=set()),
+            unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
             unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items")
@@ -54,7 +54,7 @@ class TestItemsEndpoint:
 
         # target.yaml がない状態でテスト（全アイテム表示）
         with (
-            unittest.mock.patch("price_watch.webapi.page._get_target_urls", return_value=set()),
+            unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
             unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items")
@@ -85,7 +85,7 @@ class TestItemsEndpoint:
         price_watch.history.insert(sample_item)
 
         with (
-            unittest.mock.patch("price_watch.webapi.page._get_target_urls", return_value=set()),
+            unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
             unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items?days=30")
@@ -105,7 +105,7 @@ class TestItemsEndpoint:
         price_watch.history.insert(sample_item)
 
         with (
-            unittest.mock.patch("price_watch.webapi.page._get_target_urls", return_value=set()),
+            unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
             unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items?days=all")
@@ -126,7 +126,7 @@ class TestItemsEndpoint:
             price_watch.history.insert(item)
 
         with (
-            unittest.mock.patch("price_watch.webapi.page._get_target_urls", return_value=set()),
+            unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
             unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items")
@@ -147,7 +147,7 @@ class TestItemsEndpoint:
 
             # stores の各要素の構造を検証
             for store in item["stores"]:
-                assert "url_hash" in store
+                assert "item_key" in store
                 assert "store" in store
                 assert "url" in store
                 assert "current_price" in store
@@ -161,7 +161,7 @@ class TestItemsEndpoint:
 
 
 class TestItemHistoryEndpoint:
-    """GET /price/api/items/<url_hash>/history エンドポイントのテスト"""
+    """GET /price/api/items/<item_key>/history エンドポイントのテスト"""
 
     def test_get_history_not_found(self, client: flask.testing.FlaskClient) -> None:
         """存在しないアイテムの場合は 404 を返す"""
@@ -184,11 +184,11 @@ class TestItemHistoryEndpoint:
         # データを挿入
         price_watch.history.insert(sample_item)
 
-        # url_hash を取得
+        # item_key を取得
         all_items = price_watch.history.get_all_items()
-        url_hash = all_items[0]["url_hash"]
+        item_key = all_items[0]["item_key"]
 
-        response = client.get(f"/price/api/items/{url_hash}/history")
+        response = client.get(f"/price/api/items/{item_key}/history")
 
         assert response.status_code == 200
 
@@ -229,12 +229,12 @@ class TestItemHistoryEndpoint:
             modified_item["price"] = 800
             price_watch.history.insert(modified_item)
 
-        # url_hash を取得
+        # item_key を取得
         all_items = price_watch.history.get_all_items()
-        url_hash = all_items[0]["url_hash"]
+        item_key = all_items[0]["item_key"]
 
         # days=all で全期間を指定（デフォルトは30日）
-        response = client.get(f"/price/api/items/{url_hash}/history?days=all")
+        response = client.get(f"/price/api/items/{item_key}/history?days=all")
 
         assert response.status_code == 200
 
@@ -252,9 +252,9 @@ class TestItemHistoryEndpoint:
         price_watch.history.insert(sample_item)
 
         all_items = price_watch.history.get_all_items()
-        url_hash = all_items[0]["url_hash"]
+        item_key = all_items[0]["item_key"]
 
-        response = client.get(f"/price/api/items/{url_hash}/history?days=30")
+        response = client.get(f"/price/api/items/{item_key}/history?days=30")
 
         assert response.status_code == 200
 
@@ -295,7 +295,7 @@ class TestPydanticValidation:
         """ResultItem の検証"""
         store = schemas.StoreEntry.model_validate(
             {
-                "url_hash": "abc123",
+                "item_key": "abc123",
                 "store": "test-store.com",
                 "url": "https://test-store.com/item/1",
                 "current_price": 1000,
