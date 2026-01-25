@@ -1,94 +1,16 @@
-import {
-    CheckCircleIcon,
-    XCircleIcon,
-    ClockIcon,
-    ArrowTopRightOnSquareIcon,
-    BuildingStorefrontIcon,
-} from "@heroicons/react/24/outline";
+import { ClockIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
-import clsx from "clsx";
-import type { Item, StoreEntry, StoreDefinition } from "../types";
+import type { Item, StoreDefinition } from "../types";
 import PriceChart from "./PriceChart";
+import StoreRow from "./StoreRow";
 
 interface ItemCardProps {
     item: Item;
     storeDefinitions: StoreDefinition[];
+    onClick?: (item: Item) => void;
 }
 
-function StoreRow({
-    store,
-    isBest,
-    bestPrice,
-}: {
-    store: StoreEntry;
-    isBest: boolean;
-    bestPrice: number | null;
-}) {
-    const isInStock = store.stock > 0;
-    const hasPrice = store.effective_price !== null;
-    const priceDiff = hasPrice && bestPrice !== null ? store.effective_price! - bestPrice : 0;
-
-    return (
-        <div
-            className={clsx(
-                "flex items-center justify-between py-2 px-3 rounded-md",
-                isBest && hasPrice ? "bg-blue-50 border border-blue-200" : "bg-gray-50"
-            )}
-        >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-                <a
-                    href={store.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-gray-700 hover:text-blue-600 truncate flex items-center gap-1"
-                >
-                    <BuildingStorefrontIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="truncate">{store.store}</span>
-                    <ArrowTopRightOnSquareIcon className="h-3 w-3 flex-shrink-0" />
-                </a>
-                {isBest && hasPrice && (
-                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded whitespace-nowrap">
-                        最安
-                    </span>
-                )}
-            </div>
-            <div className="flex items-center gap-2">
-                <div className="text-right min-w-[5.5rem]">
-                    {hasPrice ? (
-                        <>
-                            <div className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                                {store.effective_price!.toLocaleString()}円
-                            </div>
-                            {(priceDiff > 0 || store.point_rate > 0) && (
-                                <div className="text-xs text-gray-400 whitespace-nowrap">
-                                    {priceDiff > 0 && <span>+{priceDiff.toLocaleString()}円</span>}
-                                    {priceDiff > 0 && store.point_rate > 0 && <span> / </span>}
-                                    {store.point_rate > 0 && <span>{store.point_rate}%還元考慮</span>}
-                                </div>
-                            )}
-                        </>
-                    ) : (
-                        <div className="text-sm text-gray-400 whitespace-nowrap">---</div>
-                    )}
-                </div>
-                <span
-                    className={clsx(
-                        "flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full flex-shrink-0",
-                        isInStock ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                    )}
-                >
-                    {isInStock ? (
-                        <CheckCircleIcon className="h-3 w-3" />
-                    ) : (
-                        <XCircleIcon className="h-3 w-3" />
-                    )}
-                </span>
-            </div>
-        </div>
-    );
-}
-
-export default function ItemCard({ item, storeDefinitions }: ItemCardProps) {
+export default function ItemCard({ item, storeDefinitions, onClick }: ItemCardProps) {
     // ストアを実質価格の安い順にソート（価格nullのものは後ろに）
     const sortedStores = [...item.stores].sort((a, b) => {
         const aPrice = a.effective_price;
@@ -110,8 +32,17 @@ export default function ItemCard({ item, storeDefinitions }: ItemCardProps) {
     // 有効な価格があるかどうか（null でなければ価格あり、0円も有効な価格）
     const hasValidPrice = item.best_effective_price !== null;
 
+    const handleClick = () => {
+        if (onClick) {
+            onClick(item);
+        }
+    };
+
     return (
-        <div className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col h-full">
+        <div
+            className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col h-full cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all duration-200"
+            onClick={handleClick}
+        >
             <div className="p-4">
                 <div className="flex gap-4">
                     {item.thumb_url ? (

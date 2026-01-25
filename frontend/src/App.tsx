@@ -3,6 +3,7 @@ import Header from "./components/Header";
 import EventBanner from "./components/EventBanner";
 import PeriodSelector from "./components/PeriodSelector";
 import ItemCard from "./components/ItemCard";
+import ItemDetailPage from "./components/ItemDetailPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Footer from "./components/Footer";
 import { fetchItems } from "./services/apiService";
@@ -14,6 +15,7 @@ export default function App() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState<Period>("30");
+    const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
     const loadItems = useCallback(async () => {
         setLoading(true);
@@ -38,6 +40,30 @@ export default function App() {
         setPeriod(newPeriod);
     };
 
+    const handleItemClick = (item: Item) => {
+        setSelectedItem(item);
+        // ページトップにスクロール
+        window.scrollTo(0, 0);
+    };
+
+    const handleBackToList = () => {
+        setSelectedItem(null);
+    };
+
+    // 詳細ページを表示
+    if (selectedItem) {
+        return (
+            <ItemDetailPage
+                item={selectedItem}
+                storeDefinitions={storeDefinitions}
+                period={period}
+                onBack={handleBackToList}
+                onPeriodChange={handlePeriodChange}
+            />
+        );
+    }
+
+    // 一覧ページを表示
     return (
         <div className="min-h-screen bg-gray-100">
             <Header />
@@ -65,7 +91,12 @@ export default function App() {
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {items.map((item) => (
-                            <ItemCard key={item.name} item={item} storeDefinitions={storeDefinitions} />
+                            <ItemCard
+                                key={item.name}
+                                item={item}
+                                storeDefinitions={storeDefinitions}
+                                onClick={handleItemClick}
+                            />
                         ))}
                     </div>
                 )}

@@ -863,6 +863,45 @@ def mark_event_notified(event_id: int) -> None:
         cur.execute("UPDATE events SET notified = 1 WHERE id = ?", (event_id,))
 
 
+def get_item_events(url_hash: str, limit: int = 50) -> list[dict[str, Any]]:
+    """指定アイテムのイベント履歴を取得（アイテム情報付き）.
+
+    Args:
+        url_hash: アイテムの URL ハッシュ
+        limit: 取得件数上限
+
+    Returns:
+        イベントのリスト（新しい順）
+    """
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        conn.row_factory = _dict_factory  # type: ignore[assignment]
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                e.id,
+                e.item_id,
+                e.event_type,
+                e.price,
+                e.old_price,
+                e.threshold_days,
+                e.created_at,
+                e.notified,
+                i.name as item_name,
+                i.store,
+                i.url,
+                i.thumb_url
+            FROM events e
+            JOIN items i ON e.item_id = i.id
+            WHERE i.url_hash = ?
+            ORDER BY e.created_at DESC
+            LIMIT ?
+            """,
+            (url_hash, limit),
+        )
+        return cur.fetchall()
+
+
 if __name__ == "__main__":
     import sys
 

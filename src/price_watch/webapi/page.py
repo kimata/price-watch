@@ -369,6 +369,50 @@ def get_item_history(
         return flask.jsonify(error.model_dump()), 500
 
 
+@blueprint.route("/api/items/<url_hash>/events")
+def get_item_events(url_hash: str) -> flask.Response | tuple[flask.Response, int]:
+    """アイテム別イベント履歴を取得."""
+    try:
+        limit = flask.request.args.get("limit", 50, type=int)
+        # 上限を設定
+        if limit > 100:
+            limit = 100
+        if limit < 1:
+            limit = 1
+
+        events = price_watch.history.get_item_events(url_hash, limit)
+
+        if not events:
+            # アイテムが存在しない場合も空リストを返す（404 ではなく）
+            return flask.jsonify({"events": []})
+
+        # イベントにメッセージを追加
+        formatted_events = []
+        for evt in events:
+            formatted_event = {
+                "id": evt["id"],
+                "item_name": evt["item_name"],
+                "store": evt["store"],
+                "url": evt["url"],
+                "thumb_url": evt["thumb_url"],
+                "event_type": evt["event_type"],
+                "price": evt["price"],
+                "old_price": evt["old_price"],
+                "threshold_days": evt["threshold_days"],
+                "created_at": evt["created_at"],
+                "message": price_watch.event.format_event_message(evt),
+                "title": price_watch.event.format_event_title(evt["event_type"]),
+            }
+            formatted_events.append(formatted_event)
+
+        return flask.jsonify({"events": formatted_events})
+
+    except Exception:
+        logging.exception("Error getting item events")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        return flask.jsonify(error.model_dump()), 500
+
+
 @blueprint.route("/api/events")
 def get_events() -> flask.Response | tuple[flask.Response, int]:
     """最新イベント一覧を取得."""

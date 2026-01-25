@@ -128,9 +128,10 @@ function findOutOfStockPeriods(
 interface PriceChartProps {
     stores: StoreEntry[];
     storeDefinitions: StoreDefinition[];
+    className?: string;
 }
 
-export default function PriceChart({ stores, storeDefinitions }: PriceChartProps) {
+export default function PriceChart({ stores, storeDefinitions, className = "h-40" }: PriceChartProps) {
     // 選択された系列（null の場合は全て表示）
     const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
@@ -353,7 +354,7 @@ export default function PriceChart({ stores, storeDefinitions }: PriceChartProps
     }
 
     return (
-        <div className="h-40 relative">
+        <div className={`${className} relative`}>
             {selectedLabel !== null && (
                 <button
                     onClick={handleShowAll}

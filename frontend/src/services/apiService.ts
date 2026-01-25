@@ -23,3 +23,10 @@ export async function fetchEvents(limit: number = 10): Promise<EventsResponse> {
     });
     return response.data;
 }
+
+export async function fetchItemEvents(urlHash: string, limit: number = 50): Promise<EventsResponse> {
+    const response = await axios.get<EventsResponse>(`${API_BASE}/items/${urlHash}/events`, {
+        params: { limit },
+    });
+    return response.data;
+}

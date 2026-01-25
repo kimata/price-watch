@@ -183,3 +183,67 @@ class TestWebuiE2E:
         # ItemCard.tsx のクラス: bg-white rounded-lg shadow-md
         item_cards = page.locator("div.bg-white.rounded-lg.shadow-md")
         expect(item_cards.first).to_be_visible(timeout=30000)
+
+    def test_item_detail_page(self, page, host, port):
+        """アイテム詳細ページのテスト
+
+        1. 価格履歴ページにアクセス
+        2. アイテムカードをクリック
+        3. 詳細ページが表示されることを確認
+        4. 戻るボタンで一覧に戻る
+        """
+        page.set_viewport_size({"width": 1920, "height": 1080})
+
+        page.goto(price_url(host, port), wait_until="domcontentloaded")
+
+        # アイテムカードが表示されるまで待機
+        item_cards = page.locator("div.bg-white.rounded-lg.shadow-md.cursor-pointer")
+        expect(item_cards.first).to_be_visible(timeout=30000)
+
+        # 最初のアイテムカードをクリック
+        item_cards.first.click()
+
+        # 詳細ページが表示されることを確認（戻るボタンの存在で判断）
+        back_button = page.locator("button:has-text('一覧に戻る')")
+        expect(back_button).to_be_visible(timeout=10000)
+
+        # 価格統計セクションが表示されることを確認
+        stats_section = page.locator("text=価格統計")
+        expect(stats_section).to_be_visible(timeout=10000)
+
+        # イベント履歴セクションが表示されることを確認
+        events_section = page.locator("text=イベント履歴")
+        expect(events_section).to_be_visible(timeout=10000)
+
+        # スクリーンショットを保存
+        screenshot_path = EVIDENCE_DIR / "e2e_item_detail_page.png"
+        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(screenshot_path), full_page=True)
+
+        # 戻るボタンをクリック
+        back_button.click()
+
+        # 一覧ページに戻ることを確認（期間セレクタの存在で判断）
+        period_button = page.locator("button:has-text('30日')")
+        expect(period_button).to_be_visible(timeout=10000)
+
+    def test_api_item_events(self, page, host, port):
+        """アイテム別イベント API のテスト"""
+        # まずアイテム一覧を取得
+        items_response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items")
+        items_data = items_response.json()
+
+        if len(items_data.get("items", [])) == 0:
+            pytest.skip("No items available for events test")
+
+        # 最初のアイテムの最初のストアの url_hash を取得
+        first_item = items_data["items"][0]
+        if "stores" not in first_item or len(first_item["stores"]) == 0:
+            pytest.skip("No stores available for events test")
+
+        url_hash = first_item["stores"][0]["url_hash"]
+        response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items/{url_hash}/events")
+
+        assert response.ok
+        data = response.json()
+        assert "events" in data
