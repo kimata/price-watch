@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 
 dependencies = [
     "pyyaml>=6.0.3",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@103d48606b4f613bfdbe128440709aad0bc51523",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@88599d73b571cea4d34a9f4dcb3954bcfa5874cb",
     "selenium>=4.39.0",
     "undetected-chromedriver>=3.5.5",
     "setuptools>=75.0.0",

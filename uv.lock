@@ -1489,7 +1489,7 @@ wheels = [
 [[package]]
 name = "my-lib"
 version = "0.2.1"
-source = { git = "https://github.com/kimata/my-py-lib?rev=103d48606b4f613bfdbe128440709aad0bc51523#103d48606b4f613bfdbe128440709aad0bc51523" }
+source = { git = "https://github.com/kimata/my-py-lib?rev=88599d73b571cea4d34a9f4dcb3954bcfa5874cb#88599d73b571cea4d34a9f4dcb3954bcfa5874cb" }
 dependencies = [
     { name = "coloredlogs" },
     { name = "dacite" },
@@ -1789,7 +1789,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.1.0" },
     { name = "flask-cors", specifier = ">=6.0.0" },
     { name = "flask-pydantic", specifier = ">=0.12.0" },
-    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=103d48606b4f613bfdbe128440709aad0bc51523" },
+    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=88599d73b571cea4d34a9f4dcb3954bcfa5874cb" },
     { name = "pillow", specifier = ">=12.1.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydub", specifier = ">=0.25.1" },

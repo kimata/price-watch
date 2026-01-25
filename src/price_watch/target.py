@@ -147,6 +147,7 @@ class StoreDefinition:
     unavailable_xpath: str | None = None
     price_unit: str = "円"
     point_rate: float = 0.0  # ポイント還元率（%）
+    color: str | None = None  # ストアの色（hex形式, 例: "#3b82f6"）
     actions: list[ActionStep] = field(default_factory=list)
 
     @classmethod
@@ -160,6 +161,10 @@ class StoreDefinition:
         if "check_method" in data:
             check_method = CheckMethod(data["check_method"])
 
+        # point_rate は assumption.point_rate またはトップレベルの point_rate から取得
+        assumption = data.get("assumption", {})
+        point_rate = float(assumption.get("point_rate", data.get("point_rate", 0.0)))
+
         return cls(
             name=data["name"],
             check_method=check_method,
@@ -167,7 +172,8 @@ class StoreDefinition:
             thumb_img_xpath=data.get("thumb_img_xpath"),
             unavailable_xpath=data.get("unavailable_xpath"),
             price_unit=data.get("price_unit", "円"),
-            point_rate=float(data.get("point_rate", 0.0)),
+            point_rate=point_rate,
+            color=data.get("color"),
             actions=actions,
         )
 
@@ -220,6 +226,7 @@ class ResolvedItem:
     unavailable_xpath: str | None = None
     price_unit: str = "円"
     point_rate: float = 0.0  # ポイント還元率（%）
+    color: str | None = None  # ストアの色（hex形式）
     actions: list[ActionStep] = field(default_factory=list)
     preload: PreloadConfig | None = None
 
@@ -240,6 +247,7 @@ class ResolvedItem:
         store_unavailable_xpath = None
         store_price_unit = "円"
         store_point_rate = 0.0
+        store_color: str | None = None
         store_actions: list[ActionStep] = []
 
         if store is not None:
@@ -249,6 +257,7 @@ class ResolvedItem:
             store_unavailable_xpath = store.unavailable_xpath
             store_price_unit = store.price_unit
             store_point_rate = store.point_rate
+            store_color = store.color
             store_actions = store.actions
 
         # アイテム定義で上書き
@@ -263,6 +272,7 @@ class ResolvedItem:
             unavailable_xpath=item.unavailable_xpath or store_unavailable_xpath,
             price_unit=item.price_unit or store_price_unit,
             point_rate=store_point_rate,
+            color=store_color,
             actions=store_actions,
             preload=item.preload,
         )
@@ -285,6 +295,8 @@ class ResolvedItem:
             result["thumb_img_xpath"] = self.thumb_img_xpath
         if self.unavailable_xpath is not None:
             result["unavailable_xpath"] = self.unavailable_xpath
+        if self.color is not None:
+            result["color"] = self.color
         if self.actions:
             result["action"] = [
                 {"type": a.type.value, "xpath": a.xpath, "value": a.value} for a in self.actions

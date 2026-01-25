@@ -49,9 +49,12 @@ def check_item_list(config: AppConfig, item_list: list[dict[str, Any]]) -> list[
         for item in item_list:
             if item["asin"] in result_map:
                 result = result_map[item["asin"]]
-                item["stock"] = result.stock if result.stock is not None else 0
+                # 価格がある場合のみ在庫ありとする
                 if result.price is not None:
+                    item["stock"] = 1
                     item["price"] = result.price
+                else:
+                    item["stock"] = 0
                 if result.thumb_url is not None:
                     # サムネイルをローカルに保存
                     local_url = price_watch.thumbnail.save_thumb(item["name"], result.thumb_url)
