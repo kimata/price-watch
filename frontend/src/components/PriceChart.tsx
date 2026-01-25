@@ -178,15 +178,12 @@ export default function PriceChart({ stores, storeDefinitions }: PriceChartProps
             const lastTime = dayjs(allTimes[allTimes.length - 1]);
             const spanDays = lastTime.diff(firstTime, "day");
 
-            if (spanDays === 0) {
-                // 同じ日のみ：時刻のみ表示
-                return time.format("H:mm");
-            } else if (spanDays <= 3) {
+            if (spanDays <= 3) {
                 // 3日以内：日付と時刻
-                return time.format("M/D H:mm");
+                return time.format("M月D日 H:mm");
             } else {
-                // 3日超：日付のみ
-                return time.format("M/D");
+                // 3日超：日付のみ（ラベルが長くなりすぎるため時刻は省略）
+                return time.format("M月D日");
             }
         };
 
