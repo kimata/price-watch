@@ -1,7 +1,7 @@
 export interface PriceHistoryPoint {
     time: string;
-    price: number;
-    effective_price: number;
+    price: number | null; // null = 在庫なしで価格取得できず
+    effective_price: number | null; // null = 在庫なしで価格取得できず
     stock: number;
 }
 
@@ -9,8 +9,8 @@ export interface StoreEntry {
     url_hash: string;
     store: string;
     url: string;
-    current_price: number;
-    effective_price: number;
+    current_price: number | null; // null = 価格未取得
+    effective_price: number | null; // null = 価格未取得
     point_rate: number;
     lowest_price: number | null;
     highest_price: number | null;
@@ -24,12 +24,13 @@ export interface Item {
     thumb_url: string | null;
     stores: StoreEntry[];
     best_store: string;
-    best_effective_price: number;
+    best_effective_price: number | null; // null = 全ストア価格なし
 }
 
 export interface StoreDefinition {
     name: string;
     point_rate: number;
+    color: string | null;
 }
 
 export interface ItemsResponse {
