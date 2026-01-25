@@ -212,7 +212,9 @@ class TestWebuiE2E:
         expect(stats_section).to_be_visible(timeout=10000)
 
         # イベント履歴セクションが表示されることを確認
-        events_section = page.locator("text=イベント履歴")
+        # NOTE: "イベント履歴" は見出しと「イベント履歴はありません」の両方にマッチするため、
+        #       heading ロールで絞り込む
+        events_section = page.get_by_role("heading", name="イベント履歴")
         expect(events_section).to_be_visible(timeout=10000)
 
         # スクリーンショットを保存
