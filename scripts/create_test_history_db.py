@@ -21,8 +21,8 @@ from datetime import datetime, timedelta, timezone
 JST = timezone(timedelta(hours=9))
 
 
-def url_hash(url: str) -> str:
-    """URL からハッシュを生成."""
+def generate_item_key(url: str) -> str:
+    """URL から item_key を生成."""
     return hashlib.sha256(url.encode()).hexdigest()[:12]
 
 
@@ -35,11 +35,13 @@ def create_tables(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS items(
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            url_hash    TEXT NOT NULL UNIQUE,
-            url         TEXT NOT NULL,
+            item_key    TEXT NOT NULL UNIQUE,
+            url         TEXT,
             name        TEXT NOT NULL,
             store       TEXT NOT NULL,
             thumb_url   TEXT,
+            search_keyword TEXT,
+            search_cond    TEXT,
             created_at  TIMESTAMP DEFAULT(DATETIME('now','localtime')),
             updated_at  TIMESTAMP DEFAULT(DATETIME('now','localtime'))
         )
@@ -79,7 +81,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
     )
 
     # インデックス
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_items_url_hash ON items(url_hash)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_items_item_key ON items(item_key)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_events_item_id ON events(item_id)")
@@ -99,14 +101,14 @@ def insert_item(
     """アイテムを挿入."""
     cur = conn.cursor()
     now = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
-    hash_value = url_hash(url)
+    item_key = generate_item_key(url)
 
     cur.execute(
         """
-        INSERT INTO items (url_hash, url, name, store, thumb_url, created_at, updated_at)
+        INSERT INTO items (item_key, url, name, store, thumb_url, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (hash_value, url, name, store, thumb_url, now, now),
+        (item_key, url, name, store, thumb_url, now, now),
     )
     conn.commit()
     return cur.lastrowid or 0
