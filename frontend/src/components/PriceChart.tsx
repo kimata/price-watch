@@ -129,9 +129,10 @@ interface PriceChartProps {
     stores: StoreEntry[];
     storeDefinitions: StoreDefinition[];
     className?: string;
+    period?: string; // "30", "90", "180", "365", "all"
 }
 
-export default function PriceChart({ stores, storeDefinitions, className = "h-40" }: PriceChartProps) {
+export default function PriceChart({ stores, storeDefinitions, className = "h-40", period = "30" }: PriceChartProps) {
     // 選択された系列（null の場合は全て表示）
     const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
@@ -343,12 +344,111 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         };
     }, [stores, sortedTimes, selectedLabel, handleLegendClick]);
 
+    // 全ストアに履歴がない場合の空チャート用データを生成
+    const emptyChartData = useMemo(() => {
+        const now = dayjs();
+
+        // 期間の開始日を計算
+        let periodStartDate: dayjs.Dayjs;
+        if (period === "all") {
+            // "all" の場合は30日前をデフォルトとする
+            periodStartDate = now.subtract(30, "day");
+        } else {
+            periodStartDate = now.subtract(parseInt(period), "day");
+        }
+
+        // last_updated がある場合はそれも考慮（より新しい方を使用）
+        const validLastUpdated = stores
+            .filter((s) => s.last_updated)
+            .map((s) => dayjs(s.last_updated));
+
+        let startDate = periodStartDate;
+        if (validLastUpdated.length > 0) {
+            const firstCrawlDate = validLastUpdated.reduce((earliest, d) =>
+                d.isBefore(earliest) ? d : earliest
+            );
+            // 期間開始日と最初のクロール日の新しい方を使用
+            if (firstCrawlDate.isAfter(periodStartDate)) {
+                startDate = firstCrawlDate;
+            }
+        }
+
+        // ラベルを生成（開始と終了の2点）
+        const labels = [startDate.format("M月D日"), now.format("M月D日")];
+
+        return {
+            labels,
+            datasets: stores.map((store, index) => {
+                const color = getStoreColor(store.store, storeDefinitions, index);
+                return {
+                    label: store.store,
+                    data: [null, null], // データなし
+                    borderColor: color.border,
+                    backgroundColor: color.border,
+                    fill: false,
+                };
+            }),
+        };
+    }, [stores, storeDefinitions, period]);
+
     // 全ストアに履歴がない場合
     const hasHistory = stores.some((s) => s.history.length > 0);
     if (!hasHistory) {
+        // 灰色の「在庫なし」グラフを表示
+        const emptyChartOptions: ChartOptions<"line"> = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: true,
+                    position: "top" as const,
+                    labels: {
+                        usePointStyle: true,
+                        pointStyle: "rect",
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        font: { size: 10 },
+                    },
+                },
+                tooltip: { enabled: false },
+                annotation: {
+                    annotations: {
+                        outOfStockBox: {
+                            type: "box",
+                            xMin: -0.5,
+                            xMax: 1.5,
+                            backgroundColor: "rgba(200, 200, 200, 0.3)",
+                            borderWidth: 0,
+                            label: {
+                                display: true,
+                                content: "在庫なし",
+                                position: "center",
+                                color: "rgba(120, 120, 120, 0.8)",
+                                font: { size: 12 },
+                            },
+                        },
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { font: { size: 10 } },
+                },
+                y: {
+                    min: 0,
+                    max: 100,
+                    ticks: {
+                        display: false,
+                    },
+                    grid: { display: false },
+                },
+            },
+        };
+
         return (
-            <div className="h-40 flex items-center justify-center text-gray-400 text-sm">
-                データがありません
+            <div className={`${className} relative`}>
+                <Line data={emptyChartData} options={emptyChartOptions} />
             </div>
         );
     }

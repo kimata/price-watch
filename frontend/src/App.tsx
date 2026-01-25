@@ -96,6 +96,7 @@ export default function App() {
                                 item={item}
                                 storeDefinitions={storeDefinitions}
                                 onClick={handleItemClick}
+                                period={period}
                             />
                         ))}
                     </div>

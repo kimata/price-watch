@@ -193,7 +193,7 @@ export default function ItemDetailPage({
                             <LoadingSpinner />
                         </div>
                     ) : (
-                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" />
+                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} />
                     )}
                 </div>
 
