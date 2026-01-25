@@ -180,5 +180,6 @@ class TestWebuiE2E:
         page.goto(price_url(host, port), wait_until="domcontentloaded")
 
         # アイテムカードが存在することを確認（ローディング完了まで待機）
-        item_cards = page.locator("div.bg-white.rounded-lg.shadow")
+        # ItemCard.tsx のクラス: bg-white rounded-lg shadow-md
+        item_cards = page.locator("div.bg-white.rounded-lg.shadow-md")
         expect(item_cards.first).to_be_visible(timeout=30000)
