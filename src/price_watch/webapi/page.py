@@ -771,6 +771,52 @@ def ogp_image(item_key: str) -> flask.Response:
         return flask.Response("Internal server error", status=500)
 
 
+@blueprint.route("/ogp/<item_key>_square.png")
+def ogp_image_square(item_key: str) -> flask.Response:
+    """正方形 OGP 画像を配信."""
+    try:
+        # 設定を取得
+        app_config = _get_app_config()
+        if app_config is None:
+            return flask.Response("Configuration not found", status=500)
+
+        cache_dir = app_config.data.cache
+        thumb_dir = app_config.data.thumb
+
+        # フォント設定を取得
+        font_paths = price_watch.webapi.ogp.FontPaths.from_config(app_config.font)
+
+        # アイテムデータを取得
+        item_name, stores = _get_item_data_for_ogp(item_key)
+
+        if item_name is None or not stores:
+            return flask.Response("Item not found", status=404)
+
+        # target.yaml の設定を取得
+        target_config = _get_target_config()
+
+        # OGP データを構築
+        ogp_data = _build_ogp_data(item_name, stores, target_config, thumb_dir)
+
+        # 正方形画像を生成/キャッシュから取得
+        image_path = price_watch.webapi.ogp.get_or_generate_ogp_image_square(
+            item_key,
+            ogp_data,
+            cache_dir,
+            font_paths=font_paths,
+        )
+
+        return flask.send_file(
+            image_path,
+            mimetype="image/png",
+            max_age=3600,  # 1時間キャッシュ
+        )
+
+    except Exception:
+        logging.exception("Error generating square OGP image")
+        return flask.Response("Internal server error", status=500)
+
+
 def _render_top_page_html(static_dir: pathlib.Path | None) -> str:
     """トップページ用の OGP メタタグ付き HTML を生成."""
     title = "Price Watch"

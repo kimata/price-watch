@@ -23,9 +23,12 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 if TYPE_CHECKING:
     import price_watch.config
 
-# OGP 画像サイズ
+# OGP 画像サイズ（横長）
 OGP_WIDTH = 1200
 OGP_HEIGHT = 630
+
+# OGP 画像サイズ（正方形）
+OGP_SQUARE_SIZE = 1200
 
 # グラフ領域サイズ（OGP全面に表示）
 GRAPH_WIDTH = 1200
@@ -386,6 +389,169 @@ def _generate_price_graph(
     return Image.open(buf)
 
 
+def _generate_price_graph_no_axis(
+    store_histories: list[StoreHistory],
+    width: int,
+    height: int,
+    font_paths: FontPaths | None = None,
+) -> Image.Image:
+    """軸ラベルなしの価格推移グラフを生成（正方形OGP用）.
+
+    Args:
+        store_histories: ストアごとの価格履歴
+        width: 画像幅
+        height: 画像高さ
+        font_paths: フォントパス設定
+    """
+    # matplotlib 用フォントを設定（日本語 medium を使用）
+    jp_font = font_paths.jp_medium if font_paths else None
+    _setup_matplotlib_font(jp_font)
+
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+
+    # 背景を完全透明に設定
+    fig.patch.set_facecolor("none")
+    fig.patch.set_alpha(0)
+    ax.set_facecolor("none")
+
+    all_prices: list[int] = []
+    all_times_set: set[str] = set()
+
+    for sh in store_histories:
+        for h in sh.history:
+            if h.get("effective_price") is not None:
+                all_prices.append(h["effective_price"])
+            all_times_set.add(h["time"])
+
+    all_times: list[str] = sorted(all_times_set)
+
+    if not all_prices or not all_times:
+        # データがない場合は空のグラフを返す
+        ax.text(
+            0.5,
+            0.5,
+            "価格情報なし",
+            ha="center",
+            va="center",
+            fontsize=14,
+            color="gray",
+            transform=ax.transAxes,
+        )
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
+        ax.axis("off")
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+        buf.seek(0)
+        plt.close(fig)
+        return Image.open(buf)
+
+    # Y軸の範囲を設定（Chart.js と同様に padding 10%）
+    min_price = min(all_prices)
+    max_price = max(all_prices)
+    padding = (max_price - min_price) * 0.1 or max_price * 0.1
+    y_min = max(0, min_price - padding)
+    y_max = max_price + padding
+
+    # 時間を datetime に変換
+    from datetime import datetime
+
+    time_to_dt: dict[str, datetime] = {}
+    for t in all_times:
+        try:
+            dt = datetime.fromisoformat(t.replace(" ", "T"))
+            time_to_dt[t] = dt
+        except ValueError:
+            logging.debug("Invalid datetime format: %s", t)
+
+    sorted_times = sorted(time_to_dt.keys(), key=lambda x: time_to_dt[x])
+    if not sorted_times:
+        ax.text(
+            0.5,
+            0.5,
+            "価格情報なし",
+            ha="center",
+            va="center",
+            fontsize=14,
+            color="gray",
+            transform=ax.transAxes,
+        )
+        ax.axis("off")
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0)
+        buf.seek(0)
+        plt.close(fig)
+        return Image.open(buf)
+
+    # 各ストアのデータをプロット
+    for sh in store_histories:
+        price_map: dict[str, int | None] = {}
+        for h in sh.history:
+            time_key = h["time"]
+            if time_key in time_to_dt:
+                hour_key = time_to_dt[time_key].strftime("%Y-%m-%d %H:00")
+                if hour_key not in price_map or (
+                    price_map[hour_key] is None and h.get("effective_price") is not None
+                ):
+                    price_map[hour_key] = h.get("effective_price")
+
+        times: list[datetime] = []
+        prices: list[int | None] = []
+        for time_str in sorted_times:
+            dt_or_none = time_to_dt.get(time_str)
+            if dt_or_none is not None:
+                hour_key = dt_or_none.strftime("%Y-%m-%d %H:00")
+                if hour_key in price_map:
+                    times.append(dt_or_none)
+                    prices.append(price_map[hour_key])
+
+        if times and any(p is not None for p in prices):
+            valid_times: list[datetime] = []
+            valid_prices: list[int] = []
+            for time_dt, price in zip(times, prices, strict=False):
+                if price is not None:
+                    valid_times.append(time_dt)
+                    valid_prices.append(price)
+
+            if valid_times:
+                color = sh.color
+                ax.plot(
+                    valid_times,  # type: ignore[arg-type]
+                    valid_prices,
+                    label=sh.store_name,
+                    color=color,
+                    linewidth=6,
+                    marker="o" if len(valid_times) <= 20 else None,
+                    markersize=10,
+                )
+
+    # Y軸の設定
+    ax.set_ylim(y_min, y_max)
+
+    # 軸ラベル・目盛りを非表示
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    ax.tick_params(axis="both", length=0)
+
+    # グリッド（Y軸のみ、薄く）
+    ax.xaxis.grid(False)
+    ax.yaxis.grid(True, linestyle="-", alpha=0.2)
+
+    # 枠線を非表示
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    plt.tight_layout(pad=0)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0, transparent=True)
+    buf.seek(0)
+    plt.close(fig)
+
+    return Image.open(buf)
+
+
 def _draw_rounded_rect_overlay(
     img: Image.Image, rect: tuple[int, int, int, int], radius: int = 10, alpha: int = 230
 ) -> Image.Image:
@@ -575,14 +741,175 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     return img
 
 
-def get_cache_path(item_key: str, cache_dir: pathlib.Path) -> pathlib.Path:
-    """キャッシュファイルのパスを取得."""
+def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None) -> Image.Image:
+    """正方形の OGP 画像を生成.
+
+    軸ラベルなしのグラフ、やや小さめのサムネイル。
+    白背景 → サムネイル → グラフ → テキストの順で合成。
+
+    Args:
+        data: OGP 画像生成用データ
+        font_paths: フォントパス設定
+    """
+    size = OGP_SQUARE_SIZE
+
+    # --- 1. 白背景を作成 ---
+    img = Image.new("RGBA", (size, size), color=(255, 255, 255, 255))
+
+    # --- 2. サムネイルを左下に配置（アスペクト比を維持、やや小さめ） ---
+    if data.thumb_path and data.thumb_path.exists():
+        try:
+            thumb = Image.open(data.thumb_path)
+            thumb_w, thumb_h = thumb.size
+
+            # 最大サイズ（横長版より小さめ: 28% x 50%）
+            max_thumb_width = int(size * 0.28)
+            max_thumb_height = int(size * 0.50)
+
+            # アスペクト比を維持してリサイズ
+            thumb_aspect = thumb_w / thumb_h if thumb_h > 0 else 1.0
+            max_aspect = max_thumb_width / max_thumb_height
+
+            if thumb_aspect > max_aspect:
+                new_width = max_thumb_width
+                new_height = int(max_thumb_width / thumb_aspect)
+            else:
+                new_height = max_thumb_height
+                new_width = int(max_thumb_height * thumb_aspect)
+
+            thumb_resized: Image.Image = thumb.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # 半透明化（alpha=0.65相当）
+            thumb_rgba: Image.Image = (
+                thumb_resized.convert("RGBA") if thumb_resized.mode != "RGBA" else thumb_resized
+            )
+            alpha_data = thumb_rgba.split()[3]
+            alpha_data = alpha_data.point(lambda x: int(x * 0.65))
+            thumb_rgba.putalpha(alpha_data)
+
+            # 左下に配置（軸ラベルがないのでマージン小さめ）
+            paste_x = 40
+            paste_y = size - new_height - 40
+
+            # 合成
+            img.paste(thumb_rgba, (paste_x, paste_y), thumb_rgba)
+        except Exception:
+            logging.warning("Failed to load thumbnail: %s", data.thumb_path)
+
+    # --- 3. グラフを上に重ねる（透明背景、軸ラベルなし） ---
+    if data.store_histories:
+        graph_img = _generate_price_graph_no_axis(data.store_histories, size, size, font_paths=font_paths)
+        # グラフのサイズを OGP サイズに調整
+        if graph_img.size != (size, size):
+            graph_img = graph_img.resize((size, size), Image.Resampling.LANCZOS)
+        # RGBA に変換
+        if graph_img.mode != "RGBA":
+            graph_img = graph_img.convert("RGBA")
+        # グラフを合成（透明部分はサムネイルが見える）
+        img = Image.alpha_composite(img, graph_img)
+
+    # RGB に変換
+    img = img.convert("RGB")
+
+    # フォントを取得
+    font_title = _get_pillow_font(52, font_paths.jp_bold if font_paths else None)
+    font_price = _get_pillow_font(90, font_paths.en_bold if font_paths else None)
+    font_label = _get_pillow_font(32, font_paths.jp_medium if font_paths else None)
+
+    # マージン（軸ラベルがないので小さめ）
+    margin = 40
+
+    # --- 商品名を上部に表示 ---
+    box_padding = 5
+    title_max_width = size - margin * 2 - box_padding * 2
+    title_text = _truncate_text(img, data.item_name, font_title, title_max_width)
+    title_width, title_height = _get_text_size(img, title_text, font_title)
+
+    # 商品名の背景ボックス（右寄せ）
+    title_box_width = title_width + box_padding * 2
+    title_box_height = title_height + box_padding * 2
+    title_box_x = size - margin - title_box_width
+    title_box_y = margin
+
+    img = _draw_rounded_rect_overlay(
+        img,
+        (title_box_x, title_box_y, title_box_x + title_box_width, title_box_y + title_box_height),
+    )
+
+    # 商品名を描画
+    title_x = title_box_x + box_padding
+    title_y = title_box_y + box_padding
+    draw = ImageDraw.Draw(img)
+    draw.text((title_x, title_y), title_text, font=font_title, fill=(50, 50, 50))
+
+    # --- 価格・ストア名を右側に表示 ---
+    price_text = _format_price(data.best_price)
+    store_text = _truncate_text(img, data.best_store, font_label, 350)
+
+    price_width, price_height = _get_text_size(img, price_text, font_price)
+    store_width, store_height = _get_text_size(img, store_text, font_label)
+
+    box_padding = 5
+    text_gap = 8
+    max_text_width = max(price_width, store_width)
+    info_width = max_text_width + box_padding * 2
+    info_height = box_padding + price_height + text_gap + store_height + box_padding
+
+    info_x = size - margin - info_width
+    info_y = title_box_y + title_box_height + 10
+
+    img = _draw_rounded_rect_overlay(
+        img,
+        (info_x, info_y, info_x + info_width, info_y + info_height),
+    )
+
+    # テキストを右寄せで描画
+    text_right_edge = info_x + info_width - box_padding
+    price_y = info_y + box_padding
+    store_y = price_y + price_height + text_gap
+
+    if isinstance(font_price, ImageFont.FreeTypeFont) and isinstance(font_label, ImageFont.FreeTypeFont):
+        my_lib.pil_util.draw_text(
+            img, price_text, (text_right_edge, price_y), font_price, align="right", color="#dc3232"
+        )
+        my_lib.pil_util.draw_text(
+            img, store_text, (text_right_edge, store_y), font_label, align="right", color="#646464"
+        )
+    else:
+        draw = ImageDraw.Draw(img)
+        price_x = text_right_edge - price_width
+        draw.text((price_x, price_y), price_text, font=font_price, fill=(220, 50, 50))
+        store_x = text_right_edge - store_width
+        draw.text((store_x, store_y), store_text, font=font_label, fill=(100, 100, 100))
+
+    # Price Watch ロゴ（右下）
+    font_logo = _get_pillow_font(16, font_paths.en_medium if font_paths else None)
+    logo_text = "Price Watch"
+    draw = ImageDraw.Draw(img)
+    logo_width, logo_height = _get_text_size(img, logo_text, font_logo)
+    logo_margin = 10
+    logo_x = size - logo_width - logo_margin
+    logo_y = size - logo_height - logo_margin
+    draw.text((logo_x, logo_y), logo_text, font=font_logo, fill=(200, 200, 200))
+
+    return img
+
+
+def get_cache_path(item_key: str, cache_dir: pathlib.Path, square: bool = False) -> pathlib.Path:
+    """キャッシュファイルのパスを取得.
+
+    Args:
+        item_key: アイテムキー
+        cache_dir: キャッシュディレクトリ
+        square: 正方形画像の場合は True
+    """
     # サブディレクトリを作成
     ogp_cache_dir = cache_dir / "ogp"
     ogp_cache_dir.mkdir(parents=True, exist_ok=True)
     # ファイル名にはアイテムキーのみ使用（時間は含めない）
     # キャッシュの有効期限はファイルの更新時刻で判定
-    return ogp_cache_dir / f"{_sanitize_filename(item_key)}.png"
+    suffix = "_square" if square else ""
+    return ogp_cache_dir / f"{_sanitize_filename(item_key)}{suffix}.png"
 
 
 def _sanitize_filename(name: str) -> str:
@@ -631,6 +958,34 @@ def get_or_generate_ogp_image(
 
     # 画像を生成して保存
     img = generate_ogp_image(data, font_paths)
+    save_ogp_image(img, cache_path)
+
+    return cache_path
+
+
+def get_or_generate_ogp_image_square(
+    item_key: str,
+    data: OgpData,
+    cache_dir: pathlib.Path,
+    ttl_sec: int = CACHE_TTL_SEC,
+    font_paths: FontPaths | None = None,
+) -> pathlib.Path:
+    """正方形 OGP 画像を取得（キャッシュがなければ生成）.
+
+    Args:
+        item_key: アイテムキー（キャッシュファイル名に使用）
+        data: OGP 画像生成用データ
+        cache_dir: キャッシュディレクトリ
+        ttl_sec: キャッシュ有効期間（秒）
+        font_paths: フォントパス設定
+    """
+    cache_path = get_cache_path(item_key, cache_dir, square=True)
+
+    if is_cache_valid(cache_path, ttl_sec):
+        return cache_path
+
+    # 画像を生成して保存
+    img = generate_ogp_image_square(data, font_paths)
     save_ogp_image(img, cache_path)
 
     return cache_path
