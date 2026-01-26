@@ -4,13 +4,106 @@
 target.py のユニットテスト
 """
 
+import pathlib
+from unittest.mock import patch
+
+import pytest
+
 from price_watch.target import (
+    ActionStep,
+    ActionType,
     CheckMethod,
     ItemDefinition,
+    PreloadConfig,
     ResolvedItem,
     StoreDefinition,
     TargetConfig,
+    load,
 )
+
+
+class TestActionStep:
+    """ActionStep のテスト"""
+
+    def test_parse_click(self):
+        """クリックアクションをパース"""
+        data = {"type": "click", "xpath": "//button[@id='submit']"}
+        step = ActionStep.parse(data)
+
+        assert step.type == ActionType.CLICK
+        assert step.xpath == "//button[@id='submit']"
+        assert step.value is None
+
+    def test_parse_input(self):
+        """入力アクションをパース"""
+        data = {"type": "input", "xpath": "//input[@name='code']", "value": "123456"}
+        step = ActionStep.parse(data)
+
+        assert step.type == ActionType.INPUT
+        assert step.xpath == "//input[@name='code']"
+        assert step.value == "123456"
+
+    def test_parse_sixdigit(self):
+        """6桁コードアクションをパース"""
+        data = {"type": "sixdigit", "xpath": "//div[@class='captcha']"}
+        step = ActionStep.parse(data)
+
+        assert step.type == ActionType.SIXDIGIT
+
+    def test_parse_recaptcha(self):
+        """reCAPTCHAアクションをパース"""
+        data = {"type": "recaptcha"}
+        step = ActionStep.parse(data)
+
+        assert step.type == ActionType.RECAPTCHA
+        assert step.xpath is None
+
+
+class TestPreloadConfig:
+    """PreloadConfig のテスト"""
+
+    def test_parse_with_url_only(self):
+        """URL のみ指定"""
+        data = {"url": "https://example.com/preload"}
+        config = PreloadConfig.parse(data)
+
+        assert config.url == "https://example.com/preload"
+        assert config.every == 1
+
+    def test_parse_with_every(self):
+        """every を指定"""
+        data = {"url": "https://example.com/preload", "every": 5}
+        config = PreloadConfig.parse(data)
+
+        assert config.url == "https://example.com/preload"
+        assert config.every == 5
+
+
+class TestCheckMethod:
+    """CheckMethod のテスト"""
+
+    def test_scrape_value(self):
+        """SCRAPE の値"""
+        assert CheckMethod.SCRAPE.value == "scrape"
+
+    def test_amazon_paapi_value(self):
+        """AMAZON_PAAPI の値"""
+        assert CheckMethod.AMAZON_PAAPI.value == "my_lib.store.amazon.api"
+
+    def test_mercari_search_value(self):
+        """MERCARI_SEARCH の値"""
+        assert CheckMethod.MERCARI_SEARCH.value == "my_lib.store.mercari.search"
+
+
+class TestActionType:
+    """ActionType のテスト"""
+
+    def test_all_action_types(self):
+        """全アクションタイプの値"""
+        assert ActionType.CLICK.value == "click"
+        assert ActionType.INPUT.value == "input"
+        assert ActionType.SIXDIGIT.value == "sixdigit"
+        assert ActionType.RECAPTCHA.value == "recaptcha"
 
 
 class TestStoreDefinition:
@@ -47,6 +140,152 @@ class TestStoreDefinition:
         store = StoreDefinition.parse(data)
 
         assert store.check_method == CheckMethod.AMAZON_PAAPI
+
+    def test_parse_with_mercari_search(self):
+        """メルカリ検索メソッド付きパース"""
+        data = {
+            "name": "mercari",
+            "check_method": "my_lib.store.mercari.search",
+        }
+        store = StoreDefinition.parse(data)
+
+        assert store.check_method == CheckMethod.MERCARI_SEARCH
+
+    def test_parse_with_backward_compat_amazon_paapi(self):
+        """後方互換性: amazon-paapi をサポート"""
+        data = {
+            "name": "amazon.co.jp",
+            "check_method": "amazon-paapi",
+        }
+        store = StoreDefinition.parse(data)
+
+        assert store.check_method == CheckMethod.AMAZON_PAAPI
+
+    def test_parse_with_actions(self):
+        """アクション付きパース"""
+        data = {
+            "name": "store-with-captcha.com",
+            "action": [
+                {"type": "click", "xpath": "//button[@id='accept']"},
+                {"type": "recaptcha"},
+            ],
+        }
+        store = StoreDefinition.parse(data)
+
+        assert len(store.actions) == 2
+        assert store.actions[0].type == ActionType.CLICK
+        assert store.actions[1].type == ActionType.RECAPTCHA
+
+    def test_parse_with_assumption_point_rate(self):
+        """assumption.point_rate からポイント還元率を取得"""
+        data = {
+            "name": "store.com",
+            "assumption": {"point_rate": 15.0},
+        }
+        store = StoreDefinition.parse(data)
+
+        assert store.point_rate == 15.0
+
+    def test_parse_with_all_xpaths(self):
+        """全 XPath 設定付きパース"""
+        data = {
+            "name": "full-store.com",
+            "price_xpath": "//span[@class='price']",
+            "thumb_img_xpath": "//img[@id='main']/@src",
+            "unavailable_xpath": "//div[text()='売り切れ']",
+            "price_unit": "ドル",
+            "color": "#ff9900",
+        }
+        store = StoreDefinition.parse(data)
+
+        assert store.price_xpath == "//span[@class='price']"
+        assert store.thumb_img_xpath == "//img[@id='main']/@src"
+        assert store.unavailable_xpath == "//div[text()='売り切れ']"
+        assert store.price_unit == "ドル"
+        assert store.color == "#ff9900"
+
+
+class TestItemDefinition:
+    """ItemDefinition のテスト"""
+
+    def test_parse_basic(self):
+        """基本的なパース"""
+        data = {"name": "Test Item", "store": "store.com", "url": "https://store.com/item"}
+        item = ItemDefinition.parse(data)
+
+        assert item.name == "Test Item"
+        assert item.store == "store.com"
+        assert item.url == "https://store.com/item"
+        assert item.preload is None
+
+    def test_parse_with_preload(self):
+        """プリロード設定付きパース"""
+        data = {
+            "name": "Test Item",
+            "store": "store.com",
+            "url": "https://store.com/item",
+            "preload": {"url": "https://store.com/login", "every": 3},
+        }
+        item = ItemDefinition.parse(data)
+
+        assert item.preload is not None
+        assert item.preload.url == "https://store.com/login"
+        assert item.preload.every == 3
+
+    def test_parse_with_mercari_options(self):
+        """メルカリ検索オプション付きパース"""
+        data = {
+            "name": "Nintendo Switch",
+            "store": "mercari",
+            "search_keyword": "スイッチ",
+            "exclude_keyword": "ジャンク",
+            "cond": "NEW|LIKE_NEW",
+        }
+        item = ItemDefinition.parse(data)
+
+        assert item.search_keyword == "スイッチ"
+        assert item.exclude_keyword == "ジャンク"
+        assert item.cond == "NEW|LIKE_NEW"
+
+    def test_parse_with_price_range_list(self):
+        """価格範囲（リスト形式）付きパース"""
+        data = {
+            "name": "Item",
+            "store": "mercari",
+            "price": [1000, 5000],
+        }
+        item = ItemDefinition.parse(data)
+
+        assert item.price_range == [1000, 5000]
+
+    def test_parse_with_price_range_single(self):
+        """価格範囲（単一値）付きパース"""
+        data = {
+            "name": "Item",
+            "store": "mercari",
+            "price": 3000,
+        }
+        item = ItemDefinition.parse(data)
+
+        assert item.price_range == [3000]
+
+    def test_parse_with_all_xpaths(self):
+        """全 XPath オーバーライド付きパース"""
+        data = {
+            "name": "Custom Item",
+            "store": "store.com",
+            "url": "https://store.com/item",
+            "price_xpath": "//custom[@class='price']",
+            "thumb_img_xpath": "//custom[@class='img']",
+            "unavailable_xpath": "//custom[@class='soldout']",
+            "price_unit": "ユーロ",
+        }
+        item = ItemDefinition.parse(data)
+
+        assert item.price_xpath == "//custom[@class='price']"
+        assert item.thumb_img_xpath == "//custom[@class='img']"
+        assert item.unavailable_xpath == "//custom[@class='soldout']"
+        assert item.price_unit == "ユーロ"
 
 
 class TestResolvedItem:
@@ -136,6 +375,87 @@ class TestResolvedItem:
         assert resolved.url == "https://www.amazon.co.jp/dp/B0123456789"
         assert resolved.check_method == CheckMethod.AMAZON_PAAPI
 
+    def test_from_item_without_url_raises_error(self):
+        """URL も ASIN もない場合はエラー"""
+        item = ItemDefinition.parse(
+            {
+                "name": "No URL Item",
+                "store": "store.com",
+            }
+        )
+        store = StoreDefinition.parse(
+            {
+                "name": "store.com",
+            }
+        )
+
+        with pytest.raises(ValueError, match="has no url or asin"):
+            ResolvedItem.from_item_and_store(item, store)
+
+    def test_from_item_mercari_without_url(self):
+        """メルカリ検索はURLなしでOK"""
+        item = ItemDefinition.parse(
+            {
+                "name": "Mercari Item",
+                "store": "mercari",
+                "search_keyword": "キーワード",
+            }
+        )
+        store = StoreDefinition.parse(
+            {
+                "name": "mercari",
+                "check_method": "my_lib.store.mercari.search",
+            }
+        )
+
+        resolved = ResolvedItem.from_item_and_store(item, store)
+
+        # メルカリの場合は空文字列
+        assert resolved.url == ""
+        assert resolved.check_method == CheckMethod.MERCARI_SEARCH
+
+    def test_to_dict_with_all_fields(self):
+        """to_dict が全フィールドを含むこと"""
+        item = ItemDefinition.parse(
+            {
+                "name": "Full Item",
+                "store": "store.com",
+                "url": "https://store.com/item",
+                "asin": "B12345",
+                "price_xpath": "//price",
+                "thumb_img_xpath": "//img",
+                "unavailable_xpath": "//sold",
+                "preload": {"url": "https://store.com/preload", "every": 2},
+                "search_keyword": "keyword",
+                "exclude_keyword": "exclude",
+                "price": [1000, 5000],
+                "cond": "NEW",
+            }
+        )
+        store = StoreDefinition.parse(
+            {
+                "name": "store.com",
+                "color": "#ff0000",
+                "action": [{"type": "click", "xpath": "//button"}],
+            }
+        )
+
+        resolved = ResolvedItem.from_item_and_store(item, store)
+        result = resolved.to_dict()
+
+        assert result["name"] == "Full Item"
+        assert result["asin"] == "B12345"
+        assert result["price_xpath"] == "//price"
+        assert result["thumb_img_xpath"] == "//img"
+        assert result["unavailable_xpath"] == "//sold"
+        assert result["color"] == "#ff0000"
+        assert result["action"] == [{"type": "click", "xpath": "//button", "value": None}]
+        assert result["preload"] == {"url": "https://store.com/preload", "every": 2}
+        assert result["search_keyword"] == "keyword"
+        assert result["exclude_keyword"] == "exclude"
+        assert result["price_range"] == [1000, 5000]
+        assert result["cond"] == "NEW"
+
 
 class TestTargetConfig:
     """TargetConfig のテスト"""
@@ -196,3 +516,51 @@ class TestTargetConfig:
         assert len(resolved) == 1
         assert resolved[0].name == "Item 1"
         assert resolved[0].point_rate == 10.0
+
+    def test_parse_empty(self):
+        """空の設定をパース"""
+        data: dict[str, list[dict[str, str]]] = {}
+
+        config = TargetConfig.parse(data)
+
+        assert config.stores == []
+        assert config.items == []
+
+
+class TestLoad:
+    """load 関数のテスト"""
+
+    def test_load_with_path(self, tmp_path: pathlib.Path):
+        """ファイルパス指定で読み込み"""
+        target_file = tmp_path / "target.yaml"
+        target_file.write_text(
+            """
+store_list:
+    - name: test-store.com
+      point_rate: 5.0
+item_list:
+    - name: Test Item
+      store: test-store.com
+      url: https://test-store.com/item
+"""
+        )
+
+        config = load(target_file)
+
+        assert len(config.stores) == 1
+        assert config.stores[0].name == "test-store.com"
+        assert len(config.items) == 1
+        assert config.items[0].name == "Test Item"
+
+    def test_load_with_none_uses_default(self):
+        """None の場合はデフォルトパスを使用"""
+        mock_data = {
+            "store_list": [{"name": "default-store.com"}],
+            "item_list": [],
+        }
+
+        with patch("my_lib.config.load", return_value=mock_data):
+            config = load(None)
+
+            assert len(config.stores) == 1
+            assert config.stores[0].name == "default-store.com"
