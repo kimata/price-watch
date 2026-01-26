@@ -4,6 +4,7 @@ import EventBanner from "./components/EventBanner";
 import PeriodSelector from "./components/PeriodSelector";
 import ItemCard from "./components/ItemCard";
 import ItemDetailPage from "./components/ItemDetailPage";
+import MetricsPage from "./components/MetricsPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Footer from "./components/Footer";
 import { fetchItems } from "./services/apiService";
@@ -27,6 +28,18 @@ function getItemKey(item: Item): string | null {
     return item.stores.length > 0 ? item.stores[0].item_key : null;
 }
 
+// URL からページタイプを判定
+function getPageFromUrl(): "list" | "item" | "metrics" {
+    const pathname = window.location.pathname;
+    if (pathname.match(/\/price\/metrics\/?$/)) {
+        return "metrics";
+    }
+    if (pathname.match(/\/price\/items\/[^/]+/)) {
+        return "item";
+    }
+    return "list";
+}
+
 export default function App() {
     const [items, setItems] = useState<Item[]>([]);
     const [storeDefinitions, setStoreDefinitions] = useState<StoreDefinition[]>([]);
@@ -34,6 +47,7 @@ export default function App() {
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState<Period>("30");
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+    const [showMetrics, setShowMetrics] = useState(getPageFromUrl() === "metrics");
 
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
@@ -96,11 +110,19 @@ export default function App() {
     // ブラウザの戻る/進むボタン対応
     useEffect(() => {
         const handlePopState = () => {
-            const itemKey = getItemKeyFromUrl();
-            if (itemKey) {
-                const matchedItem = findItemByKey(itemKey);
-                setSelectedItem(matchedItem);
+            const page = getPageFromUrl();
+            if (page === "metrics") {
+                setShowMetrics(true);
+                setSelectedItem(null);
+            } else if (page === "item") {
+                setShowMetrics(false);
+                const itemKey = getItemKeyFromUrl();
+                if (itemKey) {
+                    const matchedItem = findItemByKey(itemKey);
+                    setSelectedItem(matchedItem);
+                }
             } else {
+                setShowMetrics(false);
                 setSelectedItem(null);
             }
         };
@@ -133,6 +155,23 @@ export default function App() {
         // URL を一覧ページに戻す（履歴に追加）
         window.history.pushState(null, "", "/price/");
     };
+
+    const handleMetricsClick = () => {
+        setShowMetrics(true);
+        setSelectedItem(null);
+        window.history.pushState(null, "", "/price/metrics");
+        window.scrollTo(0, 0);
+    };
+
+    const handleBackFromMetrics = () => {
+        setShowMetrics(false);
+        window.history.pushState(null, "", "/price/");
+    };
+
+    // メトリクスページを表示
+    if (showMetrics) {
+        return <MetricsPage onBack={handleBackFromMetrics} />;
+    }
 
     // 詳細ページを表示
     if (selectedItem) {
@@ -186,7 +225,7 @@ export default function App() {
                     </div>
                 )}
             </main>
-            <Footer storeDefinitions={storeDefinitions} />
+            <Footer storeDefinitions={storeDefinitions} onMetricsClick={handleMetricsClick} />
         </div>
     );
 }
