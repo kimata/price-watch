@@ -370,7 +370,11 @@ def _generate_price_graph(
     # スタイル調整
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=24)
+    # 目盛りラベルを淡いグレーに設定
+    tick_color = "#666666"
+    ax.tick_params(axis="both", labelsize=24, labelcolor=tick_color, colors=tick_color)
+    ax.spines["bottom"].set_color(tick_color)
+    ax.spines["left"].set_color(tick_color)
 
     plt.tight_layout()
 
