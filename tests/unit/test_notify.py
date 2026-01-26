@@ -8,62 +8,39 @@ Slack 通知処理を検証します。
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 import my_lib.notify.slack
 
 import price_watch.event
+import price_watch.models
 import price_watch.notify
 
 
-@dataclass
-class MockItem:
-    """テスト用アイテム"""
-
-    name: str
-    url: str | None
-    store: str = "TestStore"
-    price: int = 1000
-    old_price: int = 1200
-    price_unit: str = "円"
-    stock: int = 1
-    thumb_url: str = "https://example.com/thumb.jpg"
-
-
-class TestGetAttr:
-    """_get_attr 関数のテスト"""
-
-    def test_get_from_dict(self) -> None:
-        """dict から取得"""
-        item = {"name": "Test", "url": "https://example.com"}
-        assert price_watch.notify._get_attr(item, "name") == "Test"
-        assert price_watch.notify._get_attr(item, "url") == "https://example.com"
-
-    def test_get_from_dataclass(self) -> None:
-        """dataclass から取得"""
-        item = MockItem(name="Test", url="https://example.com")
-        assert price_watch.notify._get_attr(item, "name") == "Test"
-        assert price_watch.notify._get_attr(item, "url") == "https://example.com"
-
-    def test_get_with_default(self) -> None:
-        """デフォルト値"""
-        item: dict[str, str] = {}
-        assert price_watch.notify._get_attr(item, "missing", "default") == "default"
-
-
-class TestHasItemInfoProtocol:
-    """HasItemInfo プロトコルのテスト"""
-
-    def test_dataclass_is_instance(self) -> None:
-        """dataclass は HasItemInfo"""
-        item = MockItem(name="Test", url="https://example.com")
-        assert isinstance(item, price_watch.notify.HasItemInfo)
-
-    def test_dict_is_not_instance(self) -> None:
-        """dict は HasItemInfo ではない"""
-        item = {"name": "Test", "url": "https://example.com"}
-        assert not isinstance(item, price_watch.notify.HasItemInfo)
+def _create_checked_item(
+    name: str = "Test",
+    store: str = "TestStore",
+    url: str | None = "https://example.com",
+    price: int | None = 1000,
+    old_price: int | None = 1200,
+    price_unit: str = "円",
+    stock: price_watch.models.StockStatus = price_watch.models.StockStatus.IN_STOCK,
+    thumb_url: str | None = "https://example.com/thumb.jpg",
+    color: str | None = None,
+) -> price_watch.models.CheckedItem:
+    """テスト用 CheckedItem を作成."""
+    item = price_watch.models.CheckedItem(
+        name=name,
+        store=store,
+        url=url,
+        price=price,
+        old_price=old_price,
+        price_unit=price_unit,
+        stock=stock,
+        thumb_url=thumb_url,
+        color=color,
+    )
+    return item
 
 
 class TestInfo:
@@ -72,7 +49,7 @@ class TestInfo:
     def test_returns_none_for_empty_config(self) -> None:
         """SlackEmptyConfig の場合は None"""
         config = my_lib.notify.slack.SlackEmptyConfig()
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
         result = price_watch.notify.info(config, item)
         assert result is None
 
@@ -81,7 +58,7 @@ class TestInfo:
         mock_config = MagicMock()
         mock_config.info.channel.name = "#test"
 
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts123") as mock_send:
             result = price_watch.notify.info(mock_config, item)
@@ -94,7 +71,7 @@ class TestInfo:
         mock_config = MagicMock()
         mock_config.info.channel.name = "#test"
 
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts123") as mock_send:
             price_watch.notify.info(mock_config, item, is_record=True)
@@ -111,7 +88,7 @@ class TestError:
     def test_returns_none_for_empty_config(self) -> None:
         """SlackEmptyConfig の場合は None"""
         config = my_lib.notify.slack.SlackEmptyConfig()
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
         result = price_watch.notify.error(config, item, "Error message")
         assert result is None
 
@@ -120,7 +97,7 @@ class TestError:
         mock_config = MagicMock()
         mock_config.error.channel.name = "#error"
 
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts456") as mock_send:
             result = price_watch.notify.error(mock_config, item, "Something went wrong")
@@ -133,7 +110,7 @@ class TestError:
         mock_config = MagicMock()
         mock_config.error.channel.name = "#error"
 
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", side_effect=Exception("Network error")):
             result = price_watch.notify.error(mock_config, item, "Error")
@@ -146,7 +123,7 @@ class TestErrorWithPage:
     def test_returns_none_for_empty_config(self) -> None:
         """SlackEmptyConfig の場合は None"""
         config = my_lib.notify.slack.SlackEmptyConfig()
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
         result = price_watch.notify.error_with_page(config, item, Exception("Test"))
         assert result is None
 
@@ -154,7 +131,7 @@ class TestErrorWithPage:
         """ページ付きエラー通知"""
         mock_config = MagicMock()
 
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.notify_error_with_page", return_value="ts789") as mock_notify:
             result = price_watch.notify.error_with_page(
@@ -168,7 +145,7 @@ class TestErrorWithPage:
         """例外をハンドル"""
         mock_config = MagicMock()
 
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.notify_error_with_page", side_effect=Exception("Failed")):
             result = price_watch.notify.error_with_page(mock_config, item, Exception("Test error"))
@@ -188,7 +165,7 @@ class TestEvent:
             old_price=1000,
             threshold_days=7,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
         result = price_watch.notify.event(config, event_result, item)
         assert result is None
 
@@ -204,7 +181,7 @@ class TestEvent:
             old_price=1000,
             threshold_days=7,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts001") as mock_send:
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -222,7 +199,7 @@ class TestEvent:
             should_notify=True,
             price=1000,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts002"):
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -239,7 +216,7 @@ class TestEvent:
             price=500,
             old_price=800,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts003"):
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -254,7 +231,7 @@ class TestEvent:
             event_type=price_watch.event.EventType.CRAWL_FAILURE,
             should_notify=True,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts004"):
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -269,7 +246,7 @@ class TestEvent:
             event_type=price_watch.event.EventType.DATA_RETRIEVAL_FAILURE,
             should_notify=True,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", return_value="ts005") as mock_send:
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -291,7 +268,7 @@ class TestEvent:
             old_price=1000,
             threshold_days=7,
         )
-        item = {"name": "Test", "url": "https://example.com", "thumb_url": ""}
+        item = _create_checked_item(thumb_url=None)
 
         with patch("my_lib.notify.slack.send", return_value="ts006"):
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -307,7 +284,7 @@ class TestEvent:
             should_notify=True,
             price=800,
         )
-        item = MockItem(name="Test", url="https://example.com")
+        item = _create_checked_item()
 
         with patch("my_lib.notify.slack.send", side_effect=Exception("Network error")):
             result = price_watch.notify.event(mock_config, event_result, item)
@@ -353,7 +330,7 @@ class TestBuildEventMessage:
             should_notify=True,
             price=1000,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "在庫が復活" in result
         assert "1,000円" in result
@@ -364,7 +341,7 @@ class TestBuildEventMessage:
             event_type=price_watch.event.EventType.BACK_IN_STOCK,
             should_notify=True,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "在庫が復活" in result
 
@@ -374,7 +351,7 @@ class TestBuildEventMessage:
             event_type=price_watch.event.EventType.CRAWL_FAILURE,
             should_notify=True,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "24時間以上" in result
         assert "クロールに失敗" in result
@@ -385,7 +362,7 @@ class TestBuildEventMessage:
             event_type=price_watch.event.EventType.DATA_RETRIEVAL_FAILURE,
             should_notify=True,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "6時間以上" in result
         assert "取得できていません" in result
@@ -398,7 +375,7 @@ class TestBuildEventMessage:
             price=500,
             old_price=800,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "過去最安値を更新" in result
         assert "800" in result
@@ -410,7 +387,7 @@ class TestBuildEventMessage:
             event_type=price_watch.event.EventType.LOWEST_PRICE,
             should_notify=True,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "過去最安値を更新しました" in result
 
@@ -423,7 +400,7 @@ class TestBuildEventMessage:
             old_price=1000,
             threshold_days=7,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "7日間の最安値から値下げ" in result
         assert "1,000" in result
@@ -435,7 +412,7 @@ class TestBuildEventMessage:
             event_type=price_watch.event.EventType.PRICE_DROP,
             should_notify=True,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "価格が下がりました" in result
 
@@ -445,7 +422,7 @@ class TestBuildEventMessage:
             event_type=price_watch.event.EventType.PRICE_DROP,
             should_notify=True,
         )
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_checked_item()
         result = price_watch.notify._build_event_message(event_result, item)
         assert "詳細を見る" in result
         assert "https://example.com" in result

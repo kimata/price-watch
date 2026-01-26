@@ -8,12 +8,32 @@ processor.py のユニットテスト
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import selenium.common.exceptions
 
+import price_watch.models
 import price_watch.processor
+from price_watch.target import CheckMethod, ResolvedItem
+
+
+def _create_resolved_item(
+    name: str = "Test",
+    store: str = "test-store.com",
+    url: str = "https://example.com/item",
+    check_method: CheckMethod = CheckMethod.SCRAPE,
+    asin: str | None = None,
+    search_keyword: str | None = None,
+) -> ResolvedItem:
+    """テスト用の ResolvedItem を作成."""
+    return ResolvedItem(
+        name=name,
+        store=store,
+        url=url,
+        check_method=check_method,
+        asin=asin,
+        search_keyword=search_keyword,
+    )
 
 
 class TestItemProcessorProperties:
@@ -71,8 +91,8 @@ class TestProcessScrapeItems:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
-            {"name": "Item1", "check_method": "scrape", "store": "store1"},
-            {"name": "Item2", "check_method": "my_lib.store.amazon.api", "store": "amazon"},
+            _create_resolved_item(name="Item1", check_method=CheckMethod.SCRAPE, store="store1"),
+            _create_resolved_item(name="Item2", check_method=CheckMethod.AMAZON_PAAPI, store="amazon"),
         ]
 
         with (
@@ -91,7 +111,7 @@ class TestProcessScrapeItems:
         mock_app.debug_mode = False
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        items = [{"name": "Item1", "check_method": "scrape", "store": "store1"}]
+        items = [_create_resolved_item(name="Item1", check_method=CheckMethod.SCRAPE, store="store1")]
 
         processor.process_scrape_items(items)
         # Early return, no processing
@@ -105,14 +125,14 @@ class TestProcessScrapeItems:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
-            {"name": "Item1", "check_method": "scrape", "store": "store1"},
-            {"name": "Item2", "check_method": "scrape", "store": "store1"},
-            {"name": "Item3", "check_method": "scrape", "store": "store2"},
+            _create_resolved_item(name="Item1", check_method=CheckMethod.SCRAPE, store="store1"),
+            _create_resolved_item(name="Item2", check_method=CheckMethod.SCRAPE, store="store1"),
+            _create_resolved_item(name="Item3", check_method=CheckMethod.SCRAPE, store="store2"),
         ]
 
-        processed_items: list[dict[str, Any]] = []
+        processed_items: list[ResolvedItem] = []
 
-        def track_process(item: dict[str, Any], store_name: str) -> bool:
+        def track_process(item: ResolvedItem, store_name: str) -> bool:
             del store_name  # Unused in mock
             processed_items.append(item)
             return True
@@ -136,7 +156,8 @@ class TestProcessScrapeItem:
         mock_app.browser_manager.driver = None
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        result = processor._process_scrape_item({}, "store")
+        item = _create_resolved_item()
+        result = processor._process_scrape_item(item, "store")
 
         assert result is False
 
@@ -149,10 +170,13 @@ class TestProcessScrapeItem:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com", "crawl_success": True}
+        item = _create_resolved_item(name="Test", url="https://example.com")
+
+        mock_checked = price_watch.models.CheckedItem.from_resolved_item(item)
+        mock_checked.crawl_status = price_watch.models.CrawlStatus.SUCCESS
 
         with (
-            patch("price_watch.store.scrape.check"),
+            patch("price_watch.store.scrape.check", return_value=mock_checked),
             patch.object(processor, "_process_data"),
         ):
             result = processor._process_scrape_item(item, "store")
@@ -169,7 +193,7 @@ class TestProcessScrapeItem:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_resolved_item(name="Test", url="https://example.com")
 
         with (
             patch(
@@ -192,7 +216,7 @@ class TestProcessScrapeItem:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_resolved_item(name="Test", url="https://example.com")
 
         with (
             patch("price_watch.store.scrape.check", side_effect=Exception("Error")),
@@ -224,14 +248,24 @@ class TestProcessAmazonItems:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
-            {"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"},
-            {"name": "Item2", "check_method": "scrape", "url": "https://example.com"},
+            _create_resolved_item(
+                name="Item1", check_method=CheckMethod.AMAZON_PAAPI, asin="B001", store="amazon"
+            ),
+            _create_resolved_item(name="Item2", check_method=CheckMethod.SCRAPE, url="https://example.com"),
         ]
+
+        mock_checked = price_watch.models.CheckedItem(
+            name="Item1",
+            store="amazon",
+            url="https://amazon.com/B001",
+            stock=price_watch.models.StockStatus.IN_STOCK,
+            crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+        )
 
         with (
             patch(
                 "price_watch.store.amazon.paapi.check_item_list",
-                return_value=[{"name": "Item1", "stock": 1, "url": "https://amazon.com/B001"}],
+                return_value=[mock_checked],
             ),
             patch("price_watch.history.insert", return_value=1),
             patch("price_watch.history.last", return_value=None),
@@ -250,17 +284,23 @@ class TestProcessAmazonItems:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
-            {"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"},
-            {"name": "Item2", "check_method": "my_lib.store.amazon.api", "asin": "B002"},
+            _create_resolved_item(
+                name="Item1", check_method=CheckMethod.AMAZON_PAAPI, asin="B001", store="amazon"
+            ),
+            _create_resolved_item(
+                name="Item2", check_method=CheckMethod.AMAZON_PAAPI, asin="B002", store="amazon"
+            ),
         ]
 
-        received_items: list[dict[str, Any]] = []
+        received_items: list[ResolvedItem] = []
 
-        def check_mock(*args: object) -> list[dict[str, Any]]:
+        def check_mock(
+            *args: object,
+        ) -> list[price_watch.models.CheckedItem]:
             # args[0] is config, args[1] is item_list
             item_list = args[1]
             if isinstance(item_list, list):
-                received_items.extend(item_list)
+                received_items.extend(item_list)  # type: ignore[arg-type]
             return []
 
         with (
@@ -281,7 +321,11 @@ class TestProcessAmazonItems:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        items = [{"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"}]
+        items = [
+            _create_resolved_item(
+                name="Item1", check_method=CheckMethod.AMAZON_PAAPI, asin="B001", store="amazon"
+            )
+        ]
 
         with patch("price_watch.store.amazon.paapi.check_item_list", side_effect=Exception("Error")):
             processor.process_amazon_items(items)
@@ -319,7 +363,8 @@ class TestProcessMercariItem:
         mock_app.browser_manager.driver = None
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        result = processor._process_mercari_item({}, "store")
+        item = _create_resolved_item(check_method=CheckMethod.MERCARI_SEARCH)
+        result = processor._process_mercari_item(item, "store")
 
         assert result is False
 
@@ -332,11 +377,16 @@ class TestProcessMercariItem:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "search_keyword": "test", "crawl_success": True}
+        item = _create_resolved_item(
+            name="Test", search_keyword="test", check_method=CheckMethod.MERCARI_SEARCH
+        )
+
+        mock_checked = price_watch.models.CheckedItem.from_resolved_item(item)
+        mock_checked.crawl_status = price_watch.models.CrawlStatus.SUCCESS
 
         with (
             patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
-            patch("price_watch.store.mercari.check"),
+            patch("price_watch.store.mercari.check", return_value=mock_checked),
             patch.object(processor, "_process_data"),
         ):
             result = processor._process_mercari_item(item, "mercari.com")
@@ -353,7 +403,9 @@ class TestProcessMercariItem:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "search_keyword": "test"}
+        item = _create_resolved_item(
+            name="Test", search_keyword="test", check_method=CheckMethod.MERCARI_SEARCH
+        )
 
         with (
             patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
@@ -380,7 +432,12 @@ class TestProcessData:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com"}
+        item = price_watch.models.CheckedItem(
+            name="Test",
+            store="store",
+            url="https://example.com",
+            crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+        )
 
         with (
             patch("price_watch.history.insert", return_value=1),
@@ -398,7 +455,13 @@ class TestProcessData:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com", "price": 1000}
+        item = price_watch.models.CheckedItem(
+            name="Test",
+            store="store",
+            url="https://example.com",
+            price=1000,
+            crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+        )
         last = {"price": 900, "stock": 1}
 
         with (
@@ -408,7 +471,7 @@ class TestProcessData:
             result = processor._process_data(item)
 
         assert result is True
-        assert item.get("old_price") == 900
+        assert item.old_price == 900
 
 
 class TestCheckAndNotifyEvents:
@@ -424,7 +487,14 @@ class TestCheckAndNotifyEvents:
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "price": 1000, "stock": 1}
+        item = price_watch.models.CheckedItem(
+            name="Test",
+            store="store",
+            url="https://example.com",
+            price=1000,
+            stock=price_watch.models.StockStatus.IN_STOCK,
+            crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+        )
         last = {"stock": 0}
 
         mock_result = MagicMock()
@@ -451,7 +521,13 @@ class TestNotifyAndRecordEvent:
 
         mock_result = MagicMock()
         mock_result.event_type.value = "PRICE_DROP"
-        item = {"name": "Test"}
+
+        item = price_watch.models.CheckedItem(
+            name="Test",
+            store="store",
+            url="https://example.com",
+            crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+        )
 
         with (
             patch("price_watch.notify.event", return_value="message_id"),
@@ -469,7 +545,12 @@ class TestHandleCrawlFailure:
         mock_app.debug_mode = False
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com"}
+        item = price_watch.models.CheckedItem(
+            name="Test",
+            store="store",
+            url="https://example.com",
+            crawl_status=price_watch.models.CrawlStatus.FAILURE,
+        )
 
         processor._handle_crawl_failure(item, "store")
 
@@ -485,7 +566,7 @@ class TestHandleException:
         mock_app.debug_mode = False
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        item = {"name": "Test", "url": "https://example.com"}
+        item = _create_resolved_item(name="Test", url="https://example.com")
 
         with patch.object(processor, "_process_data"):
             processor._handle_exception(item, "store")
@@ -526,26 +607,15 @@ class TestGroupByStore:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
-            {"name": "Item1", "store": "store1"},
-            {"name": "Item2", "store": "store2"},
-            {"name": "Item3", "store": "store1"},
+            _create_resolved_item(name="Item1", store="store1"),
+            _create_resolved_item(name="Item2", store="store2"),
+            _create_resolved_item(name="Item3", store="store1"),
         ]
 
-        result = processor._group_by_store(items, "default")
+        result = processor._group_by_store(items)
 
         assert len(result["store1"]) == 2
         assert len(result["store2"]) == 1
-
-    def test_uses_default_store(self) -> None:
-        """デフォルトストアを使用"""
-        mock_app = MagicMock()
-        processor = price_watch.processor.ItemProcessor(app=mock_app)
-
-        items = [{"name": "Item1"}]
-
-        result = processor._group_by_store(items, "default")
-
-        assert "default" in result
 
 
 class TestSelectOneItemPerStore:
@@ -557,15 +627,15 @@ class TestSelectOneItemPerStore:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
-            {"name": "Item1", "store": "store1"},
-            {"name": "Item2", "store": "store1"},
-            {"name": "Item3", "store": "store2"},
+            _create_resolved_item(name="Item1", store="store1"),
+            _create_resolved_item(name="Item2", store="store1"),
+            _create_resolved_item(name="Item3", store="store2"),
         ]
 
         result = processor._select_one_item_per_store(items)
 
         assert len(result) == 2
-        stores = {item["store"] for item in result}
+        stores = {item.store for item in result}
         assert stores == {"store1", "store2"}
 
 

@@ -10,7 +10,39 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import price_watch.models
 import price_watch.store.scrape
+from price_watch.target import (
+    ActionStep,
+    ActionType,
+    CheckMethod,
+    PreloadConfig,
+    ResolvedItem,
+)
+
+
+def _create_resolved_item(
+    name: str = "Test",
+    store: str = "test-store.com",
+    url: str = "https://example.com/item",
+    price_xpath: str | None = None,
+    thumb_img_xpath: str | None = None,
+    unavailable_xpath: str | None = None,
+    preload: PreloadConfig | None = None,
+    actions: list[ActionStep] | None = None,
+) -> ResolvedItem:
+    """テスト用の ResolvedItem を作成."""
+    return ResolvedItem(
+        name=name,
+        store=store,
+        url=url,
+        check_method=CheckMethod.SCRAPE,
+        price_xpath=price_xpath,
+        thumb_img_xpath=thumb_img_xpath,
+        unavailable_xpath=unavailable_xpath,
+        preload=preload,
+        actions=actions if actions is not None else [],
+    )
 
 
 class TestResolveTemplate:
@@ -19,7 +51,7 @@ class TestResolveTemplate:
     def test_basic_substitution(self):
         """基本的な置換"""
         template = "検索: $item_name"
-        item = {"name": "テスト商品"}
+        item = _create_resolved_item(name="テスト商品")
 
         result = price_watch.store.scrape._resolve_template(template, item)
 
@@ -28,7 +60,7 @@ class TestResolveTemplate:
     def test_no_substitution(self):
         """置換なし"""
         template = "固定文字列"
-        item = {"name": "テスト商品"}
+        item = _create_resolved_item(name="テスト商品")
 
         result = price_watch.store.scrape._resolve_template(template, item)
 
@@ -37,7 +69,7 @@ class TestResolveTemplate:
     def test_multiple_substitutions(self):
         """複数の置換"""
         template = "$item_name - $item_name"
-        item = {"name": "商品A"}
+        item = _create_resolved_item(name="商品A")
 
         result = price_watch.store.scrape._resolve_template(template, item)
 
@@ -46,7 +78,7 @@ class TestResolveTemplate:
     def test_missing_key_safe(self):
         """存在しないキーは安全に無視"""
         template = "$item_name - $other_key"
-        item = {"name": "商品"}
+        item = _create_resolved_item(name="商品")
 
         result = price_watch.store.scrape._resolve_template(template, item)
 
@@ -61,11 +93,10 @@ class TestProcessAction:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {"name": "Test"}
-        action_list = [{"type": "click", "xpath": "//button"}]
+        item = _create_resolved_item(actions=[ActionStep(type=ActionType.CLICK, xpath="//button")])
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=True):
-            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item, action_list)
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
 
         # find_element と click が呼ばれた
         mock_driver.find_element.assert_called()
@@ -75,11 +106,15 @@ class TestProcessAction:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {"name": "Test"}
-        action_list = [{"type": "click", "xpath": "//button"}, {"type": "click", "xpath": "//other"}]
+        item = _create_resolved_item(
+            actions=[
+                ActionStep(type=ActionType.CLICK, xpath="//button"),
+                ActionStep(type=ActionType.CLICK, xpath="//other"),
+            ]
+        )
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=False):
-            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item, action_list)
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
 
         # 最初の要素が見つからないので中断
         mock_driver.find_element.assert_not_called()
@@ -89,11 +124,12 @@ class TestProcessAction:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {"name": "Test"}
-        action_list = [{"type": "input", "xpath": "//input", "value": "test_value"}]
+        item = _create_resolved_item(
+            actions=[ActionStep(type=ActionType.INPUT, xpath="//input", value="test_value")]
+        )
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=True):
-            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item, action_list)
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
 
         # find_element が呼ばれた
         mock_driver.find_element.assert_called()
@@ -103,11 +139,10 @@ class TestProcessAction:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {"name": "Test"}
-        action_list = [{"type": "recaptcha"}]
+        item = _create_resolved_item(actions=[ActionStep(type=ActionType.RECAPTCHA)])
 
         with patch("price_watch.captcha.resolve_mp3") as mock_captcha:
-            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item, action_list)
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
 
         mock_captcha.assert_called_once_with(mock_driver, mock_wait)
 
@@ -120,7 +155,7 @@ class TestProcessPreload:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {"name": "Test"}
+        item = _create_resolved_item()
 
         price_watch.store.scrape._process_preload(mock_config, mock_driver, mock_wait, item, 0)
 
@@ -132,14 +167,7 @@ class TestProcessPreload:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {
-            "name": "Test",
-            "preload": {
-                "url": "https://example.com/preload",
-                "every": 1,
-                "action": [],
-            },
-        }
+        item = _create_resolved_item(preload=PreloadConfig(url="https://example.com/preload", every=1))
 
         price_watch.store.scrape._process_preload(mock_config, mock_driver, mock_wait, item, 0)
 
@@ -150,14 +178,7 @@ class TestProcessPreload:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {
-            "name": "Test",
-            "preload": {
-                "url": "https://example.com/preload",
-                "every": 3,
-                "action": [],
-            },
-        }
+        item = _create_resolved_item(preload=PreloadConfig(url="https://example.com/preload", every=3))
 
         # loop=1 は 3 で割り切れないのでスキップ
         price_watch.store.scrape._process_preload(mock_config, mock_driver, mock_wait, item, 1)
@@ -169,14 +190,7 @@ class TestProcessPreload:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_wait = MagicMock()
-        item = {
-            "name": "Test",
-            "preload": {
-                "url": "https://example.com/preload",
-                "every": 3,
-                "action": [],
-            },
-        }
+        item = _create_resolved_item(preload=PreloadConfig(url="https://example.com/preload", every=3))
 
         # loop=3 は 3 で割り切れるので実行
         price_watch.store.scrape._process_preload(mock_config, mock_driver, mock_wait, item, 3)
@@ -192,11 +206,10 @@ class TestCheckImpl:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_driver.current_url = "https://example.com/item"
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+        )
 
         with (
             patch("my_lib.selenium_util.xpath_exists", return_value=False),
@@ -204,8 +217,8 @@ class TestCheckImpl:
         ):
             result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
 
-        assert result["crawl_success"] is False
-        assert "price" not in result
+        assert result.crawl_status == price_watch.models.CrawlStatus.FAILURE
+        assert result.price is None
 
     def test_price_found_with_stock(self):
         """価格取得成功・在庫あり"""
@@ -218,19 +231,18 @@ class TestCheckImpl:
         mock_driver.find_element.return_value = mock_price_elem
         mock_driver.find_elements.return_value = []  # unavailable なし
 
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-            "unavailable_xpath": "//unavailable",
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            unavailable_xpath="//unavailable",
+        )
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=True):
             result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
 
-        assert result["crawl_success"] is True
-        assert result["price"] == 1234
-        assert result["stock"] == 1
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
+        assert result.price == 1234
+        assert result.stock == price_watch.models.StockStatus.IN_STOCK
 
     def test_price_found_without_stock(self):
         """価格取得成功・在庫なし"""
@@ -244,19 +256,18 @@ class TestCheckImpl:
         # unavailable_xpath がマッチ
         mock_driver.find_elements.return_value = [MagicMock()]
 
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-            "unavailable_xpath": "//unavailable",
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            unavailable_xpath="//unavailable",
+        )
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=True):
             result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
 
-        assert result["crawl_success"] is True
-        assert "price" not in result  # 在庫なしなので価格は設定されない
-        assert result["stock"] == 0
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
+        assert result.price is None  # 在庫なしなので価格は設定されない
+        assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
 
     def test_no_unavailable_xpath_assumes_in_stock(self):
         """unavailable_xpath がない場合は在庫ありと仮定"""
@@ -268,18 +279,17 @@ class TestCheckImpl:
         mock_price_elem.text = "5,000円"
         mock_driver.find_element.return_value = mock_price_elem
 
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+        )
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=True):
             result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
 
-        assert result["crawl_success"] is True
-        assert result["price"] == 5000
-        assert result["stock"] == 1
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
+        assert result.price == 5000
+        assert result.stock == price_watch.models.StockStatus.IN_STOCK
 
     def test_with_action(self):
         """アクションありの場合"""
@@ -291,12 +301,11 @@ class TestCheckImpl:
         mock_price_elem.text = "1,000円"
         mock_driver.find_element.return_value = mock_price_elem
 
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-            "action": [{"type": "click", "xpath": "//button"}],
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            actions=[ActionStep(type=ActionType.CLICK, xpath="//button")],
+        )
 
         with (
             patch("my_lib.selenium_util.xpath_exists", return_value=True),
@@ -305,7 +314,7 @@ class TestCheckImpl:
             result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
 
         mock_action.assert_called_once()
-        assert result["price"] == 1000
+        assert result.price == 1000
 
     def test_thumbnail_from_img_xpath(self):
         """サムネイル画像の取得（img xpath）"""
@@ -326,12 +335,11 @@ class TestCheckImpl:
 
         mock_driver.find_element.side_effect = find_element
 
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-            "thumb_img_xpath": "//img/@src",
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            thumb_img_xpath="//img/@src",
+        )
 
         with (
             patch("my_lib.selenium_util.xpath_exists", return_value=True),
@@ -339,42 +347,7 @@ class TestCheckImpl:
         ):
             result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
 
-        assert result["thumb_url"] == "/local/thumb.jpg"
-
-    def test_thumbnail_from_block_xpath(self):
-        """サムネイル画像の取得（block xpath）"""
-        mock_config = MagicMock()
-        mock_driver = MagicMock()
-        mock_driver.current_url = "https://example.com/item"
-
-        mock_price_elem = MagicMock()
-        mock_price_elem.text = "1,000円"
-
-        mock_block_elem = MagicMock()
-        mock_block_elem.get_attribute.return_value = "background-image: url('images/thumb.jpg')"
-
-        def find_element(_by, xpath):
-            if "price" in xpath:
-                return mock_price_elem
-            return mock_block_elem
-
-        mock_driver.find_element.side_effect = find_element
-
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-            "thumb_url": "existing",  # これがあると thumb_block_xpath を使う
-            "thumb_block_xpath": "//div[@class='thumb']",
-        }
-
-        with (
-            patch("my_lib.selenium_util.xpath_exists", return_value=True),
-            patch("price_watch.thumbnail.save_thumb", return_value="/local/thumb.jpg"),
-        ):
-            result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
-
-        assert result["thumb_url"] == "/local/thumb.jpg"
+        assert result.thumb_url == "/local/thumb.jpg"
 
     def test_price_parse_error_with_stock(self):
         """価格パースエラー（在庫あり）の場合は例外"""
@@ -387,12 +360,11 @@ class TestCheckImpl:
         mock_driver.find_element.return_value = mock_price_elem
         mock_driver.find_elements.return_value = []  # unavailable なし
 
-        item = {
-            "name": "Test",
-            "url": "https://example.com/item",
-            "price_xpath": "//price",
-            "unavailable_xpath": "//unavailable",
-        }
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            unavailable_xpath="//unavailable",
+        )
 
         with patch("my_lib.selenium_util.xpath_exists", return_value=True):
             import pytest
@@ -409,10 +381,14 @@ class TestCheck:
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_driver.current_url = "https://example.com"
-        item = {"name": "Test", "url": "https://example.com/item", "price_xpath": "//price"}
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+        )
+        expected_result = price_watch.models.CheckedItem.from_resolved_item(item)
 
         with patch("price_watch.store.scrape._check_impl") as mock_impl:
-            mock_impl.return_value = item
+            mock_impl.return_value = expected_result
 
             with patch("my_lib.selenium_util.error_handler") as mock_handler:
                 # コンテキストマネージャーをモック
@@ -421,14 +397,18 @@ class TestCheck:
 
                 result = price_watch.store.scrape.check(mock_config, mock_driver, item, 0)
 
-        assert result == item
+        assert result == expected_result
 
     def test_error_handler_calls_notify_on_error(self):
         """エラー発生時に notify.error_with_page が呼ばれる"""
         mock_config = MagicMock()
         mock_driver = MagicMock()
         mock_driver.current_url = "https://example.com"
-        item = {"name": "Test", "url": "https://example.com/item", "price_xpath": "//price"}
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+        )
+        expected_result = price_watch.models.CheckedItem.from_resolved_item(item)
 
         # on_error コールバックをキャプチャ
         captured_on_error = None
@@ -447,7 +427,7 @@ class TestCheck:
             patch("my_lib.selenium_util.error_handler", side_effect=capture_handler),
             patch("price_watch.notify.error_with_page") as mock_notify,
         ):
-            mock_impl.return_value = item
+            mock_impl.return_value = expected_result
             price_watch.store.scrape.check(mock_config, mock_driver, item, 0)
 
             # on_error コールバックを実行

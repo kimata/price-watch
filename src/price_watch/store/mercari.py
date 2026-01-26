@@ -11,11 +11,13 @@ import my_lib.store.mercari.search
 import selenium.webdriver.support.wait
 
 import price_watch.history
+import price_watch.models
 
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
 
     from price_watch.config import AppConfig
+    from price_watch.target import ResolvedItem
 
 # 検索結果の最大取得件数
 MAX_SEARCH_RESULTS = 40
@@ -55,34 +57,33 @@ def _parse_cond(cond_str: str | None) -> list[my_lib.store.mercari.search.ItemCo
     return result if result else None
 
 
-def _build_search_condition(item: dict[str, Any]) -> my_lib.store.mercari.search.SearchCondition:
+def _build_search_condition(item: ResolvedItem) -> my_lib.store.mercari.search.SearchCondition:
     """アイテム情報から検索条件を構築.
 
     Args:
-        item: アイテム情報（search_keyword, exclude_keyword, price_range, cond を含む）
+        item: 監視対象アイテム
 
     Returns:
         SearchCondition
     """
     # キーワード: search_keyword がなければ name を使用
-    keyword = item.get("search_keyword") or item["name"]
+    keyword = item.search_keyword or item.name
 
     # 価格範囲
-    price_range = item.get("price_range")
     price_min = None
     price_max = None
-    if price_range:
-        if len(price_range) >= 1:
-            price_min = price_range[0]
-        if len(price_range) >= 2:
-            price_max = price_range[1]
+    if item.price_range:
+        if len(item.price_range) >= 1:
+            price_min = item.price_range[0]
+        if len(item.price_range) >= 2:
+            price_max = item.price_range[1]
 
     # 商品状態
-    item_conditions = _parse_cond(item.get("cond"))
+    item_conditions = _parse_cond(item.cond)
 
     return my_lib.store.mercari.search.SearchCondition(
         keyword=keyword,
-        exclude_keyword=item.get("exclude_keyword"),
+        exclude_keyword=item.exclude_keyword,
         price_min=price_min,
         price_max=price_max,
         item_conditions=item_conditions,
@@ -115,26 +116,27 @@ def _build_search_cond_json(condition: my_lib.store.mercari.search.SearchConditi
 def check(
     config: AppConfig,
     driver: WebDriver,
-    item: dict[str, Any],
-) -> None:
+    item: ResolvedItem,
+) -> price_watch.models.CheckedItem:
     """メルカリ検索で最安値商品を取得.
-
-    - 最大40件取得して最安値を選定
-    - item["url"] を最安商品の URL で更新
-    - item["price"], item["stock"] を設定
-    - item["search_keyword"], item["search_cond"] を設定（item_key 生成用）
 
     Args:
         config: アプリケーション設定
         driver: WebDriver インスタンス
-        item: アイテム情報（name, search_keyword, exclude_keyword, price_range, cond を含む）
+        item: 監視対象アイテム
+
+    Returns:
+        チェック結果（CheckedItem）
     """
     wait = selenium.webdriver.support.wait.WebDriverWait(driver, 10)
+
+    # 結果を格納する CheckedItem を作成
+    result = price_watch.models.CheckedItem.from_resolved_item(item)
 
     # 検索条件を構築
     condition = _build_search_condition(item)
 
-    logging.info("[メルカリ検索] %s: キーワード='%s'", item["name"], condition.keyword)
+    logging.info("[メルカリ検索] %s: キーワード='%s'", item.name, condition.keyword)
 
     # 検索実行
     # 20件以上取得する場合は scroll_to_load=True
@@ -148,16 +150,14 @@ def check(
     )
 
     # item_key 生成用のデータを設定
-    item["search_keyword"] = condition.keyword
-    item["search_cond"] = _build_search_cond_json(condition)
+    result.search_keyword = condition.keyword
+    result.search_cond = _build_search_cond_json(condition)
 
     if not results:
-        logging.info("[メルカリ検索] %s: 検索結果なし", item["name"])
-        item["stock"] = 0
-        item["crawl_success"] = True
-        # price は設定しない（None 扱い）
-        # url は空のまま
-        return
+        logging.info("[メルカリ検索] %s: 検索結果なし", item.name)
+        result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
+        result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+        return result
 
     # 価格範囲でフィルタリング（Mercari がページに表示する「関連商品」等を除外）
     filtered_results = results
@@ -172,45 +172,47 @@ def check(
         if len(filtered_results) < original_count:
             logging.info(
                 "[メルカリ検索] %s: 価格範囲外の商品を除外 (%d件 -> %d件)",
-                item["name"],
+                item.name,
                 original_count,
                 len(filtered_results),
             )
 
     if not filtered_results:
-        logging.info("[メルカリ検索] %s: 価格範囲内の商品なし", item["name"])
-        item["stock"] = 0
-        item["crawl_success"] = True
-        return
+        logging.info("[メルカリ検索] %s: 価格範囲内の商品なし", item.name)
+        result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
+        result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+        return result
 
     # 最安値を探す
     cheapest = min(filtered_results, key=lambda r: r.price)
 
     logging.info(
         "[メルカリ検索] %s: %d件中最安値 ¥%s - %s",
-        item["name"],
+        item.name,
         len(filtered_results),
         f"{cheapest.price:,}",
         cheapest.title,
     )
 
-    # アイテム情報を更新
-    item["url"] = cheapest.url
-    item["price"] = cheapest.price
-    item["stock"] = 1
-    item["crawl_success"] = True
+    # 結果を設定
+    result.url = cheapest.url
+    result.price = cheapest.price
+    result.stock = price_watch.models.StockStatus.IN_STOCK
+    result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+
+    return result
 
 
-def generate_item_key(item: dict[str, Any]) -> str:
+def generate_item_key(item: price_watch.models.CheckedItem) -> str:
     """メルカリアイテム用の item_key を生成.
 
     Args:
-        item: アイテム情報（search_keyword, search_cond を含む）
+        item: チェック済みアイテム
 
     Returns:
         item_key
     """
     return price_watch.history.generate_item_key(
-        search_keyword=item.get("search_keyword"),
-        search_cond=item.get("search_cond"),
+        search_keyword=item.search_keyword,
+        search_cond=item.search_cond,
     )

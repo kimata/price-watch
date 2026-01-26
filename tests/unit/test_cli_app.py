@@ -15,7 +15,24 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import price_watch.cli.app
-import price_watch.target
+from price_watch.target import CheckMethod, ResolvedItem
+
+
+def _create_resolved_item(
+    name: str = "Test",
+    store: str = "test-store.com",
+    url: str = "https://example.com/item",
+    check_method: CheckMethod = CheckMethod.SCRAPE,
+    search_keyword: str | None = None,
+) -> ResolvedItem:
+    """テスト用の ResolvedItem を作成."""
+    return ResolvedItem(
+        name=name,
+        store=store,
+        url=url,
+        check_method=check_method,
+        search_keyword=search_keyword,
+    )
 
 
 class TestAppRunnerProcessor:
@@ -151,7 +168,7 @@ class TestAppRunnerDoWork:
         runner = price_watch.cli.app.AppRunner(app=mock_app)
         runner._processor = mock_processor
 
-        mock_items = [{"name": "Item1"}]
+        mock_items = [_create_resolved_item(name="Item1")]
         with patch.object(runner, "_load_item_list", return_value=mock_items):
             runner._do_work()
 
@@ -164,12 +181,11 @@ class TestAppRunnerLoadItemList:
     def test_loads_and_converts_items(self) -> None:
         """アイテムを読み込んで変換"""
         mock_app = MagicMock()
-        mock_item = MagicMock()
-        mock_item.to_dict.return_value = {
-            "name": "Item1",
-            "check_method": "scrape",
-            "url": "http://example.com",
-        }
+        mock_item = _create_resolved_item(
+            name="Item1",
+            check_method=CheckMethod.SCRAPE,
+            url="http://example.com",
+        )
         mock_app.get_resolved_items.return_value = [mock_item]
 
         mock_processor = MagicMock()
@@ -181,17 +197,17 @@ class TestAppRunnerLoadItemList:
         result = runner._load_item_list()
 
         assert len(result) == 1
-        assert result[0]["name"] == "Item1"
+        assert result[0].name == "Item1"
 
     def test_handles_mercari_search(self) -> None:
         """メルカリ検索アイテムを処理"""
         mock_app = MagicMock()
-        mock_item = MagicMock()
-        mock_item.to_dict.return_value = {
-            "name": "Item1",
-            "check_method": price_watch.target.CheckMethod.MERCARI_SEARCH.value,
-            "search_keyword": "keyword",
-        }
+        mock_item = _create_resolved_item(
+            name="Item1",
+            check_method=CheckMethod.MERCARI_SEARCH,
+            search_keyword="keyword",
+            url="",
+        )
         mock_app.get_resolved_items.return_value = [mock_item]
 
         mock_processor = MagicMock()
@@ -204,7 +220,7 @@ class TestAppRunnerLoadItemList:
             result = runner._load_item_list()
 
         assert len(result) == 1
-        assert "search_keyword" in result[0]
+        assert result[0].search_keyword == "keyword"
 
 
 class TestAppRunnerSleepUntil:

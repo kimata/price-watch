@@ -19,7 +19,7 @@ import pathlib
 import sys
 import time
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import my_lib.logger
 
@@ -28,6 +28,9 @@ import price_watch.const
 import price_watch.history
 import price_watch.processor
 import price_watch.target
+
+if TYPE_CHECKING:
+    from price_watch.target import ResolvedItem
 
 if TYPE_CHECKING:
     from price_watch.app_context import PriceWatchApp
@@ -133,31 +136,26 @@ class AppRunner:
         self.processor.loop = self._loop
         self.processor.process_all(item_list)
 
-    def _load_item_list(self) -> list[dict[str, Any]]:
+    def _load_item_list(self) -> list[ResolvedItem]:
         """監視対象アイテムリストを読み込む."""
         items = self.app.get_resolved_items()
-        result: list[dict[str, Any]] = []
 
+        # エラーカウントを初期化
         for item in items:
-            item_dict = item.to_dict()
-
-            # メルカリ検索の場合は item_key を事前に生成
-            if item_dict["check_method"] == price_watch.target.CheckMethod.MERCARI_SEARCH.value:
-                search_keyword = item_dict.get("search_keyword") or item_dict["name"]
-                item_dict["search_keyword"] = search_keyword
+            if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
+                # メルカリ検索の場合は item_key を使用
+                search_keyword = item.search_keyword or item.name
                 item_key = price_watch.history.generate_item_key(
                     search_keyword=search_keyword,
-                    search_cond=item_dict.get("search_cond", ""),
+                    search_cond="",
                 )
                 if item_key not in self.processor.error_count:
                     self.processor.error_count[item_key] = 0
             else:
-                if item_dict["url"] not in self.processor.error_count:
-                    self.processor.error_count[item_dict["url"]] = 0
+                if item.url not in self.processor.error_count:
+                    self.processor.error_count[item.url] = 0
 
-            result.append(item_dict)
-
-        return result
+        return items
 
     def _sleep_until(self, end_time: float) -> None:
         """指定時刻までスリープ.

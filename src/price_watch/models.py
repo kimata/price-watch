@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from price_watch.target import ResolvedItem
 
 
 class CrawlStatus(Enum):
@@ -97,6 +101,54 @@ class CheckedItem:
     def is_success(self) -> bool:
         """クロール成功かどうかを返す."""
         return self.crawl_status == CrawlStatus.SUCCESS
+
+    @classmethod
+    def from_resolved_item(cls, item: ResolvedItem) -> CheckedItem:
+        """ResolvedItem から CheckedItem を生成.
+
+        Args:
+            item: 解決済みアイテム
+
+        Returns:
+            初期状態の CheckedItem
+        """
+        return cls(
+            name=item.name,
+            store=item.store,
+            url=item.url if item.url else None,
+            price_unit=item.price_unit,
+            point_rate=item.point_rate,
+            color=item.color,
+            asin=item.asin,
+            search_keyword=item.search_keyword,
+        )
+
+    def stock_as_int(self) -> int | None:
+        """stock を整数値で取得（DB 保存用）."""
+        return self.stock.to_int()
+
+    def to_history_dict(self) -> dict[str, Any]:
+        """history.insert 用の dict に変換.
+
+        Returns:
+            history.py が期待する形式の dict
+        """
+        result: dict[str, Any] = {
+            "name": self.name,
+            "store": self.store,
+            "url": self.url,
+        }
+        if self.price is not None:
+            result["price"] = self.price
+        if self.stock != StockStatus.UNKNOWN:
+            result["stock"] = self.stock.to_int()
+        if self.thumb_url is not None:
+            result["thumb_url"] = self.thumb_url
+        if self.search_keyword is not None:
+            result["search_keyword"] = self.search_keyword
+        if self.search_cond is not None:
+            result["search_cond"] = self.search_cond
+        return result
 
 
 @dataclass(frozen=True)

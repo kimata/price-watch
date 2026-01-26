@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import selenium.common.exceptions
 
@@ -17,6 +17,7 @@ import price_watch.event
 import price_watch.history
 import price_watch.log_format
 import price_watch.managers.metrics_manager
+import price_watch.models
 import price_watch.notify
 import price_watch.store.amazon.paapi
 import price_watch.store.mercari
@@ -26,6 +27,7 @@ import price_watch.target
 if TYPE_CHECKING:
     from price_watch.app_context import PriceWatchApp
     from price_watch.config import AppConfig
+    from price_watch.target import ResolvedItem
 
 
 @dataclass
@@ -45,7 +47,7 @@ class ItemProcessor:
         """設定を取得."""
         return self.app.config
 
-    def process_all(self, item_list: list[dict[str, Any]]) -> None:
+    def process_all(self, item_list: list[ResolvedItem]) -> None:
         """全アイテムを処理.
 
         Args:
@@ -60,7 +62,7 @@ class ItemProcessor:
         # 3. メルカリ検索対象
         self.process_mercari_items(item_list)
 
-    def process_scrape_items(self, item_list: list[dict[str, Any]]) -> None:
+    def process_scrape_items(self, item_list: list[ResolvedItem]) -> None:
         """スクレイピング対象アイテムを処理.
 
         Args:
@@ -70,8 +72,9 @@ class ItemProcessor:
         if driver is None:
             return
 
-        check_method = "scrape"
-        scrape_items = [item for item in item_list if item["check_method"] == check_method]
+        scrape_items = [
+            item for item in item_list if item.check_method == price_watch.target.CheckMethod.SCRAPE
+        ]
 
         # デバッグモードでは各ストアにつき1アイテムのみ
         if self.app.debug_mode:
@@ -83,7 +86,7 @@ class ItemProcessor:
                 )
 
         # ストアごとにグループ化
-        items_by_store = self._group_by_store(scrape_items, check_method)
+        items_by_store = self._group_by_store(scrape_items)
 
         for store_name, store_items in items_by_store.items():
             if self.app.should_terminate:
@@ -106,11 +109,11 @@ class ItemProcessor:
                     if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
                         return
 
-    def _process_scrape_item(self, item: dict[str, Any], store_name: str) -> bool:
+    def _process_scrape_item(self, item: ResolvedItem, store_name: str) -> bool:
         """スクレイピングでアイテムを処理.
 
         Args:
-            item: アイテム情報
+            item: 監視対象アイテム
             store_name: ストア名
 
         Returns:
@@ -124,27 +127,29 @@ class ItemProcessor:
         crawl_success = False
 
         try:
-            price_watch.store.scrape.check(self.config, driver, item, self.loop)
-            crawl_success = item.get("crawl_success", False)
-            crawl_status = 1 if crawl_success else 0
+            checked = price_watch.store.scrape.check(self.config, driver, item, self.loop)
+            crawl_success = checked.is_success()
 
-            self._process_data(item, crawl_status=crawl_status)
+            self._process_data(checked)
 
             if crawl_success:
                 self.app.update_liveness()
-                self.error_count[item["url"]] = 0
+                self.error_count[item.url] = 0
                 if self.app.debug_mode:
                     self.debug_check_results[store_name] = True
                     logging.info("[デバッグモード] %s: 成功", store_name)
             else:
-                self._handle_crawl_failure(item, store_name)
+                self._handle_crawl_failure(checked, store_name)
 
         except selenium.common.exceptions.InvalidSessionIdException:
             logging.warning("セッションが無効になりました。ドライバーを再作成します")
             if not self.app.browser_manager.recreate_driver():
                 logging.error("ドライバーの再作成に失敗しました")
                 return False
-            self._process_data(item, crawl_status=0)
+            # 失敗として記録
+            checked = price_watch.models.CheckedItem.from_resolved_item(item)
+            checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+            self._process_data(checked)
             self._mark_debug_failure(store_name, "セッションエラー")
 
         except Exception:
@@ -152,14 +157,15 @@ class ItemProcessor:
 
         return crawl_success
 
-    def process_amazon_items(self, item_list: list[dict[str, Any]]) -> None:
+    def process_amazon_items(self, item_list: list[ResolvedItem]) -> None:
         """Amazon PA-API 対象アイテムを処理.
 
         Args:
             item_list: 全アイテムリスト
         """
-        check_method = price_watch.target.CheckMethod.AMAZON_PAAPI.value
-        amazon_items = [item for item in item_list if item["check_method"] == check_method]
+        amazon_items = [
+            item for item in item_list if item.check_method == price_watch.target.CheckMethod.AMAZON_PAAPI
+        ]
 
         if not amazon_items:
             return
@@ -177,8 +183,8 @@ class ItemProcessor:
         ) as store_ctx:
             success_count = 0
             try:
-                for item in price_watch.store.amazon.paapi.check_item_list(self.config, amazon_items):
-                    self._process_data(item, crawl_status=1)
+                for checked in price_watch.store.amazon.paapi.check_item_list(self.config, amazon_items):
+                    self._process_data(checked)
                     success_count += 1
                     store_ctx.record_success()
                 self.app.update_liveness()
@@ -198,7 +204,7 @@ class ItemProcessor:
             else:
                 logging.warning("[デバッグモード] %s: 失敗", store_name)
 
-    def process_mercari_items(self, item_list: list[dict[str, Any]]) -> None:
+    def process_mercari_items(self, item_list: list[ResolvedItem]) -> None:
         """メルカリ検索対象アイテムを処理.
 
         Args:
@@ -208,8 +214,9 @@ class ItemProcessor:
         if driver is None:
             return
 
-        check_method = price_watch.target.CheckMethod.MERCARI_SEARCH.value
-        mercari_items = [item for item in item_list if item["check_method"] == check_method]
+        mercari_items = [
+            item for item in item_list if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH
+        ]
 
         if not mercari_items:
             return
@@ -239,11 +246,11 @@ class ItemProcessor:
                 if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
                     return
 
-    def _process_mercari_item(self, item: dict[str, Any], store_name: str) -> bool:
+    def _process_mercari_item(self, item: ResolvedItem, store_name: str) -> bool:
         """メルカリアイテムを処理.
 
         Args:
-            item: アイテム情報
+            item: 監視対象アイテム
             store_name: ストア名
 
         Returns:
@@ -253,19 +260,14 @@ class ItemProcessor:
         if driver is None:
             return False
 
-        item_key = price_watch.store.mercari.generate_item_key(item)
         crawl_success = False
 
         try:
-            price_watch.store.mercari.check(self.config, driver, item)
-            crawl_success = item.get("crawl_success", False)
-            crawl_status = 1 if crawl_success else 0
+            checked = price_watch.store.mercari.check(self.config, driver, item)
+            crawl_success = checked.is_success()
+            item_key = price_watch.store.mercari.generate_item_key(checked)
 
-            self._process_data(
-                item,
-                crawl_status=crawl_status,
-                item_key=item_key,
-            )
+            self._process_data(checked, item_key=item_key)
 
             if crawl_success:
                 self.app.update_liveness()
@@ -274,20 +276,29 @@ class ItemProcessor:
                     self.debug_check_results[store_name] = True
                     logging.info("[デバッグモード] %s: 成功", store_name)
             else:
-                self._handle_crawl_failure(item, store_name, item_key=item_key)
+                self._handle_crawl_failure(checked, store_name, item_key=item_key)
 
         except selenium.common.exceptions.InvalidSessionIdException:
             logging.warning("セッションが無効になりました。ドライバーを再作成します")
             if not self.app.browser_manager.recreate_driver():
                 logging.error("ドライバーの再作成に失敗しました")
                 return False
-            self._process_data(item, crawl_status=0, item_key=item_key)
+            # 失敗として記録
+            checked = price_watch.models.CheckedItem.from_resolved_item(item)
+            checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+            item_key = price_watch.store.mercari.generate_item_key(checked)
+            self._process_data(checked, item_key=item_key)
             self._mark_debug_failure(store_name, "セッションエラー")
 
         except Exception:
+            # 例外時は CheckedItem を生成
+            checked = price_watch.models.CheckedItem.from_resolved_item(item)
+            checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+            item_key = price_watch.store.mercari.generate_item_key(checked)
+
             self.error_count[item_key] = self.error_count.get(item_key, 0) + 1
-            logging.exception("Failed to check mercari item: %s", item["name"])
-            self._process_data(item, crawl_status=0, item_key=item_key)
+            logging.exception("Failed to check mercari item: %s", item.name)
+            self._process_data(checked, item_key=item_key)
             if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
                 self.error_count[item_key] = 0
             self._mark_debug_failure(store_name, "例外発生")
@@ -296,29 +307,25 @@ class ItemProcessor:
 
     def _process_data(
         self,
-        item: dict[str, Any],
+        item: price_watch.models.CheckedItem,
         *,
-        crawl_status: int = 1,
         item_key: str | None = None,
     ) -> bool:
         """データを処理.
 
         Args:
-            item: アイテム情報
-            crawl_status: クロール状態
+            item: チェック済みアイテム
             item_key: アイテムキー（メルカリ用）
 
         Returns:
             成功時 True
         """
         # 履歴を記録
-        item_id = price_watch.history.insert(item, crawl_status=crawl_status)
+        crawl_status = 1 if item.crawl_status == price_watch.models.CrawlStatus.SUCCESS else 0
+        item_id = price_watch.history.insert(item.to_history_dict(), crawl_status=crawl_status)
 
         # 最新の履歴を取得
-        if item_key:
-            last = price_watch.history.last(item_key=item_key)
-        else:
-            last = price_watch.history.last(item["url"])
+        last = price_watch.history.last(item_key=item_key) if item_key else price_watch.history.last(item.url)
 
         # 新規監視開始
         if last is None:
@@ -327,7 +334,7 @@ class ItemProcessor:
 
         # 既存アイテムの更新
         if last.get("price") is not None:
-            item["old_price"] = last["price"]
+            item.old_price = last["price"]
 
         # イベント判定
         self._check_and_notify_events(item, last, item_id, crawl_status)
@@ -338,8 +345,8 @@ class ItemProcessor:
 
     def _check_and_notify_events(
         self,
-        item: dict[str, Any],
-        last: dict[str, Any],
+        item: price_watch.models.CheckedItem,
+        last: dict[str, object],
         item_id: int,
         crawl_status: int,
     ) -> None:
@@ -348,9 +355,10 @@ class ItemProcessor:
         ignore_hours = judge_config.ignore.hour if judge_config else 24
         windows = judge_config.windows if judge_config else []
 
-        current_price = item.get("price")
-        current_stock: int | None = item.get("stock")
-        last_stock: int | None = last.get("stock")
+        current_price = item.price
+        current_stock = item.stock_as_int()
+        last_stock_raw = last.get("stock")
+        last_stock: int | None = int(str(last_stock_raw)) if last_stock_raw is not None else None
 
         if crawl_status == 1:
             # 在庫復活判定
@@ -382,14 +390,14 @@ class ItemProcessor:
     def _notify_and_record_event(
         self,
         result: price_watch.event.EventResult,
-        item: dict[str, Any],
+        item: price_watch.models.CheckedItem,
         item_id: int,
     ) -> None:
         """イベントを通知して記録."""
         logging.warning(
             "Event detected: %s for %s",
             result.event_type.value,
-            item["name"],
+            item.name,
         )
 
         notified = price_watch.notify.event(self.config.slack, result, item) is not None
@@ -397,26 +405,31 @@ class ItemProcessor:
 
     def _handle_crawl_failure(
         self,
-        item: dict[str, Any],
+        item: price_watch.models.CheckedItem,
         store_name: str,
         *,
         item_key: str | None = None,
     ) -> None:
         """クロール失敗を処理."""
-        key = item_key or item["url"]
+        key = item_key or item.url or ""
         self.error_count[key] = self.error_count.get(key, 0) + 1
         logging.warning(price_watch.log_format.format_error(item, self.error_count[key]))
         if self.error_count[key] >= price_watch.const.ERROR_NOTIFY_COUNT:
             self.error_count[key] = 0
         self._mark_debug_failure(store_name, "価格要素なし")
 
-    def _handle_exception(self, item: dict[str, Any], store_name: str) -> None:
+    def _handle_exception(self, item: ResolvedItem, store_name: str) -> None:
         """例外を処理."""
-        self.error_count[item["url"]] = self.error_count.get(item["url"], 0) + 1
-        logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
-        self._process_data(item, crawl_status=0)
-        if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
-            self.error_count[item["url"]] = 0
+        self.error_count[item.url] = self.error_count.get(item.url, 0) + 1
+        logging.warning(price_watch.log_format.format_error(item, self.error_count[item.url]))
+
+        # 失敗として記録
+        checked = price_watch.models.CheckedItem.from_resolved_item(item)
+        checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+        self._process_data(checked)
+
+        if self.error_count[item.url] >= price_watch.const.ERROR_NOTIFY_COUNT:
+            self.error_count[item.url] = 0
         self._mark_debug_failure(store_name, "例外発生")
 
     def _mark_debug_failure(self, store_name: str, reason: str) -> None:
@@ -425,32 +438,30 @@ class ItemProcessor:
             self.debug_check_results[store_name] = False
             logging.warning("[デバッグモード] %s: 失敗（%s）", store_name, reason)
 
-    def _log_watch_start(self, item: dict[str, Any]) -> None:
+    def _log_watch_start(self, item: price_watch.models.CheckedItem) -> None:
         """監視開始をログ出力."""
         logging.info(price_watch.log_format.format_watch_start(item))
 
-    def _log_item_status(self, item: dict[str, Any]) -> None:
+    def _log_item_status(self, item: price_watch.models.CheckedItem) -> None:
         """アイテム状態をログ出力."""
         logging.info(price_watch.log_format.format_item_status(item))
 
-    def _group_by_store(
-        self, items: list[dict[str, Any]], default_store: str
-    ) -> dict[str, list[dict[str, Any]]]:
+    def _group_by_store(self, items: list[ResolvedItem]) -> dict[str, list[ResolvedItem]]:
         """ストアごとにグループ化."""
-        result: dict[str, list[dict[str, Any]]] = {}
+        result: dict[str, list[ResolvedItem]] = {}
         for item in items:
-            store_name = item.get("store", default_store)
+            store_name = item.store
             if store_name not in result:
                 result[store_name] = []
             result[store_name].append(item)
         return result
 
-    def _select_one_item_per_store(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _select_one_item_per_store(self, items: list[ResolvedItem]) -> list[ResolvedItem]:
         """各ストアから1アイテムずつ選択."""
         seen_stores: set[str] = set()
-        result: list[dict[str, Any]] = []
+        result: list[ResolvedItem] = []
         for item in items:
-            store = item.get("store", "unknown")
+            store = item.store
             if store not in seen_stores:
                 seen_stores.add(store)
                 result.append(item)

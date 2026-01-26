@@ -331,28 +331,6 @@ class TestResolvedItem:
         assert resolved.name == "Test Item"
         assert resolved.point_rate == 0.0
 
-    def test_to_dict_includes_point_rate(self):
-        """to_dict が point_rate を含むこと"""
-        item = ItemDefinition.parse(
-            {
-                "name": "Test Item",
-                "store": "test-store.com",
-                "url": "https://test-store.com/item/1",
-            }
-        )
-        store = StoreDefinition.parse(
-            {
-                "name": "test-store.com",
-                "point_rate": 10.0,
-            }
-        )
-
-        resolved = ResolvedItem.from_item_and_store(item, store)
-        result = resolved.to_dict()
-
-        assert "point_rate" in result
-        assert result["point_rate"] == 10.0
-
     def test_from_item_with_asin(self):
         """ASIN 付きアイテムのマージ"""
         item = ItemDefinition.parse(
@@ -413,48 +391,6 @@ class TestResolvedItem:
         # メルカリの場合は空文字列
         assert resolved.url == ""
         assert resolved.check_method == CheckMethod.MERCARI_SEARCH
-
-    def test_to_dict_with_all_fields(self):
-        """to_dict が全フィールドを含むこと"""
-        item = ItemDefinition.parse(
-            {
-                "name": "Full Item",
-                "store": "store.com",
-                "url": "https://store.com/item",
-                "asin": "B12345",
-                "price_xpath": "//price",
-                "thumb_img_xpath": "//img",
-                "unavailable_xpath": "//sold",
-                "preload": {"url": "https://store.com/preload", "every": 2},
-                "search_keyword": "keyword",
-                "exclude_keyword": "exclude",
-                "price": [1000, 5000],
-                "cond": "NEW",
-            }
-        )
-        store = StoreDefinition.parse(
-            {
-                "name": "store.com",
-                "color": "#ff0000",
-                "action": [{"type": "click", "xpath": "//button"}],
-            }
-        )
-
-        resolved = ResolvedItem.from_item_and_store(item, store)
-        result = resolved.to_dict()
-
-        assert result["name"] == "Full Item"
-        assert result["asin"] == "B12345"
-        assert result["price_xpath"] == "//price"
-        assert result["thumb_img_xpath"] == "//img"
-        assert result["unavailable_xpath"] == "//sold"
-        assert result["color"] == "#ff0000"
-        assert result["action"] == [{"type": "click", "xpath": "//button", "value": None}]
-        assert result["preload"] == {"url": "https://store.com/preload", "every": 2}
-        assert result["search_keyword"] == "keyword"
-        assert result["exclude_keyword"] == "exclude"
-        assert result["price_range"] == [1000, 5000]
-        assert result["cond"] == "NEW"
 
 
 class TestTargetConfig:

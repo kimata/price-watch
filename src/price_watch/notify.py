@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 import my_lib.notify.slack
 
@@ -14,27 +14,7 @@ import price_watch.event
 if TYPE_CHECKING:
     import PIL.Image
 
-
-@runtime_checkable
-class HasItemInfo(Protocol):
-    """アイテム情報を持つオブジェクトのプロトコル."""
-
-    @property
-    def name(self) -> str:
-        """アイテム名."""
-        ...
-
-    @property
-    def url(self) -> str | None:
-        """URL."""
-        ...
-
-
-def _get_attr(item: HasItemInfo | dict[str, Any], key: str, default: Any = None) -> Any:
-    """dict または dataclass から属性を取得."""
-    if isinstance(item, dict):
-        return item.get(key, default)  # type: ignore[no-matching-overload]
-    return getattr(item, key, default)
+    from price_watch.models import CheckedItem
 
 
 MESSAGE_TMPL = """\
@@ -85,7 +65,7 @@ ERROR_TMPL = """\
 
 def info(
     slack_config: my_lib.notify.slack.SlackConfigTypes,
-    item: HasItemInfo | dict[str, Any],
+    item: CheckedItem,
     is_record: bool = False,
 ) -> str | None:
     """価格変更の情報を通知."""
@@ -93,22 +73,22 @@ def info(
         return None
 
     message_text = ":tada: {old_price:,} ⇒ *{price:,}{price_unit}* {record}\n{stock}\n<{url}|詳細>".format(
-        old_price=_get_attr(item, "old_price"),
-        price=_get_attr(item, "price"),
-        price_unit=_get_attr(item, "price_unit"),
-        url=_get_attr(item, "url"),
+        old_price=item.old_price or 0,
+        price=item.price or 0,
+        price_unit=item.price_unit,
+        url=item.url or "",
         record=":fire:" if is_record else "",
-        stock="out of stock" if _get_attr(item, "stock") == 0 else "in stock",
+        stock="out of stock" if item.stock_as_int() == 0 else "in stock",
     )
 
     message_json = MESSAGE_TMPL.format(
         message=json.dumps(message_text),
-        name=json.dumps(_get_attr(item, "name")),
-        thumb_url=json.dumps(_get_attr(item, "thumb_url", "")),
+        name=json.dumps(item.name),
+        thumb_url=json.dumps(item.thumb_url or ""),
     )
 
     formatted = my_lib.notify.slack.FormattedMessage(
-        text=_get_attr(item, "name"),
+        text=item.name,
         json=json.loads(message_json),
     )
 
@@ -117,22 +97,22 @@ def info(
 
 def error(
     slack_config: my_lib.notify.slack.SlackConfigTypes,
-    item: HasItemInfo | dict[str, Any],
+    item: CheckedItem,
     error_msg: str,
 ) -> str | None:
     """エラーを通知."""
     if isinstance(slack_config, my_lib.notify.slack.SlackEmptyConfig):
         return None
 
-    message_text = "<{url}|URL>\n{error_msg}".format(url=_get_attr(item, "url"), error_msg=error_msg)
+    message_text = "<{url}|URL>\n{error_msg}".format(url=item.url or "", error_msg=error_msg)
 
     message_json = ERROR_TMPL.format(
         message=json.dumps(message_text),
-        name=json.dumps(_get_attr(item, "name")),
+        name=json.dumps(item.name),
     )
 
     formatted = my_lib.notify.slack.FormattedMessage(
-        text=_get_attr(item, "name"),
+        text=item.name,
         json=json.loads(message_json),
     )
 
@@ -145,7 +125,7 @@ def error(
 
 def error_with_page(
     slack_config: my_lib.notify.slack.SlackConfigTypes,
-    item: HasItemInfo | dict[str, Any],
+    item: CheckedItem,
     exception: Exception,
     screenshot: PIL.Image.Image | None = None,
     page_source: str | None = None,
@@ -157,7 +137,7 @@ def error_with_page(
 
     Args:
         slack_config: Slack 設定
-        item: アイテム情報
+        item: チェック済みアイテム
         exception: 発生した例外
         screenshot: スクリーンショット画像（PIL.Image）
         page_source: ページの HTML ソース
@@ -168,7 +148,7 @@ def error_with_page(
     if isinstance(slack_config, my_lib.notify.slack.SlackEmptyConfig):
         return None
 
-    title = f"[{_get_attr(item, 'store', 'unknown')}] {_get_attr(item, 'name', 'unknown')}"
+    title = f"[{item.store}] {item.name}"
 
     try:
         return my_lib.notify.slack.notify_error_with_page(
@@ -234,14 +214,14 @@ EVENT_TMPL_NO_THUMB = """\
 def event(
     slack_config: my_lib.notify.slack.SlackConfigTypes,
     event_result: price_watch.event.EventResult,
-    item: HasItemInfo | dict[str, Any],
+    item: CheckedItem,
 ) -> str | None:
     """イベントを通知.
 
     Args:
         slack_config: Slack 設定
         event_result: イベント判定結果
-        item: アイテム情報
+        item: チェック済みアイテム
 
     Returns:
         スレッドのタイムスタンプ、または通知失敗時は None
@@ -257,13 +237,13 @@ def event(
     message_text = _build_event_message(event_result, item)
 
     # テンプレートを選択
-    thumb_url = _get_attr(item, "thumb_url", "")
+    thumb_url = item.thumb_url or ""
     if thumb_url:
         message_json = EVENT_TMPL.format(
             title=json.dumps(title),
             message=json.dumps(message_text),
             thumb_url=json.dumps(thumb_url),
-            name=json.dumps(_get_attr(item, "name")),
+            name=json.dumps(item.name),
         )
     else:
         message_json = EVENT_TMPL_NO_THUMB.format(
@@ -272,7 +252,7 @@ def event(
         )
 
     formatted = my_lib.notify.slack.FormattedMessage(
-        text=f"{title}: {_get_attr(item, 'name')}",
+        text=f"{title}: {item.name}",
         json=json.loads(message_json),
     )
 
@@ -303,7 +283,7 @@ def _get_event_icon(event_type: price_watch.event.EventType) -> str:
 
 def _build_event_message(
     event_result: price_watch.event.EventResult,
-    item: HasItemInfo | dict[str, Any],
+    item: CheckedItem,
 ) -> str:
     """イベント通知メッセージを構築."""
     parts: list[str] = []
@@ -342,6 +322,6 @@ def _build_event_message(
             else:
                 parts.append("*価格が下がりました*")
 
-    parts.append(f"<{_get_attr(item, 'url')}|詳細を見る>")
+    parts.append(f"<{item.url or ''}|詳細を見る>")
 
     return "\n".join(parts)

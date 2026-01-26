@@ -314,43 +314,6 @@ class ResolvedItem:
             cond=item.cond,
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """後方互換性のため dict に変換"""
-        result: dict[str, Any] = {
-            "name": self.name,
-            "store": self.store,
-            "url": self.url,
-            "check_method": self.check_method.value,
-            "price_unit": self.price_unit,
-            "point_rate": self.point_rate,
-        }
-        if self.asin is not None:
-            result["asin"] = self.asin
-        if self.price_xpath is not None:
-            result["price_xpath"] = self.price_xpath
-        if self.thumb_img_xpath is not None:
-            result["thumb_img_xpath"] = self.thumb_img_xpath
-        if self.unavailable_xpath is not None:
-            result["unavailable_xpath"] = self.unavailable_xpath
-        if self.color is not None:
-            result["color"] = self.color
-        if self.actions:
-            result["action"] = [
-                {"type": a.type.value, "xpath": a.xpath, "value": a.value} for a in self.actions
-            ]
-        if self.preload is not None:
-            result["preload"] = {"url": self.preload.url, "every": self.preload.every}
-        # メルカリ検索用フィールド
-        if self.search_keyword is not None:
-            result["search_keyword"] = self.search_keyword
-        if self.exclude_keyword is not None:
-            result["exclude_keyword"] = self.exclude_keyword
-        if self.price_range is not None:
-            result["price_range"] = self.price_range
-        if self.cond is not None:
-            result["cond"] = self.cond
-        return result
-
 
 @dataclass(frozen=True)
 class TargetConfig:

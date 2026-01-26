@@ -9,10 +9,49 @@ store/mercari.py のユニットテスト
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 from unittest.mock import MagicMock, patch
 
+import price_watch.models
 import price_watch.store.mercari
+from price_watch.target import CheckMethod, ResolvedItem
+
+
+def _create_resolved_item(
+    name: str = "テスト商品",
+    store: str = "mercari",
+    search_keyword: str | None = None,
+    exclude_keyword: str | None = None,
+    price_range: list[int] | None = None,
+    cond: str | None = None,
+) -> ResolvedItem:
+    """テスト用の ResolvedItem を作成."""
+    return ResolvedItem(
+        name=name,
+        store=store,
+        url="",  # メルカリは URL なしで OK
+        check_method=CheckMethod.MERCARI_SEARCH,
+        search_keyword=search_keyword,
+        exclude_keyword=exclude_keyword,
+        price_range=price_range,
+        cond=cond,
+    )
+
+
+def _create_checked_item(
+    name: str = "テスト商品",
+    store: str = "mercari",
+    search_keyword: str | None = None,
+    search_cond: str | None = None,
+) -> price_watch.models.CheckedItem:
+    """テスト用の CheckedItem を作成."""
+    item = price_watch.models.CheckedItem(
+        name=name,
+        store=store,
+        url=None,
+        search_keyword=search_keyword,
+        search_cond=search_cond,
+    )
+    return item
 
 
 @dataclass
@@ -81,7 +120,7 @@ class TestBuildSearchCondition:
 
     def test_basic(self):
         """基本的な検索条件"""
-        item: dict[str, Any] = {"name": "テスト商品"}
+        item = _create_resolved_item(name="テスト商品")
 
         result = price_watch.store.mercari._build_search_condition(item)
 
@@ -92,7 +131,7 @@ class TestBuildSearchCondition:
 
     def test_with_search_keyword(self):
         """検索キーワード指定"""
-        item: dict[str, Any] = {"name": "テスト商品", "search_keyword": "カスタムキーワード"}
+        item = _create_resolved_item(name="テスト商品", search_keyword="カスタムキーワード")
 
         result = price_watch.store.mercari._build_search_condition(item)
 
@@ -100,7 +139,7 @@ class TestBuildSearchCondition:
 
     def test_with_exclude_keyword(self):
         """除外キーワード"""
-        item: dict[str, Any] = {"name": "テスト商品", "exclude_keyword": "ジャンク"}
+        item = _create_resolved_item(name="テスト商品", exclude_keyword="ジャンク")
 
         result = price_watch.store.mercari._build_search_condition(item)
 
@@ -108,7 +147,7 @@ class TestBuildSearchCondition:
 
     def test_with_price_range_single(self):
         """価格範囲（最小値のみ）"""
-        item: dict[str, Any] = {"name": "テスト商品", "price_range": [1000]}
+        item = _create_resolved_item(name="テスト商品", price_range=[1000])
 
         result = price_watch.store.mercari._build_search_condition(item)
 
@@ -117,7 +156,7 @@ class TestBuildSearchCondition:
 
     def test_with_price_range_full(self):
         """価格範囲（最小・最大）"""
-        item: dict[str, Any] = {"name": "テスト商品", "price_range": [1000, 5000]}
+        item = _create_resolved_item(name="テスト商品", price_range=[1000, 5000])
 
         result = price_watch.store.mercari._build_search_condition(item)
 
@@ -126,7 +165,7 @@ class TestBuildSearchCondition:
 
     def test_with_cond(self):
         """商品状態"""
-        item: dict[str, Any] = {"name": "テスト商品", "cond": "NEW|LIKE_NEW"}
+        item = _create_resolved_item(name="テスト商品", cond="NEW|LIKE_NEW")
 
         result = price_watch.store.mercari._build_search_condition(item)
 
@@ -197,19 +236,19 @@ class TestCheck:
         """検索結果なし"""
         mock_config = MagicMock()
         mock_driver = MagicMock()
-        item: dict[str, Any] = {"name": "テスト商品"}
+        item = _create_resolved_item(name="テスト商品")
 
         with patch("my_lib.store.mercari.search.search", return_value=[]):
-            price_watch.store.mercari.check(mock_config, mock_driver, item)
+            result = price_watch.store.mercari.check(mock_config, mock_driver, item)
 
-        assert item["stock"] == 0
-        assert item["crawl_success"] is True
+        assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
 
     def test_with_results(self):
         """検索結果あり"""
         mock_config = MagicMock()
         mock_driver = MagicMock()
-        item: dict[str, Any] = {"name": "テスト商品"}
+        item = _create_resolved_item(name="テスト商品")
 
         mock_results = [
             MockSearchResult(title="商品A", price=3000, url="https://mercari.com/a"),
@@ -218,19 +257,19 @@ class TestCheck:
         ]
 
         with patch("my_lib.store.mercari.search.search", return_value=mock_results):
-            price_watch.store.mercari.check(mock_config, mock_driver, item)
+            result = price_watch.store.mercari.check(mock_config, mock_driver, item)
 
         # 最安値の商品を選択
-        assert item["url"] == "https://mercari.com/b"
-        assert item["price"] == 2000
-        assert item["stock"] == 1
-        assert item["crawl_success"] is True
+        assert result.url == "https://mercari.com/b"
+        assert result.price == 2000
+        assert result.stock == price_watch.models.StockStatus.IN_STOCK
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
 
     def test_filters_by_price_range(self):
         """価格範囲でフィルタリング"""
         mock_config = MagicMock()
         mock_driver = MagicMock()
-        item: dict[str, Any] = {"name": "テスト商品", "price_range": [2000, 3500]}
+        item = _create_resolved_item(name="テスト商品", price_range=[2000, 3500])
 
         mock_results = [
             MockSearchResult(title="商品A", price=1000, url="https://mercari.com/a"),  # 範囲外
@@ -239,26 +278,26 @@ class TestCheck:
         ]
 
         with patch("my_lib.store.mercari.search.search", return_value=mock_results):
-            price_watch.store.mercari.check(mock_config, mock_driver, item)
+            result = price_watch.store.mercari.check(mock_config, mock_driver, item)
 
         # 範囲内の商品のみ
-        assert item["url"] == "https://mercari.com/b"
-        assert item["price"] == 2500
+        assert result.url == "https://mercari.com/b"
+        assert result.price == 2500
 
     def test_no_results_after_filter(self):
         """フィルタリング後に結果なし"""
         mock_config = MagicMock()
         mock_driver = MagicMock()
-        item: dict[str, Any] = {"name": "テスト商品", "price_range": [10000, 20000]}
+        item = _create_resolved_item(name="テスト商品", price_range=[10000, 20000])
 
         mock_results = [
             MockSearchResult(title="商品A", price=1000, url="https://mercari.com/a"),
         ]
 
         with patch("my_lib.store.mercari.search.search", return_value=mock_results):
-            price_watch.store.mercari.check(mock_config, mock_driver, item)
+            result = price_watch.store.mercari.check(mock_config, mock_driver, item)
 
-        assert item["stock"] == 0
+        assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
 
 
 class TestGenerateItemKey:
@@ -266,10 +305,10 @@ class TestGenerateItemKey:
 
     def test_basic(self):
         """基本的なキー生成"""
-        item: dict[str, Any] = {
-            "search_keyword": "テスト",
-            "search_cond": '{"exclude": "ジャンク"}',
-        }
+        item = _create_checked_item(
+            search_keyword="テスト",
+            search_cond='{"exclude": "ジャンク"}',
+        )
 
         with patch("price_watch.history.generate_item_key", return_value="generated_key"):
             result = price_watch.store.mercari.generate_item_key(item)
@@ -278,7 +317,7 @@ class TestGenerateItemKey:
 
     def test_without_search_cond(self):
         """search_cond なし"""
-        item: dict[str, Any] = {"search_keyword": "テスト"}
+        item = _create_checked_item(search_keyword="テスト")
 
         with patch("price_watch.history.generate_item_key", return_value="key"):
             result = price_watch.store.mercari.generate_item_key(item)
