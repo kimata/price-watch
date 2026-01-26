@@ -389,13 +389,15 @@ def _generate_price_graph(
     return Image.open(buf)
 
 
-def _generate_price_graph_no_axis(
+def _generate_price_graph_x_axis_only(
     store_histories: list[StoreHistory],
     width: int,
     height: int,
     font_paths: FontPaths | None = None,
 ) -> Image.Image:
-    """軸ラベルなしの価格推移グラフを生成（正方形OGP用）.
+    """X軸目盛りのみの価格推移グラフを生成（正方形OGP用）.
+
+    Y軸目盛りは非表示、X軸目盛り（日付）は表示。
 
     Args:
         store_histories: ストアごとの価格履歴
@@ -529,23 +531,30 @@ def _generate_price_graph_no_axis(
     # Y軸の設定
     ax.set_ylim(y_min, y_max)
 
-    # 軸ラベル・目盛りを非表示
-    ax.set_xticklabels([])
+    # Y軸目盛りを非表示、X軸目盛りは表示
     ax.set_yticklabels([])
-    ax.tick_params(axis="both", length=0)
+    ax.tick_params(axis="y", length=0)
+
+    # X軸の設定（目盛り数を制限）
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m/%-d"))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=5))
+    tick_color = "#666666"
+    ax.tick_params(axis="x", labelsize=20, labelcolor=tick_color, colors=tick_color)
 
     # グリッド（Y軸のみ、薄く）
     ax.xaxis.grid(False)
     ax.yaxis.grid(True, linestyle="-", alpha=0.2)
 
-    # 枠線を非表示
-    for spine in ax.spines.values():
-        spine.set_visible(False)
+    # 枠線を非表示（下辺のみ表示）
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["bottom"].set_color(tick_color)
 
     plt.tight_layout(pad=0)
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0, transparent=True)
+    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.05, transparent=True)
     buf.seek(0)
     plt.close(fig)
 
@@ -744,7 +753,7 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
 def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None) -> Image.Image:
     """正方形の OGP 画像を生成.
 
-    軸ラベルなしのグラフ、やや小さめのサムネイル。
+    X軸目盛りのみのグラフ、大きめのサムネイル。
     白背景 → サムネイル → グラフ → テキストの順で合成。
 
     Args:
@@ -756,15 +765,15 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
     # --- 1. 白背景を作成 ---
     img = Image.new("RGBA", (size, size), color=(255, 255, 255, 255))
 
-    # --- 2. サムネイルを左下に配置（アスペクト比を維持、やや小さめ） ---
+    # --- 2. サムネイルを左下に配置（アスペクト比を維持） ---
     if data.thumb_path and data.thumb_path.exists():
         try:
             thumb = Image.open(data.thumb_path)
             thumb_w, thumb_h = thumb.size
 
-            # 最大サイズ（横長版より小さめ: 28% x 50%）
-            max_thumb_width = int(size * 0.28)
-            max_thumb_height = int(size * 0.50)
+            # 最大サイズ（56% x 100%）
+            max_thumb_width = int(size * 0.56)
+            max_thumb_height = int(size * 1.00)
 
             # アスペクト比を維持してリサイズ
             thumb_aspect = thumb_w / thumb_h if thumb_h > 0 else 1.0
@@ -787,18 +796,18 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
             alpha_data = alpha_data.point(lambda x: int(x * 0.65))
             thumb_rgba.putalpha(alpha_data)
 
-            # 左下に配置（軸ラベルがないのでマージン小さめ）
+            # 左下に配置（X軸目盛り分のマージンを確保）
             paste_x = 40
-            paste_y = size - new_height - 40
+            paste_y = size - new_height - 60
 
             # 合成
             img.paste(thumb_rgba, (paste_x, paste_y), thumb_rgba)
         except Exception:
             logging.warning("Failed to load thumbnail: %s", data.thumb_path)
 
-    # --- 3. グラフを上に重ねる（透明背景、軸ラベルなし） ---
+    # --- 3. グラフを上に重ねる（透明背景、X軸目盛りのみ） ---
     if data.store_histories:
-        graph_img = _generate_price_graph_no_axis(data.store_histories, size, size, font_paths=font_paths)
+        graph_img = _generate_price_graph_x_axis_only(data.store_histories, size, size, font_paths=font_paths)
         # グラフのサイズを OGP サイズに調整
         if graph_img.size != (size, size):
             graph_img = graph_img.resize((size, size), Image.Resampling.LANCZOS)
@@ -816,7 +825,7 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
     font_price = _get_pillow_font(90, font_paths.en_bold if font_paths else None)
     font_label = _get_pillow_font(32, font_paths.jp_medium if font_paths else None)
 
-    # マージン（軸ラベルがないので小さめ）
+    # マージン
     margin = 40
 
     # --- 商品名を上部に表示 ---
