@@ -12,6 +12,7 @@ import unittest.mock
 
 import flask
 import flask.testing
+import my_lib.pytest_util
 import pytest
 
 import price_watch.managers.history
@@ -64,8 +65,9 @@ def _clear():
 # === データベースフィクスチャ ===
 @pytest.fixture
 def temp_data_dir(tmp_path: pathlib.Path) -> pathlib.Path:
-    """一時データディレクトリを作成"""
-    data_dir = tmp_path / "data"
+    """一時データディレクトリを作成（ワーカー固有）"""
+    # pytest-xdist 並列実行時はワーカーIDをディレクトリ名に付加
+    data_dir = my_lib.pytest_util.get_path(tmp_path / "data")
     data_dir.mkdir(parents=True, exist_ok=True)
     return data_dir
 
@@ -177,6 +179,44 @@ def slack_checker():
             assert notify_hist == [], "通知がされています。"
 
     return SlackChecker()
+
+
+# === OGP フォントフィクスチャ ===
+@pytest.fixture(scope="session")
+def font_paths() -> "price_watch.webapi.ogp.FontPaths":
+    """OGP 画像生成用フォントパスを取得
+
+    1. config.yaml からフォント設定を読み込む
+    2. 見つからない場合はシステムフォントを探す
+    3. それでも見つからない場合は空の FontPaths を返す
+    """
+    import price_watch.config
+    import price_watch.webapi.ogp
+
+    # config.yaml からフォント設定を読み込む
+    config_path = pathlib.Path("config.yaml")
+    if config_path.exists():
+        config = price_watch.config.load(config_path)
+        if config.font is not None:
+            font_paths = price_watch.webapi.ogp.FontPaths.from_config(config.font)
+            # フォントファイルが存在するか確認
+            if font_paths.jp_medium is not None and font_paths.jp_medium.exists():
+                return font_paths
+
+    # フォールバック: システムフォントを探す
+    for font_path in price_watch.webapi.ogp.JAPANESE_FONT_PATHS:
+        if pathlib.Path(font_path).exists():
+            path = pathlib.Path(font_path)
+            return price_watch.webapi.ogp.FontPaths(
+                jp_regular=path,
+                jp_medium=path,
+                jp_bold=path,
+                en_medium=path,
+                en_bold=path,
+            )
+
+    # フォントが見つからない場合は空の FontPaths を返す
+    return price_watch.webapi.ogp.FontPaths()
 
 
 # === ロギング設定 ===

@@ -17,6 +17,7 @@ from price_watch.webapi.ogp import (
     OGP_HEIGHT,
     OGP_SQUARE_SIZE,
     OGP_WIDTH,
+    FontPaths,
     OgpData,
     StoreHistory,
     generate_ogp_image,
@@ -118,7 +119,7 @@ class TestOgpData:
 class TestGenerateOgpImage:
     """generate_ogp_image のテスト"""
 
-    def test_generate_basic(self):
+    def test_generate_basic(self, font_paths: FontPaths):
         """基本的な OGP 画像生成"""
         data = OgpData(
             item_name="テスト商品",
@@ -128,13 +129,13 @@ class TestGenerateOgpImage:
             thumb_path=None,
             store_histories=[],
         )
-        img = generate_ogp_image(data)
+        img = generate_ogp_image(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_WIDTH, OGP_HEIGHT)
         assert img.mode == "RGB"
 
-    def test_generate_with_history(self):
+    def test_generate_with_history(self, font_paths: FontPaths):
         """価格履歴付きの OGP 画像生成"""
         store_history = StoreHistory(
             store_name="TestStore",
@@ -152,12 +153,12 @@ class TestGenerateOgpImage:
             thumb_path=None,
             store_histories=[store_history],
         )
-        img = generate_ogp_image(data)
+        img = generate_ogp_image(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_WIDTH, OGP_HEIGHT)
 
-    def test_generate_with_multiple_stores(self):
+    def test_generate_with_multiple_stores(self, font_paths: FontPaths):
         """複数ストアの価格履歴"""
         histories = [
             StoreHistory(
@@ -181,11 +182,11 @@ class TestGenerateOgpImage:
             thumb_path=None,
             store_histories=histories,
         )
-        img = generate_ogp_image(data)
+        img = generate_ogp_image(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
 
-    def test_generate_with_none_prices(self):
+    def test_generate_with_none_prices(self, font_paths: FontPaths):
         """価格が None の場合"""
         data = OgpData(
             item_name="テスト商品",
@@ -195,11 +196,11 @@ class TestGenerateOgpImage:
             thumb_path=None,
             store_histories=[],
         )
-        img = generate_ogp_image(data)
+        img = generate_ogp_image(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
 
-    def test_generate_with_long_name(self):
+    def test_generate_with_long_name(self, font_paths: FontPaths):
         """長い商品名の場合（切り詰めが発生）"""
         long_name = "これは非常に長い商品名です" * 10
         data = OgpData(
@@ -210,7 +211,7 @@ class TestGenerateOgpImage:
             thumb_path=None,
             store_histories=[],
         )
-        img = generate_ogp_image(data)
+        img = generate_ogp_image(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
 
@@ -218,7 +219,7 @@ class TestGenerateOgpImage:
 class TestGenerateOgpImageSquare:
     """generate_ogp_image_square のテスト"""
 
-    def test_generate_basic(self):
+    def test_generate_basic(self, font_paths: FontPaths):
         """基本的な正方形 OGP 画像生成"""
         data = OgpData(
             item_name="テスト商品",
@@ -228,13 +229,13 @@ class TestGenerateOgpImageSquare:
             thumb_path=None,
             store_histories=[],
         )
-        img = generate_ogp_image_square(data)
+        img = generate_ogp_image_square(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_SQUARE_SIZE, OGP_SQUARE_SIZE)
         assert img.mode == "RGB"
 
-    def test_generate_with_history(self):
+    def test_generate_with_history(self, font_paths: FontPaths):
         """価格履歴付きの正方形 OGP 画像生成"""
         store_history = StoreHistory(
             store_name="TestStore",
@@ -252,12 +253,12 @@ class TestGenerateOgpImageSquare:
             thumb_path=None,
             store_histories=[store_history],
         )
-        img = generate_ogp_image_square(data)
+        img = generate_ogp_image_square(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_SQUARE_SIZE, OGP_SQUARE_SIZE)
 
-    def test_generate_with_multiple_stores(self):
+    def test_generate_with_multiple_stores(self, font_paths: FontPaths):
         """複数ストアの価格履歴"""
         histories = [
             StoreHistory(
@@ -281,12 +282,12 @@ class TestGenerateOgpImageSquare:
             thumb_path=None,
             store_histories=histories,
         )
-        img = generate_ogp_image_square(data)
+        img = generate_ogp_image_square(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_SQUARE_SIZE, OGP_SQUARE_SIZE)
 
-    def test_generate_with_none_prices(self):
+    def test_generate_with_none_prices(self, font_paths: FontPaths):
         """価格が None の場合"""
         data = OgpData(
             item_name="テスト商品",
@@ -296,12 +297,12 @@ class TestGenerateOgpImageSquare:
             thumb_path=None,
             store_histories=[],
         )
-        img = generate_ogp_image_square(data)
+        img = generate_ogp_image_square(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_SQUARE_SIZE, OGP_SQUARE_SIZE)
 
-    def test_generate_with_long_name(self):
+    def test_generate_with_long_name(self, font_paths: FontPaths):
         """長い商品名の場合（切り詰めが発生）"""
         long_name = "これは非常に長い商品名です" * 10
         data = OgpData(
@@ -312,7 +313,7 @@ class TestGenerateOgpImageSquare:
             thumb_path=None,
             store_histories=[],
         )
-        img = generate_ogp_image_square(data)
+        img = generate_ogp_image_square(data, font_paths=font_paths)
 
         assert isinstance(img, Image.Image)
         assert img.size == (OGP_SQUARE_SIZE, OGP_SQUARE_SIZE)
@@ -410,7 +411,7 @@ class TestCacheFunctions:
 class TestGetOrGenerateOgpImage:
     """get_or_generate_ogp_image のテスト"""
 
-    def test_generate_new(self):
+    def test_generate_new(self, font_paths: FontPaths):
         """新規生成"""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
@@ -423,13 +424,13 @@ class TestGetOrGenerateOgpImage:
                 store_histories=[],
             )
 
-            path = get_or_generate_ogp_image("test_item", data, cache_dir)
+            path = get_or_generate_ogp_image("test_item", data, cache_dir, font_paths=font_paths)
 
             assert path.exists()
             img = Image.open(path)
             assert img.size == (OGP_WIDTH, OGP_HEIGHT)
 
-    def test_use_cache(self):
+    def test_use_cache(self, font_paths: FontPaths):
         """キャッシュの利用"""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
@@ -443,11 +444,11 @@ class TestGetOrGenerateOgpImage:
             )
 
             # 1回目: 生成
-            path1 = get_or_generate_ogp_image("test_item", data, cache_dir)
+            path1 = get_or_generate_ogp_image("test_item", data, cache_dir, font_paths=font_paths)
             mtime1 = path1.stat().st_mtime
 
             # 2回目: キャッシュ利用（ファイルは更新されない）
-            path2 = get_or_generate_ogp_image("test_item", data, cache_dir)
+            path2 = get_or_generate_ogp_image("test_item", data, cache_dir, font_paths=font_paths)
             mtime2 = path2.stat().st_mtime
 
             assert path1 == path2
@@ -457,7 +458,7 @@ class TestGetOrGenerateOgpImage:
 class TestGetOrGenerateOgpImageSquare:
     """get_or_generate_ogp_image_square のテスト"""
 
-    def test_generate_new(self):
+    def test_generate_new(self, font_paths: FontPaths):
         """新規生成"""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
@@ -470,14 +471,14 @@ class TestGetOrGenerateOgpImageSquare:
                 store_histories=[],
             )
 
-            path = get_or_generate_ogp_image_square("test_item", data, cache_dir)
+            path = get_or_generate_ogp_image_square("test_item", data, cache_dir, font_paths=font_paths)
 
             assert path.exists()
             assert "_square" in path.stem
             img = Image.open(path)
             assert img.size == (OGP_SQUARE_SIZE, OGP_SQUARE_SIZE)
 
-    def test_use_cache(self):
+    def test_use_cache(self, font_paths: FontPaths):
         """キャッシュの利用"""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
@@ -491,17 +492,17 @@ class TestGetOrGenerateOgpImageSquare:
             )
 
             # 1回目: 生成
-            path1 = get_or_generate_ogp_image_square("test_item", data, cache_dir)
+            path1 = get_or_generate_ogp_image_square("test_item", data, cache_dir, font_paths=font_paths)
             mtime1 = path1.stat().st_mtime
 
             # 2回目: キャッシュ利用（ファイルは更新されない）
-            path2 = get_or_generate_ogp_image_square("test_item", data, cache_dir)
+            path2 = get_or_generate_ogp_image_square("test_item", data, cache_dir, font_paths=font_paths)
             mtime2 = path2.stat().st_mtime
 
             assert path1 == path2
             assert mtime1 == mtime2
 
-    def test_separate_cache_from_normal(self):
+    def test_separate_cache_from_normal(self, font_paths: FontPaths):
         """通常版と正方形版で別々にキャッシュされること"""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
@@ -515,9 +516,11 @@ class TestGetOrGenerateOgpImageSquare:
             )
 
             # 通常版を生成
-            path_normal = get_or_generate_ogp_image("test_item", data, cache_dir)
+            path_normal = get_or_generate_ogp_image("test_item", data, cache_dir, font_paths=font_paths)
             # 正方形版を生成
-            path_square = get_or_generate_ogp_image_square("test_item", data, cache_dir)
+            path_square = get_or_generate_ogp_image_square(
+                "test_item", data, cache_dir, font_paths=font_paths
+            )
 
             # 別々のファイルであること
             assert path_normal != path_square

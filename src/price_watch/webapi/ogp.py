@@ -360,7 +360,7 @@ def _generate_price_graph(
 
     # X軸の設定（目盛り数を制限）
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m月%-d日"))
-    ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=4))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=1, maxticks=4))
 
     # X軸のグリッドを非表示（Chart.js と同様）
     ax.xaxis.grid(False)
@@ -537,7 +537,7 @@ def _generate_price_graph_x_axis_only(
 
     # X軸の設定（目盛り数を制限、日本語形式）
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m月%-d日"))
-    ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=5))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(minticks=1, maxticks=5))
     tick_color = "#666666"
     ax.tick_params(axis="x", labelsize=40, labelcolor=tick_color, colors=tick_color)
 
