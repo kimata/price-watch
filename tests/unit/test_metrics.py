@@ -7,8 +7,9 @@ metrics.py のユニットテスト
 import pathlib
 import tempfile
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
+import my_lib.time
 import pytest
 
 from price_watch.metrics import (
@@ -217,7 +218,7 @@ class TestHeatmap:
 
     def test_empty_heatmap(self, metrics_db):
         """セッションがない場合のヒートマップ"""
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        today = my_lib.time.now().strftime("%Y-%m-%d")
         heatmap = metrics_db.get_uptime_heatmap(today, today)
 
         assert isinstance(heatmap, HeatmapData)
@@ -233,7 +234,7 @@ class TestHeatmap:
         session_id = metrics_db.start_session()
         metrics_db.update_heartbeat(session_id)
 
-        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        today = my_lib.time.now().strftime("%Y-%m-%d")
         heatmap = metrics_db.get_uptime_heatmap(today, today)
 
         # 少なくとも現在時刻のセルは稼働率 > 0
@@ -241,7 +242,7 @@ class TestHeatmap:
 
     def test_heatmap_date_range(self, metrics_db):
         """日付範囲のヒートマップ"""
-        today = datetime.now(UTC)
+        today = my_lib.time.now()
         start_date = (today - timedelta(days=2)).strftime("%Y-%m-%d")
         end_date = today.strftime("%Y-%m-%d")
 
