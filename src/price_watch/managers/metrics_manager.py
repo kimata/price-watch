@@ -131,9 +131,14 @@ class MetricsManager:
             self._session_failed_items += 1
 
     def update_heartbeat(self) -> None:
-        """ハートビートを更新."""
+        """ハートビートを更新（現在のアイテムカウントも含む）."""
         if self._db is not None and self._current_session_id is not None:
-            self._db.update_heartbeat(self._current_session_id)
+            self._db.update_heartbeat(
+                self._current_session_id,
+                total_items=self._session_total_items,
+                success_items=self._session_success_items,
+                failed_items=self._session_failed_items,
+            )
 
     def start_store_crawl(self, store_name: str) -> int | None:
         """ストア巡回を開始.

@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeftIcon, ClockIcon, ChartBarIcon, ListBulletIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, ClockIcon, ChartBarIcon, ListBulletIcon, CalculatorIcon, BuildingStorefrontIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
+
+// X (Twitter) のカスタムアイコン
+function XIcon({ className }: { className?: string }) {
+    return (
+        <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+        </svg>
+    );
+}
 import type { Item, StoreDefinition, Period, Event } from "../types";
 import PeriodSelector from "./PeriodSelector";
 import PriceChart from "./PriceChart";
@@ -152,7 +161,7 @@ export default function ItemDetailPage({
                                 <span className="text-gray-400 text-sm">No Image</span>
                             </div>
                         )}
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 flex flex-col">
                             <h1 className="text-xl font-bold text-gray-900 mb-2">{item.name}</h1>
                             <div className="flex items-baseline gap-2 mb-2">
                                 {hasValidPrice ? (
@@ -168,11 +177,27 @@ export default function ItemDetailPage({
                                     <span className="text-2xl text-gray-400">価格情報なし</span>
                                 )}
                             </div>
-                            <div className="flex items-center gap-1 text-sm text-gray-500">
-                                <ClockIcon className="h-4 w-4" />
-                                <span>
-                                    最終更新: {lastUpdated ? dayjs(lastUpdated).format("YYYY年M月D日 HH:mm") : "未取得"}
-                                </span>
+                            <div className="flex-1" />
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1 text-sm text-gray-500">
+                                    <ClockIcon className="h-4 w-4" />
+                                    <span>
+                                        最終更新: {lastUpdated ? dayjs(lastUpdated).format("YYYY年M月D日 HH:mm") : "未取得"}
+                                    </span>
+                                </div>
+                                <a
+                                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                                        hasValidPrice
+                                            ? `${item.name} - ${item.best_effective_price!.toLocaleString()}円`
+                                            : item.name
+                                    )}&url=${encodeURIComponent(window.location.href)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
+                                    title="X (Twitter) で共有"
+                                >
+                                    <XIcon className="h-4 w-4" />
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -194,33 +219,42 @@ export default function ItemDetailPage({
                             <LoadingSpinner />
                         </div>
                     ) : (
-                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} />
+                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} largeLabels />
                     )}
                 </div>
 
                 {/* 価格統計 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4">価格統計</h2>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                        <CalculatorIcon className="h-5 w-5" />
+                        価格統計
+                    </h2>
                     <div className="grid grid-cols-3 gap-4">
-                        <div className="text-center p-4 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-500 mb-1">期間内最安値</div>
-                            <div className="text-lg font-bold text-green-600">
+                        <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
+                            <div className="text-sm text-gray-600 mb-2">期間内最安値</div>
+                            <div className="text-2xl font-bold text-green-600">
                                 {priceStats.lowestPrice !== null
-                                    ? `${priceStats.lowestPrice.toLocaleString()}円`
+                                    ? `${priceStats.lowestPrice.toLocaleString()}`
                                     : "-"}
                             </div>
+                            {priceStats.lowestPrice !== null && (
+                                <div className="text-sm text-green-600">円</div>
+                            )}
                         </div>
-                        <div className="text-center p-4 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-500 mb-1">期間内最高値</div>
-                            <div className="text-lg font-bold text-red-600">
+                        <div className="text-center p-4 bg-red-50 rounded-lg border border-red-100">
+                            <div className="text-sm text-gray-600 mb-2">期間内最高値</div>
+                            <div className="text-2xl font-bold text-red-600">
                                 {priceStats.highestPrice !== null
-                                    ? `${priceStats.highestPrice.toLocaleString()}円`
+                                    ? `${priceStats.highestPrice.toLocaleString()}`
                                     : "-"}
                             </div>
+                            {priceStats.highestPrice !== null && (
+                                <div className="text-sm text-red-600">円</div>
+                            )}
                         </div>
                         <div className="text-center p-4 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-500 mb-1">データポイント数</div>
-                            <div className="text-lg font-bold text-gray-700">
+                            <div className="text-sm text-gray-600 mb-2">データポイント数</div>
+                            <div className="text-xl font-semibold text-gray-600">
                                 {priceStats.dataCount}
                             </div>
                         </div>
@@ -229,7 +263,10 @@ export default function ItemDetailPage({
 
                 {/* ストア別情報 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4">ストア別価格</h2>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                        <BuildingStorefrontIcon className="h-5 w-5" />
+                        ストア別価格
+                    </h2>
                     <div className="space-y-2">
                         {sortedStores.map((store) => (
                             <StoreRow

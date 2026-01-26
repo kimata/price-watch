@@ -197,18 +197,42 @@ class MetricsDB:
                 logging.warning("Closed orphan session %d (superseded)", session_id)
             conn.commit()
 
-    def update_heartbeat(self, session_id: int) -> None:
-        """セッションのハートビートを更新"""
+    def update_heartbeat(
+        self,
+        session_id: int,
+        total_items: int | None = None,
+        success_items: int | None = None,
+        failed_items: int | None = None,
+    ) -> None:
+        """セッションのハートビートを更新.
+
+        Args:
+            session_id: セッションID
+            total_items: 合計アイテム数（Noneの場合は更新しない）
+            success_items: 成功アイテム数（Noneの場合は更新しない）
+            failed_items: 失敗アイテム数（Noneの場合は更新しない）
+        """
         now_str = my_lib.time.now().isoformat()
         with self._get_conn() as conn:
-            conn.execute(
-                """
-                UPDATE crawl_sessions
-                SET last_heartbeat_at = ?
-                WHERE id = ?
-                """,
-                (now_str, session_id),
-            )
+            if total_items is not None and success_items is not None and failed_items is not None:
+                conn.execute(
+                    """
+                    UPDATE crawl_sessions
+                    SET last_heartbeat_at = ?,
+                        total_items = ?, success_items = ?, failed_items = ?
+                    WHERE id = ?
+                    """,
+                    (now_str, total_items, success_items, failed_items, session_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE crawl_sessions
+                    SET last_heartbeat_at = ?
+                    WHERE id = ?
+                    """,
+                    (now_str, session_id),
+                )
             conn.commit()
 
     def end_session(

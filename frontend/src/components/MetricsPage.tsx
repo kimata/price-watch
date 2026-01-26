@@ -1,7 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { ArrowLeftIcon } from "@heroicons/react/24/outline";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import "dayjs/locale/ja";
 import UptimeHeatmap from "./UptimeHeatmap";
 import MetricsFooter from "./MetricsFooter";
+
+dayjs.extend(relativeTime);
+dayjs.locale("ja");
 
 interface MetricsStatus {
     is_running: boolean;
@@ -34,16 +40,12 @@ function formatDuration(seconds: number): string {
     return `${minutes}分`;
 }
 
-function formatDateTime(isoString: string): string {
-    const date = new Date(isoString);
-    return date.toLocaleString("ja-JP", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-    });
+function formatDateTime(isoString: string): { formatted: string; relative: string } {
+    const d = dayjs(isoString);
+    return {
+        formatted: d.format("YYYY年M月D日 HH:mm:ss"),
+        relative: d.fromNow(),
+    };
 }
 
 export default function MetricsPage({ onBack }: MetricsPageProps) {
@@ -170,11 +172,18 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
                                 {/* 最終ハートビート */}
                                 <div className="bg-gray-50 rounded-lg p-4">
                                     <p className="text-sm text-gray-500 mb-1">最終ハートビート</p>
-                                    <p className="text-lg font-semibold">
-                                        {status?.last_heartbeat_at
-                                            ? formatDateTime(status.last_heartbeat_at)
-                                            : "-"}
-                                    </p>
+                                    {status?.last_heartbeat_at ? (
+                                        <>
+                                            <p className="text-lg font-semibold">
+                                                {formatDateTime(status.last_heartbeat_at).formatted}
+                                            </p>
+                                            <p className="text-sm text-gray-500">
+                                                {formatDateTime(status.last_heartbeat_at).relative}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <p className="text-lg font-semibold">-</p>
+                                    )}
                                 </div>
                             </div>
                         </div>

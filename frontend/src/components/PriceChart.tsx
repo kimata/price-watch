@@ -130,9 +130,10 @@ interface PriceChartProps {
     storeDefinitions: StoreDefinition[];
     className?: string;
     period?: string; // "30", "90", "180", "365", "all"
+    largeLabels?: boolean; // 個別ページ用の大きめラベル
 }
 
-export default function PriceChart({ stores, storeDefinitions, className = "h-40", period: _period = "30" }: PriceChartProps) {
+export default function PriceChart({ stores, storeDefinitions, className = "h-40", period: _period = "30", largeLabels = false }: PriceChartProps) {
     // 選択された系列（null の場合は全て表示）
     const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
 
@@ -280,9 +281,10 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     labels: {
                         usePointStyle: true,
                         pointStyle: "rect",
-                        boxWidth: 10,
-                        boxHeight: 10,
-                        font: { size: 10 },
+                        boxWidth: largeLabels ? 14 : 10,
+                        boxHeight: largeLabels ? 14 : 10,
+                        padding: largeLabels ? 16 : 8,
+                        font: { size: largeLabels ? 13 : 10 },
                         // 選択中の系列を強調（非選択は薄く）
                         generateLabels: (chart) => {
                             const datasets = chart.data.datasets;
@@ -303,6 +305,9 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     },
                 },
                 tooltip: {
+                    titleFont: { size: largeLabels ? 13 : 11 },
+                    bodyFont: { size: largeLabels ? 13 : 11 },
+                    padding: largeLabels ? 10 : 6,
                     callbacks: {
                         title: (tooltipItems) => {
                             if (tooltipItems.length === 0) return "";
@@ -313,7 +318,7 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                         label: (context) => {
                             const value = context.parsed.y;
                             const storeName = context.dataset.label || "";
-                            return value !== null ? `${storeName}: ${value.toLocaleString()}円` : "";
+                            return value !== null ? `${storeName}: ¥${value.toLocaleString()}` : "";
                         },
                     },
                 },
@@ -328,21 +333,25 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     },
                     ticks: {
                         maxTicksLimit: 6,
-                        font: { size: 10 },
+                        font: { size: largeLabels ? 12 : 10 },
+                        color: largeLabels ? "#4b5563" : undefined,
                     },
                 },
                 y: {
                     min: Math.max(0, minPrice - padding),
                     max: maxPrice + padding,
                     ticks: {
-                        callback: (value) => `${Math.round(Number(value)).toLocaleString()}`,
+                        callback: (value) => largeLabels
+                            ? `¥${Math.round(Number(value)).toLocaleString()}`
+                            : `${Math.round(Number(value)).toLocaleString()}`,
                         precision: 0,
-                        font: { size: 10 },
+                        font: { size: largeLabels ? 13 : 10 },
+                        color: largeLabels ? "#374151" : undefined,
                     },
                 },
             },
         };
-    }, [stores, sortedTimes, selectedLabel, handleLegendClick]);
+    }, [stores, sortedTimes, selectedLabel, handleLegendClick, largeLabels]);
 
     // 有効な価格データがあるかチェック（履歴があっても全て null なら価格情報なし）
     const hasValidPriceData = stores.some((s) =>
