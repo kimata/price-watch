@@ -14,7 +14,7 @@ import flask
 import flask.testing
 import pytest
 
-import price_watch.history
+import price_watch.managers.history
 import price_watch.webapi.server
 
 
@@ -71,19 +71,34 @@ def temp_data_dir(tmp_path: pathlib.Path) -> pathlib.Path:
 
 
 @pytest.fixture
-def initialized_db(temp_data_dir: pathlib.Path) -> pathlib.Path:
-    """初期化済みの一時データベースを作成"""
-    price_watch.history.init(temp_data_dir)
-    return temp_data_dir
+def history_manager(temp_data_dir: pathlib.Path) -> price_watch.managers.history.HistoryManager:
+    """初期化済みの HistoryManager を作成"""
+    manager = price_watch.managers.history.HistoryManager.create(temp_data_dir)
+    manager.initialize()
+    return manager
+
+
+@pytest.fixture
+def initialized_db(
+    history_manager: price_watch.managers.history.HistoryManager,
+) -> price_watch.managers.history.HistoryManager:
+    """初期化済みの HistoryManager を返す（後方互換性のため）"""
+    return history_manager
 
 
 # === Web API フィクスチャ ===
 @pytest.fixture
-def app(initialized_db: pathlib.Path, tmp_path: pathlib.Path) -> flask.Flask:
+def app(
+    history_manager: price_watch.managers.history.HistoryManager,
+    tmp_path: pathlib.Path,
+) -> flask.Flask:
     """Flask アプリケーションフィクスチャ"""
     # テスト用のダミー静的ディレクトリ（存在しないパスでも可）
     static_dir = tmp_path / "static"
-    return price_watch.webapi.server.create_app(static_dir_path=static_dir)
+    app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
+    # テスト用の HistoryManager をアプリケーションコンテキストに保存
+    app.config["history_manager"] = history_manager
+    return app
 
 
 @pytest.fixture

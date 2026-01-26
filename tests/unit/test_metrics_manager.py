@@ -210,7 +210,12 @@ class TestUpdateHeartbeat:
 
         manager.update_heartbeat()
 
-        mock_db.update_heartbeat.assert_called_once_with(123)
+        mock_db.update_heartbeat.assert_called_once_with(
+            123,
+            total_items=0,
+            success_items=0,
+            failed_items=0,
+        )
 
 
 class TestStartStoreCrawl:

@@ -8,18 +8,35 @@ Pydantic スキーマに準拠していることを検証します。
 """
 
 import unittest.mock
-from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
+from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import flask.testing
+import my_lib.time
 import pydantic
 import pytest
 import time_machine
 
-import price_watch.history
 import price_watch.webapi.schemas as schemas
 
+if TYPE_CHECKING:
+    from price_watch.managers.history import HistoryManager
+
 # 時間単位で異なる時刻を生成するためのベース時刻
-_BASE_TIME = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=9)))
+_BASE_TIME = my_lib.time.now().replace(hour=10, minute=0, second=0, microsecond=0)
+
+
+@pytest.fixture(autouse=True)
+def mock_history_manager(
+    history_manager: "HistoryManager",
+) -> Iterator["HistoryManager"]:
+    """webapi.page の _get_history_manager をモックしてテスト用の history_manager を返す"""
+    with unittest.mock.patch(
+        "price_watch.webapi.page._get_history_manager",
+        return_value=history_manager,
+    ):
+        yield history_manager
 
 
 class TestItemsEndpoint:
@@ -45,12 +62,13 @@ class TestItemsEndpoint:
     def test_get_items_with_data(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_items: list[dict],
     ) -> None:
         """アイテムがある場合はリストを返す"""
         # サンプルデータを挿入
         for item in sample_items:
-            price_watch.history.insert(item)
+            history_manager.insert(item)
 
         # target.yaml がない状態でテスト（全アイテム表示）
         with (
@@ -79,10 +97,11 @@ class TestItemsEndpoint:
     def test_get_items_with_days_param(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_item: dict,
     ) -> None:
         """days パラメータが正しく処理される"""
-        price_watch.history.insert(sample_item)
+        history_manager.insert(sample_item)
 
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
@@ -99,10 +118,11 @@ class TestItemsEndpoint:
     def test_get_items_with_all_days(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_item: dict,
     ) -> None:
         """days=all で全期間のデータを取得"""
-        price_watch.history.insert(sample_item)
+        history_manager.insert(sample_item)
 
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
@@ -119,11 +139,12 @@ class TestItemsEndpoint:
     def test_get_items_response_structure(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_items: list[dict],
     ) -> None:
         """レスポンス構造が正しいこと"""
         for item in sample_items:
-            price_watch.history.insert(item)
+            history_manager.insert(item)
 
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
@@ -178,15 +199,16 @@ class TestItemHistoryEndpoint:
     def test_get_history_success(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_item: dict,
     ) -> None:
         """アイテムの履歴を取得"""
         # データを挿入
-        price_watch.history.insert(sample_item)
+        history_manager.insert(sample_item)
 
         # item_key を取得
-        all_items = price_watch.history.get_all_items()
-        item_key = all_items[0]["item_key"]
+        all_items = history_manager.get_all_items()
+        item_key = all_items[0].item_key
 
         response = client.get(f"/price/api/items/{item_key}/history")
 
@@ -207,6 +229,7 @@ class TestItemHistoryEndpoint:
     def test_get_history_with_multiple_entries(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_item: dict,
     ) -> None:
         """複数の履歴エントリがある場合
@@ -215,23 +238,23 @@ class TestItemHistoryEndpoint:
         """
         # 1回目: 10:00
         with time_machine.travel(_BASE_TIME, tick=False):
-            price_watch.history.insert(sample_item)
+            history_manager.insert(sample_item)
 
         # 2回目: 11:00
         with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
             modified_item = sample_item.copy()
             modified_item["price"] = 900
-            price_watch.history.insert(modified_item)
+            history_manager.insert(modified_item)
 
         # 3回目: 12:00
         with time_machine.travel(_BASE_TIME + timedelta(hours=2), tick=False):
             modified_item = sample_item.copy()
             modified_item["price"] = 800
-            price_watch.history.insert(modified_item)
+            history_manager.insert(modified_item)
 
         # item_key を取得
-        all_items = price_watch.history.get_all_items()
-        item_key = all_items[0]["item_key"]
+        all_items = history_manager.get_all_items()
+        item_key = all_items[0].item_key
 
         # days=all で全期間を指定（デフォルトは30日）
         response = client.get(f"/price/api/items/{item_key}/history?days=all")
@@ -246,13 +269,14 @@ class TestItemHistoryEndpoint:
     def test_get_history_with_days_param(
         self,
         client: flask.testing.FlaskClient,
+        history_manager: "HistoryManager",
         sample_item: dict,
     ) -> None:
         """days パラメータが正しく処理される"""
-        price_watch.history.insert(sample_item)
+        history_manager.insert(sample_item)
 
-        all_items = price_watch.history.get_all_items()
-        item_key = all_items[0]["item_key"]
+        all_items = history_manager.get_all_items()
+        item_key = all_items[0].item_key
 
         response = client.get(f"/price/api/items/{item_key}/history?days=30")
 
@@ -332,9 +356,13 @@ class TestErrorHandling:
         client: flask.testing.FlaskClient,
     ) -> None:
         """内部エラーが発生した場合は 500 を返す"""
+        # _get_history_manager をモックしてエラーを発生させる
+        mock_manager = unittest.mock.MagicMock()
+        mock_manager.get_all_items.side_effect = Exception("Database error")
+
         with unittest.mock.patch(
-            "price_watch.history.get_all_items",
-            side_effect=Exception("Database error"),
+            "price_watch.webapi.page._get_history_manager",
+            return_value=mock_manager,
         ):
             response = client.get("/price/api/items")
 
