@@ -570,7 +570,7 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     logo_margin_y = 10  # 下側がはみ出ないよう余裕を持たせる
     logo_x = OGP_WIDTH - logo_width - logo_margin_x
     logo_y = OGP_HEIGHT - logo_height - logo_margin_y
-    draw.text((logo_x, logo_y), logo_text, font=font_logo, fill=(150, 150, 150))
+    draw.text((logo_x, logo_y), logo_text, font=font_logo, fill=(200, 200, 200))
 
     return img
 
