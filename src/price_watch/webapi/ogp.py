@@ -8,9 +8,10 @@ import logging
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import matplotlib
+import my_lib.pil_util
 from PIL import Image, ImageDraw, ImageFont
 
 matplotlib.use("Agg")
@@ -18,6 +19,9 @@ matplotlib.use("Agg")
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator
+
+if TYPE_CHECKING:
+    import price_watch.config
 
 # OGP 画像サイズ
 OGP_WIDTH = 1200
@@ -40,7 +44,7 @@ DEFAULT_COLORS = [
     "#ec4899",  # Pink
 ]
 
-# 日本語フォントの候補
+# 日本語フォントの候補（フォールバック用）
 JAPANESE_FONT_PATHS = [
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
@@ -52,6 +56,30 @@ JAPANESE_FONT_PATHS = [
     "C:\\Windows\\Fonts\\msgothic.ttc",
     "C:\\Windows\\Fonts\\meiryo.ttc",
 ]
+
+
+@dataclass(frozen=True)
+class FontPaths:
+    """OGP 画像生成用フォントパス."""
+
+    jp_regular: pathlib.Path | None = None
+    jp_medium: pathlib.Path | None = None
+    jp_bold: pathlib.Path | None = None
+    en_medium: pathlib.Path | None = None
+    en_bold: pathlib.Path | None = None
+
+    @classmethod
+    def from_config(cls, font_config: price_watch.config.FontConfig | None) -> FontPaths:
+        """FontConfig からフォントパスを取得."""
+        if font_config is None:
+            return cls()
+        return cls(
+            jp_regular=font_config.get_font_path("jp_regular"),
+            jp_medium=font_config.get_font_path("jp_medium"),
+            jp_bold=font_config.get_font_path("jp_bold"),
+            en_medium=font_config.get_font_path("en_medium"),
+            en_bold=font_config.get_font_path("en_bold"),
+        )
 
 
 @dataclass(frozen=True)
@@ -75,37 +103,69 @@ class OgpData:
     store_histories: list[StoreHistory]
 
 
-def _find_japanese_font() -> str | None:
-    """日本語フォントを探す."""
+def _find_fallback_font() -> str | None:
+    """フォールバック用の日本語フォントを探す."""
     for path in JAPANESE_FONT_PATHS:
         if pathlib.Path(path).exists():
             return path
     return None
 
 
-def _get_pillow_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    """Pillow 用フォントを取得."""
-    font_path = _find_japanese_font()
-    if font_path:
+def _get_pillow_font(
+    size: int,
+    font_path: pathlib.Path | None = None,
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Pillow 用フォントを取得.
+
+    Args:
+        size: フォントサイズ
+        font_path: フォントファイルのパス（None の場合はフォールバック）
+    """
+    # 指定されたフォントを試す
+    if font_path and font_path.exists():
         try:
-            return ImageFont.truetype(font_path, size)
+            return ImageFont.truetype(str(font_path), size)
         except Exception:
             logging.warning("Failed to load font: %s", font_path)
+
+    # フォールバック
+    fallback_path = _find_fallback_font()
+    if fallback_path:
+        try:
+            return ImageFont.truetype(fallback_path, size)
+        except Exception:
+            logging.warning("Failed to load fallback font: %s", fallback_path)
+
     return ImageFont.load_default()
 
 
-def _setup_matplotlib_font() -> None:
-    """matplotlib 用の日本語フォントを設定."""
-    font_path = _find_japanese_font()
-    if font_path:
-        import matplotlib.font_manager as fm
+def _setup_matplotlib_font(font_path: pathlib.Path | None = None) -> None:
+    """matplotlib 用のフォントを設定.
 
+    Args:
+        font_path: フォントファイルのパス（None の場合はフォールバック）
+    """
+    import matplotlib.font_manager as fm
+
+    # 指定されたフォントを試す
+    if font_path and font_path.exists():
         try:
-            fm.fontManager.addfont(font_path)
-            prop = fm.FontProperties(fname=font_path)
+            fm.fontManager.addfont(str(font_path))
+            prop = fm.FontProperties(fname=str(font_path))
             plt.rcParams["font.family"] = prop.get_name()
+            return
         except Exception:
             logging.warning("Failed to setup matplotlib font: %s", font_path)
+
+    # フォールバック
+    fallback_path = _find_fallback_font()
+    if fallback_path:
+        try:
+            fm.fontManager.addfont(fallback_path)
+            prop = fm.FontProperties(fname=fallback_path)
+            plt.rcParams["font.family"] = prop.get_name()
+        except Exception:
+            logging.warning("Failed to setup matplotlib fallback font: %s", fallback_path)
 
 
 def _format_price(price: int | None) -> str:
@@ -115,13 +175,27 @@ def _format_price(price: int | None) -> str:
     return f"¥{price:,}"
 
 
-def _truncate_text(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int) -> str:
-    """テキストを最大幅に収まるように切り詰める."""
+def _get_text_size(
+    img: Image.Image, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont
+) -> tuple[int, int]:
+    """テキストの描画サイズを取得.
+
+    my_lib.pil_util.text_size のラッパー（ImageFont 互換のため）.
+    """
+    if isinstance(font, ImageFont.FreeTypeFont):
+        return my_lib.pil_util.text_size(img, font, text)
+    # フォールバック（デフォルトフォントの場合）
     if hasattr(font, "getbbox"):
         bbox = font.getbbox(text)
-        width = bbox[2] - bbox[0] if bbox else 0
-    else:
-        width = len(text) * 20
+        return (int(bbox[2] - bbox[0]), int(bbox[3] - bbox[1])) if bbox else (len(text) * 20, 20)
+    return (len(text) * 20, 20)
+
+
+def _truncate_text(
+    img: Image.Image, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int
+) -> str:
+    """テキストを最大幅に収まるように切り詰める."""
+    width, _ = _get_text_size(img, text, font)
 
     if width <= max_width:
         return text
@@ -130,24 +204,32 @@ def _truncate_text(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont
     while text and width > max_width:
         text = text[:-1]
         test_text = text + ellipsis
-        if hasattr(font, "getbbox"):
-            bbox = font.getbbox(test_text)
-            width = bbox[2] - bbox[0] if bbox else 0
-        else:
-            width = len(test_text) * 20
+        width, _ = _get_text_size(img, test_text, font)
 
     return text + ellipsis
 
 
-def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
-    """価格推移グラフを生成."""
-    _setup_matplotlib_font()
+def _generate_price_graph(
+    store_histories: list[StoreHistory],
+    thumb_path: pathlib.Path | None = None,
+    font_paths: FontPaths | None = None,
+) -> Image.Image:
+    """価格推移グラフを生成.
+
+    Args:
+        store_histories: ストアごとの価格履歴
+        thumb_path: サムネイル画像のパス（プロットエリア背景に配置）
+        font_paths: フォントパス設定
+    """
+    # matplotlib 用フォントを設定（日本語 medium を使用）
+    jp_font = font_paths.jp_medium if font_paths else None
+    _setup_matplotlib_font(jp_font)
 
     fig, ax = plt.subplots(figsize=(GRAPH_WIDTH / 100, GRAPH_HEIGHT / 100), dpi=100)
 
-    # 背景色を設定
+    # 背景色を設定（プロットエリアは透明）
     fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
+    ax.set_facecolor("none")
 
     all_prices: list[int] = []
     all_times_set: set[str] = set()
@@ -284,10 +366,38 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
 
     # 凡例は省略（小さく表示された際に読めないため）
 
+    # サムネイルをプロットエリアの最背面（左寄せ）に配置
+    if thumb_path and thumb_path.exists():
+        try:
+            thumb_img = Image.open(thumb_path)
+            # サムネイルサイズ（プロットエリアの高さの70%程度）
+            thumb_height_ratio = 0.7
+            # プロットエリアの左下に配置
+            extent_x_start = mdates.date2num(min(time_to_dt.values()))
+            extent_x_range = mdates.date2num(max(time_to_dt.values())) - extent_x_start
+            extent_y_range = y_max - y_min
+            thumb_extent_height = extent_y_range * thumb_height_ratio
+            # X方向の30%をサムネイル幅に使用
+            thumb_extent_width = extent_x_range * 0.3
+            ax.imshow(
+                thumb_img,
+                extent=(
+                    extent_x_start,
+                    extent_x_start + thumb_extent_width,
+                    y_min,
+                    y_min + thumb_extent_height,
+                ),
+                aspect="auto",
+                zorder=-10,  # 最背面に配置（グリッドより後ろ）
+                alpha=0.4,
+            )
+        except Exception:
+            logging.warning("Failed to load thumbnail for graph background: %s", thumb_path)
+
     # スタイル調整
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=16)
+    ax.tick_params(axis="both", labelsize=24)
 
     plt.tight_layout()
 
@@ -299,15 +409,45 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
     return Image.open(buf)
 
 
-def generate_ogp_image(data: OgpData) -> Image.Image:
+def _draw_rounded_rect_overlay(
+    img: Image.Image, rect: tuple[int, int, int, int], radius: int = 10, alpha: int = 230
+) -> Image.Image:
+    """半透明の角丸背景を描画.
+
+    Args:
+        img: 対象画像
+        rect: (x1, y1, x2, y2)
+        radius: 角丸半径
+        alpha: 透明度 (0-255)
+
+    Returns:
+        合成後の画像
+    """
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    overlay_draw.rounded_rectangle(
+        [(rect[0], rect[1]), (rect[2], rect[3])],
+        radius=radius,
+        fill=(255, 255, 255, alpha),
+    )
+    img = img.convert("RGBA")
+    img = Image.alpha_composite(img, overlay)
+    return img.convert("RGB")
+
+
+def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Image.Image:
     """OGP 画像を生成.
 
     グラフを全面に配置し、サムネイルを左下背景に、価格情報を右上にオーバーレイ。
     小さく表示された場合も商品と価格が分かるようにする。
+
+    Args:
+        data: OGP 画像生成用データ
+        font_paths: フォントパス設定
     """
-    # --- グラフを全面に配置 ---
+    # --- グラフを全面に配置（サムネイルはグラフ内の背景に表示） ---
     if data.store_histories:
-        img = _generate_price_graph(data.store_histories)
+        img = _generate_price_graph(data.store_histories, thumb_path=data.thumb_path, font_paths=font_paths)
         # グラフのサイズを OGP サイズに調整
         if img.size != (OGP_WIDTH, OGP_HEIGHT):
             img = img.resize((OGP_WIDTH, OGP_HEIGHT), Image.Resampling.LANCZOS)
@@ -317,76 +457,85 @@ def generate_ogp_image(data: OgpData) -> Image.Image:
     else:
         img = Image.new("RGB", (OGP_WIDTH, OGP_HEIGHT), color=(255, 255, 255))
 
-    # --- サムネイルを左下背景に配置（半透明）---
-    thumb_size = 280
-    if data.thumb_path and data.thumb_path.exists():
-        try:
-            thumb = Image.open(data.thumb_path)
-            thumb.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+    # フォントを取得（小さく表示された際も読めるように大きめ）
+    # 商品名: 日本語 Bold、価格: 英語 Bold、ストア名: 日本語 Medium
+    font_title = _get_pillow_font(58, font_paths.jp_bold if font_paths else None)
+    font_price = _get_pillow_font(100, font_paths.en_bold if font_paths else None)
+    font_label = _get_pillow_font(36, font_paths.jp_medium if font_paths else None)
 
-            # 半透明の白い背景を作成
-            thumb_bg = Image.new("RGBA", (thumb_size + 20, thumb_size + 20), (255, 255, 255, 200))
+    # プロットエリアのマージン（軸ラベル等を考慮）
+    plot_right_margin = 80  # 右端の余白
+    plot_top_margin = 20  # 上端の余白
+    info_padding = 15  # ボックス内のパディング
 
-            # サムネイルを背景に貼り付け
-            thumb_x = 10 + (thumb_size - thumb.width) // 2
-            thumb_y = 10 + (thumb_size - thumb.height) // 2
-            if thumb.mode == "RGBA":
-                thumb_bg.paste(thumb, (thumb_x, thumb_y), thumb)
-            else:
-                thumb_bg.paste(thumb, (thumb_x, thumb_y))
+    # --- 商品名を上部に表示（プロットエリア全幅を使用） ---
+    title_max_width = OGP_WIDTH - plot_right_margin * 2 - info_padding * 2
+    title_text = _truncate_text(img, data.item_name, font_title, title_max_width)
+    title_width, _ = _get_text_size(img, title_text, font_title)
 
-            # img を RGBA に変換してからブレンド
-            img = img.convert("RGBA")
-            # 左下に配置
-            paste_x = 30
-            paste_y = OGP_HEIGHT - thumb_size - 80
-            img.paste(thumb_bg, (paste_x, paste_y), thumb_bg)
-            img = img.convert("RGB")
-        except Exception:
-            logging.warning("Failed to load thumbnail: %s", data.thumb_path)
+    # 商品名の背景ボックス（右寄せ）
+    title_box_width = title_width + info_padding * 2
+    title_box_height = 80
+    title_box_x = OGP_WIDTH - plot_right_margin - title_box_width
+    title_box_y = plot_top_margin
 
-    draw = ImageDraw.Draw(img)
-
-    # フォントを取得
-    font_title = _get_pillow_font(32)
-    font_price = _get_pillow_font(56)
-    font_label = _get_pillow_font(20)
-
-    # --- 右上に価格情報をオーバーレイ ---
-    # 半透明の背景ボックス
-    info_width = 400
-    info_height = 160
-    info_x = OGP_WIDTH - info_width - 30
-    info_y = 30
-
-    # 半透明背景を描画
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    overlay_draw = ImageDraw.Draw(overlay)
-    overlay_draw.rounded_rectangle(
-        [(info_x, info_y), (info_x + info_width, info_y + info_height)],
-        radius=10,
-        fill=(255, 255, 255, 230),
+    img = _draw_rounded_rect_overlay(
+        img,
+        (title_box_x, title_box_y, title_box_x + title_box_width, title_box_y + title_box_height),
     )
-    img = img.convert("RGBA")
-    img = Image.alpha_composite(img, overlay)
-    img = img.convert("RGB")
+
+    # 商品名を描画（ボックス内左寄せ = 視覚的には右寄せボックス）
+    title_x = title_box_x + info_padding
+    title_y = title_box_y + (title_box_height - 58) // 2  # 垂直中央
     draw = ImageDraw.Draw(img)
+    draw.text((title_x, title_y), title_text, font=font_title, fill=(50, 50, 50))
 
-    # 商品名（右上のボックス内、最大幅で切り詰め）
-    title_text = _truncate_text(data.item_name, font_title, info_width - 30)
-    draw.text((info_x + 15, info_y + 15), title_text, font=font_title, fill=(50, 50, 50))
-
-    # 現在価格（大きく表示）
+    # --- 価格・ストア名を右側に表示 ---
     price_text = _format_price(data.best_price)
-    draw.text((info_x + 15, info_y + 55), price_text, font=font_price, fill=(220, 50, 50))
+    store_text = _truncate_text(img, data.best_store, font_label, 400)
 
-    # 最安ストア名
-    store_text = _truncate_text(data.best_store, font_label, info_width - 30)
-    draw.text((info_x + 15, info_y + 120), store_text, font=font_label, fill=(100, 100, 100))
+    price_width, _ = _get_text_size(img, price_text, font_price)
+    store_width, _ = _get_text_size(img, store_text, font_label)
+
+    # ボックス幅は価格とストア名の最大幅 + パディング
+    max_text_width = max(price_width, store_width)
+    info_width = max_text_width + info_padding * 2
+    info_height = 180  # 価格 + ストア名のみ
+
+    # プロットエリア右端に配置
+    info_x = OGP_WIDTH - plot_right_margin - info_width
+    info_y = title_box_y + title_box_height + 10  # 商品名ボックスの下
+
+    img = _draw_rounded_rect_overlay(
+        img,
+        (info_x, info_y, info_x + info_width, info_y + info_height),
+    )
+
+    # テキストを右寄せで描画（my_lib.pil_util.draw_text を活用）
+    text_right_edge = info_x + info_width - info_padding
+
+    # FreeTypeFont のみ my_lib.pil_util.draw_text を使用可能
+    if isinstance(font_price, ImageFont.FreeTypeFont) and isinstance(font_label, ImageFont.FreeTypeFont):
+        # 現在価格（右寄せ）
+        my_lib.pil_util.draw_text(
+            img, price_text, (text_right_edge, info_y + 15), font_price, align="right", color="#dc3232"
+        )
+        # 最安ストア名（右寄せ）
+        my_lib.pil_util.draw_text(
+            img, store_text, (text_right_edge, info_y + 120), font_label, align="right", color="#646464"
+        )
+    else:
+        # フォールバック: 手動で右寄せ位置を計算
+        draw = ImageDraw.Draw(img)
+        price_x = text_right_edge - price_width
+        draw.text((price_x, info_y + 15), price_text, font=font_price, fill=(220, 50, 50))
+        store_x = text_right_edge - store_width
+        draw.text((store_x, info_y + 120), store_text, font=font_label, fill=(100, 100, 100))
 
     # Price Watch ロゴ（右下）
-    font_logo = _get_pillow_font(16)
+    font_logo = _get_pillow_font(16, font_paths.en_medium if font_paths else None)
     logo_text = "Price Watch"
+    draw = ImageDraw.Draw(img)
     draw.text((OGP_WIDTH - 130, OGP_HEIGHT - 35), logo_text, font=font_logo, fill=(150, 150, 150))
 
     return img
@@ -430,15 +579,24 @@ def get_or_generate_ogp_image(
     data: OgpData,
     cache_dir: pathlib.Path,
     ttl_sec: int = CACHE_TTL_SEC,
+    font_paths: FontPaths | None = None,
 ) -> pathlib.Path:
-    """OGP 画像を取得（キャッシュがなければ生成）."""
+    """OGP 画像を取得（キャッシュがなければ生成）.
+
+    Args:
+        item_key: アイテムキー（キャッシュファイル名に使用）
+        data: OGP 画像生成用データ
+        cache_dir: キャッシュディレクトリ
+        ttl_sec: キャッシュ有効期間（秒）
+        font_paths: フォントパス設定
+    """
     cache_path = get_cache_path(item_key, cache_dir)
 
     if is_cache_valid(cache_path, ttl_sec):
         return cache_path
 
     # 画像を生成して保存
-    img = generate_ogp_image(data)
+    img = generate_ogp_image(data, font_paths)
     save_ogp_image(img, cache_path)
 
     return cache_path

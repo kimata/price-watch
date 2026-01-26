@@ -736,6 +736,9 @@ def ogp_image(item_key: str) -> flask.Response:
         cache_dir = app_config.data.cache
         thumb_dir = app_config.data.thumb
 
+        # フォント設定を取得
+        font_paths = price_watch.webapi.ogp.FontPaths.from_config(app_config.font)
+
         # アイテムデータを取得
         item_name, stores = _get_item_data_for_ogp(item_key)
 
@@ -753,6 +756,7 @@ def ogp_image(item_key: str) -> flask.Response:
             item_key,
             ogp_data,
             cache_dir,
+            font_paths=font_paths,
         )
 
         return flask.send_file(

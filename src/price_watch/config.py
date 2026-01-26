@@ -140,6 +140,61 @@ class TargetConfig:
 
 
 @dataclass(frozen=True)
+class FontMapConfig:
+    """フォントマッピング設定"""
+
+    jp_regular: str | None = None
+    jp_medium: str | None = None
+    jp_bold: str | None = None
+    en_medium: str | None = None
+    en_bold: str | None = None
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> FontMapConfig:
+        """dict から FontMapConfig を生成"""
+        return cls(
+            jp_regular=data.get("jp_regular"),
+            jp_medium=data.get("jp_medium"),
+            jp_bold=data.get("jp_bold"),
+            en_medium=data.get("en_medium"),
+            en_bold=data.get("en_bold"),
+        )
+
+
+@dataclass(frozen=True)
+class FontConfig:
+    """フォント設定"""
+
+    path: pathlib.Path | None
+    map: FontMapConfig
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> FontConfig:
+        """dict から FontConfig を生成"""
+        path = None
+        if "path" in data:
+            path = pathlib.Path(data["path"])
+        return cls(
+            path=path,
+            map=FontMapConfig.parse(data.get("map", {})),
+        )
+
+    def get_font_path(self, font_key: str) -> pathlib.Path | None:
+        """フォントキーからフルパスを取得.
+
+        Args:
+            font_key: "jp_regular", "jp_medium", "jp_bold", "en_medium", "en_bold"
+
+        Returns:
+            フォントファイルのフルパス。設定されていない場合は None。
+        """
+        font_file = getattr(self.map, font_key, None)
+        if font_file is None or self.path is None:
+            return None
+        return self.path / font_file
+
+
+@dataclass(frozen=True)
 class LivenessFileConfig:
     """Liveness ファイル設定"""
 
@@ -184,6 +239,7 @@ class AppConfig:
     webapp: my_lib.webapp.config.WebappConfig
     target: TargetConfig
     liveness: LivenessConfig
+    font: FontConfig | None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> AppConfig:
@@ -213,6 +269,11 @@ class AppConfig:
         # Liveness 設定
         liveness = LivenessConfig.parse(data.get("liveness", {}))
 
+        # Font 設定
+        font = None
+        if "font" in data:
+            font = FontConfig.parse(data["font"])
+
         return cls(
             check=check,
             slack=slack,
@@ -221,6 +282,7 @@ class AppConfig:
             webapp=webapp,
             target=target,
             liveness=liveness,
+            font=font,
         )
 
 
