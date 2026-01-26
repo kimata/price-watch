@@ -35,6 +35,7 @@ import price_watch.const
 import price_watch.event
 import price_watch.history
 import price_watch.log_format
+import price_watch.metrics
 import price_watch.notify
 import price_watch.store.mercari
 import price_watch.store.scrape
@@ -87,6 +88,13 @@ class AppRunner:
 
         # ドライバー作成の連続失敗回数
         self._driver_create_failures: int = 0
+
+        # メトリクス
+        self._metrics_db: price_watch.metrics.MetricsDB | None = None
+        self._current_session_id: int | None = None
+        self._session_total_items: int = 0
+        self._session_success_items: int = 0
+        self._session_failed_items: int = 0
 
     def sig_handler(self, num: int, _frame: Any) -> None:
         """シグナルハンドラ.
@@ -197,6 +205,9 @@ class AppRunner:
         """liveness を更新."""
         if self.config is not None:
             my_lib.footprint.update(self.config.liveness.file.crawler)
+        # メトリクスのハートビートも更新
+        if self._metrics_db is not None and self._current_session_id is not None:
+            self._metrics_db.update_heartbeat(self._current_session_id)
 
     def _sleep_until(self, end_time: float) -> None:
         """指定時刻までスリープ.
@@ -411,87 +422,119 @@ class AppRunner:
             if scrape_items:
                 logging.info("[デバッグモード] スクレイピング: %d件のアイテムをチェック", len(scrape_items))
 
+        # ストアごとにグループ化して処理
+        items_by_store: dict[str, list[dict[str, Any]]] = {}
         for item in scrape_items:
+            store_name = item.get("store", check_method)
+            if store_name not in items_by_store:
+                items_by_store[store_name] = []
+            items_by_store[store_name].append(item)
+
+        for store_name, store_items in items_by_store.items():
             if self.should_terminate.is_set():
                 return
 
-            logging.info(price_watch.log_format.format_crawl_start(item))
-            store_name = item.get("store", check_method)
+            # ストア巡回開始
+            store_stats_id = self._start_store_crawl(store_name)
+            store_success = 0
+            store_failed = 0
 
-            try:
-                price_watch.store.scrape.check(self.config, self.driver, item, self.loop)
+            for item in store_items:
+                if self.should_terminate.is_set():
+                    self._end_store_crawl(store_stats_id, len(store_items), store_success, store_failed)
+                    return
 
-                # crawl_success フラグで成功/失敗を判定
-                crawl_success = item.get("crawl_success", False)
-                crawl_status = 1 if crawl_success else 0
+                logging.info(price_watch.log_format.format_crawl_start(item))
+                crawl_success = False
 
-                self._process_data(
-                    self.config.slack,
-                    item,
-                    price_watch.history.last(item["url"]),
-                    crawl_status=crawl_status,
-                )
+                try:
+                    price_watch.store.scrape.check(self.config, self.driver, item, self.loop)
 
-                if crawl_success:
-                    self._update_liveness()
-                    self.error_count[item["url"]] = 0
-                    # デバッグモード: このストアは成功
-                    if self.debug_mode:
-                        self._debug_check_results[store_name] = True
-                        logging.info("[デバッグモード] %s: 成功", store_name)
-                else:
-                    # 価格要素が見つからなかった場合（例外は発生していない）
-                    self.error_count[item["url"]] += 1
-                    logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
-                    if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                    # crawl_success フラグで成功/失敗を判定
+                    crawl_success = item.get("crawl_success", False)
+                    crawl_status = 1 if crawl_success else 0
+
+                    self._process_data(
+                        self.config.slack,
+                        item,
+                        price_watch.history.last(item["url"]),
+                        crawl_status=crawl_status,
+                    )
+
+                    if crawl_success:
+                        self._update_liveness()
                         self.error_count[item["url"]] = 0
+                        store_success += 1
+                        # デバッグモード: このストアは成功
+                        if self.debug_mode:
+                            self._debug_check_results[store_name] = True
+                            logging.info("[デバッグモード] %s: 成功", store_name)
+                    else:
+                        # 価格要素が見つからなかった場合（例外は発生していない）
+                        self.error_count[item["url"]] += 1
+                        store_failed += 1
+                        logging.warning(
+                            price_watch.log_format.format_error(item, self.error_count[item["url"]])
+                        )
+                        if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                            self.error_count[item["url"]] = 0
+                        # デバッグモード: このストアは失敗
+                        if self.debug_mode:
+                            self._debug_check_results[store_name] = False
+                            logging.warning("[デバッグモード] %s: 失敗（価格要素なし）", store_name)
+                except selenium.common.exceptions.InvalidSessionIdException:
+                    # セッションが無効になった場合はドライバーを再作成
+                    logging.warning("セッションが無効になりました。ドライバーを再作成します")
+                    store_failed += 1
+                    if not self._recreate_driver():
+                        logging.error("ドライバーの再作成に失敗しました")
+                        self._end_store_crawl(store_stats_id, len(store_items), store_success, store_failed)
+                        return
+
+                    # 履歴を記録（crawl_status=0）
+                    self._process_data(
+                        self.config.slack,
+                        item,
+                        price_watch.history.last(item["url"]),
+                        crawl_status=0,
+                    )
+
                     # デバッグモード: このストアは失敗
                     if self.debug_mode:
                         self._debug_check_results[store_name] = False
-                        logging.warning("[デバッグモード] %s: 失敗（価格要素なし）", store_name)
-            except selenium.common.exceptions.InvalidSessionIdException:
-                # セッションが無効になった場合はドライバーを再作成
-                logging.warning("セッションが無効になりました。ドライバーを再作成します")
-                if not self._recreate_driver():
-                    logging.error("ドライバーの再作成に失敗しました")
+                        logging.warning("[デバッグモード] %s: 失敗（セッションエラー）", store_name)
+                except Exception:
+                    self.error_count[item["url"]] += 1
+                    store_failed += 1
+                    logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
+                    # スクリーンショット付きのエラー通知は scrape.py の error_handler で送信済み
+
+                    # 例外発生時も履歴を記録（crawl_status=0）
+                    self._process_data(
+                        self.config.slack,
+                        item,
+                        price_watch.history.last(item["url"]),
+                        crawl_status=0,
+                    )
+
+                    if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                        self.error_count[item["url"]] = 0
+
+                    # デバッグモード: このストアは失敗
+                    if self.debug_mode:
+                        self._debug_check_results[store_name] = False
+                        logging.warning("[デバッグモード] %s: 失敗（例外発生）", store_name)
+
+                # アイテム結果を記録
+                self._record_item_result(success=crawl_success)
+
+                # wait() を使用してシグナル受信時に即座に終了できるようにする
+                if self.should_terminate.wait(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                    self._end_store_crawl(store_stats_id, len(store_items), store_success, store_failed)
                     return
 
-                # 履歴を記録（crawl_status=0）
-                self._process_data(
-                    self.config.slack,
-                    item,
-                    price_watch.history.last(item["url"]),
-                    crawl_status=0,
-                )
-
-                # デバッグモード: このストアは失敗
-                if self.debug_mode:
-                    self._debug_check_results[store_name] = False
-                    logging.warning("[デバッグモード] %s: 失敗（セッションエラー）", store_name)
-            except Exception:
-                self.error_count[item["url"]] += 1
-                logging.warning(price_watch.log_format.format_error(item, self.error_count[item["url"]]))
-                # スクリーンショット付きのエラー通知は scrape.py の error_handler で送信済み
-
-                # 例外発生時も履歴を記録（crawl_status=0）
-                self._process_data(
-                    self.config.slack,
-                    item,
-                    price_watch.history.last(item["url"]),
-                    crawl_status=0,
-                )
-
-                if self.error_count[item["url"]] >= price_watch.const.ERROR_NOTIFY_COUNT:
-                    self.error_count[item["url"]] = 0
-
-                # デバッグモード: このストアは失敗
-                if self.debug_mode:
-                    self._debug_check_results[store_name] = False
-                    logging.warning("[デバッグモード] %s: 失敗（例外発生）", store_name)
-
-            # wait() を使用してシグナル受信時に即座に終了できるようにする
-            if self.should_terminate.wait(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
-                return
+            # ストア巡回終了
+            self._end_store_crawl(store_stats_id, len(store_items), store_success, store_failed)
 
     def _do_work_amazon(self, item_list: list[dict[str, Any]]) -> None:
         """Amazon PA-API 対象アイテムを処理."""
@@ -512,7 +555,9 @@ class AppRunner:
             logging.info("[Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
 
         store_name = "amazon.co.jp"
-        success = False
+        store_stats_id = self._start_store_crawl(store_name)
+        success_count = 0
+        failed_count = 0
 
         try:
             for item in price_watch.amazon.paapi.check_item_list(self.config, amazon_items):
@@ -522,14 +567,21 @@ class AppRunner:
                     price_watch.history.last(item["url"]),
                     crawl_status=1,
                 )
-                success = True  # 少なくとも1つ成功
+                success_count += 1
+                self._record_item_result(success=True)
             self._update_liveness()
         except Exception:
             logging.exception("Failed to check Amazon PA-API items")
-            success = False
+            # 残りのアイテムは失敗扱い
+            failed_count = len(amazon_items) - success_count
+            for _ in range(failed_count):
+                self._record_item_result(success=False)
+
+        self._end_store_crawl(store_stats_id, len(amazon_items), success_count, failed_count)
 
         # デバッグモード: 結果を記録
         if self.debug_mode:
+            success = success_count > 0
             self._debug_check_results[store_name] = success
             if success:
                 logging.info("[デバッグモード] %s: 成功", store_name)
@@ -556,10 +608,16 @@ class AppRunner:
         else:
             logging.info("[メルカリ検索] %d件のアイテムをチェック中...", len(mercari_items))
 
+        store_stats_id = self._start_store_crawl(store_name)
+        store_success = 0
+        store_failed = 0
+
         for item in mercari_items:
             if self.should_terminate.is_set():
+                self._end_store_crawl(store_stats_id, len(mercari_items), store_success, store_failed)
                 return
 
+            crawl_success = False
             try:
                 price_watch.store.mercari.check(self.config, self.driver, item)
 
@@ -578,12 +636,14 @@ class AppRunner:
                 if crawl_success:
                     self._update_liveness()
                     self.error_count[item_key] = 0
+                    store_success += 1
                     # デバッグモード: 成功
                     if self.debug_mode:
                         self._debug_check_results[store_name] = True
                         logging.info("[デバッグモード] %s: 成功", store_name)
                 else:
                     self.error_count[item_key] += 1
+                    store_failed += 1
                     logging.warning(price_watch.log_format.format_error(item, self.error_count[item_key]))
                     if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
                         self.error_count[item_key] = 0
@@ -594,8 +654,10 @@ class AppRunner:
             except selenium.common.exceptions.InvalidSessionIdException:
                 # セッションが無効になった場合はドライバーを再作成
                 logging.warning("セッションが無効になりました。ドライバーを再作成します")
+                store_failed += 1
                 if not self._recreate_driver():
                     logging.error("ドライバーの再作成に失敗しました")
+                    self._end_store_crawl(store_stats_id, len(mercari_items), store_success, store_failed)
                     return
 
                 # 履歴を記録（crawl_status=0）
@@ -614,6 +676,7 @@ class AppRunner:
             except Exception:
                 item_key = price_watch.store.mercari.generate_item_key(item)
                 self.error_count[item_key] += 1
+                store_failed += 1
                 logging.exception("Failed to check mercari item: %s", item["name"])
 
                 self._process_data(
@@ -631,8 +694,15 @@ class AppRunner:
                     self._debug_check_results[store_name] = False
                     logging.warning("[デバッグモード] %s: 失敗（例外発生）", store_name)
 
+            # アイテム結果を記録
+            self._record_item_result(success=crawl_success)
+
             if self.should_terminate.wait(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                self._end_store_crawl(store_stats_id, len(mercari_items), store_success, store_failed)
                 return
+
+        # ストア巡回終了
+        self._end_store_crawl(store_stats_id, len(mercari_items), store_success, store_failed)
 
     def _select_one_item_per_store(self, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """各ストアから1アイテムずつ選択.
@@ -666,6 +736,9 @@ class AppRunner:
                 self.config = price_watch.config.load(self.config_file)
             price_watch.history.init(self.config.data.price)
             price_watch.thumbnail.init(self.config.data.thumb)
+            # メトリクス DB を初期化
+            metrics_db_path = self.config.data.metrics / "metrics.db"
+            self._metrics_db = price_watch.metrics.MetricsDB(metrics_db_path)
             self.driver = self._create_driver_with_retry()
             if self.driver is None:
                 logging.error("ドライバーの作成に失敗しました")
@@ -677,14 +750,18 @@ class AppRunner:
         # デバッグモード: 1回だけ実行して終了
         if self.debug_mode:
             logging.info("[デバッグモード] 各ストア1アイテムのみチェックして終了します")
+            self._start_session()
             self._do_work(self._load_item_list())
+            self._end_session("normal")
             self.cleanup()
             return self._check_debug_results()
 
         while not self.should_terminate.is_set():
             start_time = time.time()
 
+            self._start_session()
             self._do_work(self._load_item_list())
+            self._end_session("normal")
 
             if self.should_terminate.is_set():
                 break
@@ -700,6 +777,54 @@ class AppRunner:
         self.cleanup()
 
         return True
+
+    def _start_session(self) -> None:
+        """巡回セッションを開始."""
+        if self._metrics_db is None:
+            return
+        self._current_session_id = self._metrics_db.start_session()
+        self._session_total_items = 0
+        self._session_success_items = 0
+        self._session_failed_items = 0
+
+    def _end_session(self, exit_reason: str) -> None:
+        """巡回セッションを終了."""
+        if self._metrics_db is None or self._current_session_id is None:
+            return
+        self._metrics_db.end_session(
+            self._current_session_id,
+            self._session_total_items,
+            self._session_success_items,
+            self._session_failed_items,
+            exit_reason,
+        )
+        self._current_session_id = None
+
+    def _record_item_result(self, *, success: bool) -> None:
+        """アイテムの巡回結果を記録."""
+        self._session_total_items += 1
+        if success:
+            self._session_success_items += 1
+        else:
+            self._session_failed_items += 1
+
+    def _start_store_crawl(self, store_name: str) -> int | None:
+        """ストア巡回を開始."""
+        if self._metrics_db is None or self._current_session_id is None:
+            return None
+        return self._metrics_db.start_store_crawl(self._current_session_id, store_name)
+
+    def _end_store_crawl(
+        self,
+        stats_id: int | None,
+        item_count: int,
+        success_count: int,
+        failed_count: int,
+    ) -> None:
+        """ストア巡回を終了."""
+        if self._metrics_db is None or stats_id is None:
+            return
+        self._metrics_db.end_store_crawl(stats_id, item_count, success_count, failed_count)
 
     def _check_debug_results(self) -> bool:
         """デバッグモードの結果を確認.

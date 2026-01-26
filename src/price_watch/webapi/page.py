@@ -12,6 +12,7 @@ import price_watch.config
 import price_watch.event
 import price_watch.file_cache
 import price_watch.history
+import price_watch.metrics
 import price_watch.target
 import price_watch.thumbnail
 import price_watch.webapi.ogp
@@ -839,3 +840,135 @@ def top_page() -> flask.Response:
     except Exception:
         logging.exception("Error rendering top page")
         return flask.Response("Internal server error", status=500)
+
+
+# === メトリクス API ===
+
+
+def _get_metrics_db() -> price_watch.metrics.MetricsDB | None:
+    """メトリクス DB を取得."""
+    try:
+        app_config = _get_app_config()
+        if app_config is None:
+            return None
+        metrics_db_path = app_config.data.metrics / "metrics.db"
+        if not metrics_db_path.exists():
+            return None
+        return price_watch.metrics.MetricsDB(metrics_db_path)
+    except Exception:
+        logging.warning("Failed to get metrics DB")
+        return None
+
+
+@blueprint.route("/api/metrics/status")
+def api_metrics_status() -> flask.Response:
+    """現在のクローラ状態を取得."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    status = metrics_db.get_current_session_status()
+    return flask.jsonify(
+        {
+            "is_running": status.is_running,
+            "session_id": status.session_id,
+            "started_at": status.started_at.isoformat() if status.started_at else None,
+            "last_heartbeat_at": status.last_heartbeat_at.isoformat() if status.last_heartbeat_at else None,
+            "uptime_sec": status.uptime_sec,
+            "total_items": status.total_items,
+            "success_items": status.success_items,
+            "failed_items": status.failed_items,
+        }
+    )
+
+
+@blueprint.route("/api/metrics/sessions")
+def api_metrics_sessions() -> flask.Response:
+    """セッション一覧を取得."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    start_date = flask.request.args.get("start_date")
+    end_date = flask.request.args.get("end_date")
+    limit = int(flask.request.args.get("limit", "100"))
+
+    sessions = metrics_db.get_sessions(start_date=start_date, end_date=end_date, limit=limit)
+    return flask.jsonify(
+        {
+            "sessions": [
+                {
+                    "id": s.id,
+                    "started_at": s.started_at.isoformat(),
+                    "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+                    "duration_sec": s.duration_sec,
+                    "total_items": s.total_items,
+                    "success_items": s.success_items,
+                    "failed_items": s.failed_items,
+                    "exit_reason": s.exit_reason,
+                }
+                for s in sessions
+            ]
+        }
+    )
+
+
+@blueprint.route("/api/metrics/stores")
+def api_metrics_stores() -> flask.Response:
+    """ストア統計一覧を取得."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    store_name = flask.request.args.get("store_name")
+    start_date = flask.request.args.get("start_date")
+    end_date = flask.request.args.get("end_date")
+    limit = int(flask.request.args.get("limit", "1000"))
+
+    stats = metrics_db.get_store_stats(
+        store_name=store_name, start_date=start_date, end_date=end_date, limit=limit
+    )
+    return flask.jsonify(
+        {
+            "store_stats": [
+                {
+                    "id": s.id,
+                    "session_id": s.session_id,
+                    "store_name": s.store_name,
+                    "started_at": s.started_at.isoformat(),
+                    "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+                    "duration_sec": s.duration_sec,
+                    "item_count": s.item_count,
+                    "success_count": s.success_count,
+                    "failed_count": s.failed_count,
+                }
+                for s in stats
+            ]
+        }
+    )
+
+
+@blueprint.route("/api/metrics/heatmap")
+def api_metrics_heatmap() -> flask.Response:
+    """稼働率ヒートマップを取得."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    # デフォルト: 過去7日間
+    from datetime import timedelta
+
+    import my_lib.time
+
+    now = my_lib.time.now()
+    end_date = flask.request.args.get("end_date", now.strftime("%Y-%m-%d"))
+    start_date = flask.request.args.get("start_date", (now - timedelta(days=6)).strftime("%Y-%m-%d"))
+
+    heatmap = metrics_db.get_uptime_heatmap(start_date, end_date)
+    return flask.jsonify(
+        {
+            "dates": heatmap.dates,
+            "hours": heatmap.hours,
+            "cells": [{"date": c.date, "hour": c.hour, "uptime_rate": c.uptime_rate} for c in heatmap.cells],
+        }
+    )
