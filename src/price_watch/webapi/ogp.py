@@ -17,15 +17,15 @@ matplotlib.use("Agg")
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 # OGP 画像サイズ
 OGP_WIDTH = 1200
 OGP_HEIGHT = 630
 
 # グラフ領域サイズ
-GRAPH_WIDTH = 700
-GRAPH_HEIGHT = 380
+GRAPH_WIDTH = 850
+GRAPH_HEIGHT = 450
 
 # キャッシュ有効期間（秒）
 CACHE_TTL_SEC = 3600
@@ -262,32 +262,33 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
                     valid_prices,
                     label=sh.store_name,
                     color=color,
-                    linewidth=2,
+                    linewidth=6,
                     marker="o" if len(valid_times) <= 20 else None,
-                    markersize=4,
+                    markersize=10,
                 )
 
     # Y軸の設定
     ax.set_ylim(y_min, y_max)
 
-    # Y軸のフォーマット（カンマ区切り）
+    # Y軸のフォーマット（カンマ区切り）と目盛り数を制限
     ax.yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}"))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=5, integer=True))
 
-    # X軸の設定
+    # X軸の設定（目盛り数を制限）
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m月%-d日"))
-    ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=6))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=4))
 
     # X軸のグリッドを非表示（Chart.js と同様）
     ax.xaxis.grid(False)
     ax.yaxis.grid(True, linestyle="-", alpha=0.3)
 
     # 凡例を上部に表示（Chart.js と同様）
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=min(len(store_histories), 4), fontsize=10)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=min(len(store_histories), 4), fontsize=12)
 
     # スタイル調整
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=10)
+    ax.tick_params(axis="both", labelsize=14)
 
     plt.tight_layout()
 
