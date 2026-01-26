@@ -15,6 +15,7 @@ import price_watch.const
 
 THUMB_SIZE = (200, 200)
 REQUEST_TIMEOUT = 10
+MIN_FILE_SIZE_BYTES = 3 * 1024  # 3KB未満はエラー画像とみなす
 
 # モジュールレベルのサムネイルパス（init で設定される）
 _thumb_path: Path = price_watch.const.THUMB_PATH
@@ -127,6 +128,18 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
         # 保存
         thumb_path = get_thumb_path(item_name)
         image.save(thumb_path, "PNG", optimize=True)
+
+        # ファイルサイズチェック（3KB未満はエラー画像とみなす）
+        file_size = thumb_path.stat().st_size
+        if file_size < MIN_FILE_SIZE_BYTES:
+            thumb_path.unlink()
+            logging.warning(
+                "Thumbnail too small (likely placeholder) for %s: %d bytes < %d bytes",
+                item_name,
+                file_size,
+                MIN_FILE_SIZE_BYTES,
+            )
+            return None
 
         logging.info("Saved thumbnail for: %s -> %s", item_name, thumb_path)
         return get_thumb_url(item_name)
