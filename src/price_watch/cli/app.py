@@ -20,6 +20,7 @@ import signal
 import sys
 import threading
 import time
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import my_lib.chrome_util
@@ -27,6 +28,7 @@ import my_lib.footprint
 import my_lib.logger
 import my_lib.notify.slack
 import my_lib.selenium_util
+import my_lib.time
 import selenium.common.exceptions
 
 import price_watch.amazon.paapi
@@ -95,6 +97,7 @@ class AppRunner:
         self._session_total_items: int = 0
         self._session_success_items: int = 0
         self._session_failed_items: int = 0
+        self._work_ended_at: float | None = None  # 作業終了時刻（スリープ前）
 
     def sig_handler(self, num: int, _frame: Any) -> None:
         """シグナルハンドラ.
@@ -756,18 +759,27 @@ class AppRunner:
             self.cleanup()
             return self._check_debug_results()
 
+        self._start_session()
         while not self.should_terminate.is_set():
             start_time = time.time()
 
-            self._start_session()
             self._do_work(self._load_item_list())
-            self._end_session("normal")
+            # 作業終了時刻を記録（スリープ前）
+            self._work_ended_at = time.time()
 
             if self.should_terminate.is_set():
                 break
 
             self._sleep_until(start_time + self.config.check.interval_sec)
             self.loop += 1
+
+            # 次のサイクル開始前にセッションを更新（前回セッションを終了→新セッション開始）
+            if not self.should_terminate.is_set():
+                self._end_session("normal")
+                self._start_session()
+
+        # 最終セッションを終了
+        self._end_session("terminated")
 
         # シグナル受信をログ出力（シグナルハンドラ外で安全に出力）
         if self._received_signal is not None:
@@ -791,14 +803,23 @@ class AppRunner:
         """巡回セッションを終了."""
         if self._metrics_db is None or self._current_session_id is None:
             return
+
+        # 作業終了時刻を datetime に変換（スリープ時間を除外するため）
+        work_ended_at = None
+        if self._work_ended_at is not None:
+            # Unix timestamp を datetime に変換（タイムゾーン付き）
+            work_ended_at = datetime.fromtimestamp(self._work_ended_at, tz=my_lib.time.now().tzinfo)
+
         self._metrics_db.end_session(
             self._current_session_id,
             self._session_total_items,
             self._session_success_items,
             self._session_failed_items,
             exit_reason,
+            work_ended_at=work_ended_at,
         )
         self._current_session_id = None
+        self._work_ended_at = None
 
     def _record_item_result(self, *, success: bool) -> None:
         """アイテムの巡回結果を記録."""

@@ -218,10 +218,23 @@ class MetricsDB:
         success_items: int,
         failed_items: int,
         exit_reason: str = "normal",
+        work_ended_at: datetime | None = None,
     ) -> None:
-        """巡回セッションを終了"""
+        """巡回セッションを終了
+
+        Args:
+            session_id: セッションID
+            total_items: 処理アイテム数
+            success_items: 成功アイテム数
+            failed_items: 失敗アイテム数
+            exit_reason: 終了理由
+            work_ended_at: 実際の作業終了時刻（スリープ時間を除外するため）
+                           None の場合は現在時刻を使用
+        """
         now = my_lib.time.now()
-        now_str = now.isoformat()
+        # 作業終了時刻が指定されていればそれを使用（スリープ時間を除外）
+        ended_at = work_ended_at if work_ended_at is not None else now
+        ended_at_str = ended_at.isoformat()
 
         with self._get_conn() as conn:
             # 開始時刻を取得して duration を計算
@@ -232,7 +245,7 @@ class MetricsDB:
             row = cursor.fetchone()
             if row:
                 started_at = datetime.fromisoformat(row[0])
-                duration = (now - started_at).total_seconds()
+                duration = (ended_at - started_at).total_seconds()
             else:
                 duration = 0
 
@@ -245,8 +258,8 @@ class MetricsDB:
                 WHERE id = ?
                 """,
                 (
-                    now_str,
-                    now_str,
+                    ended_at_str,
+                    now.isoformat(),  # ハートビートは常に現在時刻
                     duration,
                     total_items,
                     success_items,

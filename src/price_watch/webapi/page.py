@@ -888,6 +888,24 @@ def top_page() -> flask.Response:
         return flask.Response("Internal server error", status=500)
 
 
+@blueprint.route("/metrics")
+def metrics_page() -> flask.Response:
+    """メトリクスページ（SPA ルーティング対応）."""
+    try:
+        # 設定からstatic_dirを取得
+        app_config = _get_app_config()
+        static_dir = app_config.webapp.static_dir_path if app_config else None
+
+        # トップページと同じ HTML を返す（React Router が /metrics を処理）
+        html = _render_top_page_html(static_dir)
+
+        return flask.Response(html, mimetype="text/html")
+
+    except Exception:
+        logging.exception("Error rendering metrics page")
+        return flask.Response("Internal server error", status=500)
+
+
 # === メトリクス API ===
 
 
