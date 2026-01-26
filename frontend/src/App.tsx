@@ -191,8 +191,6 @@ export default function App() {
         <div className="min-h-screen bg-gray-100">
             <Header />
             <main className="max-w-7xl mx-auto px-4 py-6">
-                <EventBanner />
-
                 <div className="mb-6">
                     <PeriodSelector selected={period} onChange={handlePeriodChange} />
                 </div>
@@ -224,6 +222,8 @@ export default function App() {
                         ))}
                     </div>
                 )}
+
+                <EventBanner />
             </main>
             <Footer storeDefinitions={storeDefinitions} onMetricsClick={handleMetricsClick} />
         </div>

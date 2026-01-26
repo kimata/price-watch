@@ -106,14 +106,16 @@ export default function Footer({ storeDefinitions, onMetricsClick }: FooterProps
                     </p>
                     <p>React バージョン: {reactVersion}</p>
                     <p className="pt-2 flex items-center justify-end gap-3">
-                        {/* メトリクスリンク */}
-                        <button
-                            onClick={onMetricsClick}
-                            className="text-gray-400 hover:text-gray-600 transition-colors"
-                            title="巡回メトリクス"
-                        >
-                            <ChartBarIcon className="w-6 h-6" />
-                        </button>
+                        {/* メトリクスリンク（onMetricsClick が指定されている場合のみ） */}
+                        {onMetricsClick && (
+                            <button
+                                onClick={onMetricsClick}
+                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                                title="巡回メトリクス"
+                            >
+                                <ChartBarIcon className="w-6 h-6" />
+                            </button>
+                        )}
                         {/* GitHub リンク */}
                         <a
                             href="https://github.com/kimata/price-watch"

@@ -7,6 +7,7 @@ import PriceChart from "./PriceChart";
 import StoreRow from "./StoreRow";
 import EventHistory from "./EventHistory";
 import LoadingSpinner from "./LoadingSpinner";
+import Footer from "./Footer";
 import { fetchItems, fetchItemEvents } from "../services/apiService";
 
 interface ItemDetailPageProps {
@@ -256,6 +257,7 @@ export default function ItemDetailPage({
                     )}
                 </div>
             </main>
+            <Footer storeDefinitions={storeDefinitions} />
         </div>
     );
 }
