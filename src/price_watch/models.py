@@ -153,15 +153,76 @@ class CheckedItem:
 
 @dataclass(frozen=True)
 class PriceRecord:
-    """価格履歴レコード.
+    """価格履歴レコード（シンプル版）.
 
-    データベースから取得した価格履歴を表現します。
+    価格・在庫・時刻のみの単純なレコード。
+    get_history の履歴リストなどで使用します。
+    """
+
+    price: int | None
+    stock: int | None
+    time: str
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> PriceRecord:
+        """dict から PriceRecord を生成."""
+        return cls(
+            price=d.get("price"),
+            stock=d.get("stock"),
+            time=d.get("time", ""),
+        )
+
+
+@dataclass(frozen=True)
+class PriceHistoryRecord:
+    """価格履歴レコード（アイテム情報付き）.
+
+    get_last, get_lowest などで使用する、アイテム情報を含む価格履歴。
+    """
+
+    url: str | None
+    name: str
+    store: str
+    thumb_url: str | None
+    price: int | None
+    stock: int | None
+    time: str
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> PriceHistoryRecord:
+        """dict から PriceHistoryRecord を生成."""
+        return cls(
+            url=d.get("url"),
+            name=d.get("name", ""),
+            store=d.get("store", ""),
+            thumb_url=d.get("thumb_url"),
+            price=d.get("price"),
+            stock=d.get("stock"),
+            time=d.get("time", ""),
+        )
+
+
+@dataclass(frozen=True)
+class LatestPriceRecord:
+    """最新価格レコード.
+
+    get_latest, get_last_successful_crawl で使用します。
     """
 
     price: int | None
     stock: int | None
     crawl_status: int
     time: str
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> LatestPriceRecord:
+        """dict から LatestPriceRecord を生成."""
+        return cls(
+            price=d.get("price"),
+            stock=d.get("stock"),
+            crawl_status=d.get("crawl_status", 0),
+            time=d.get("time", ""),
+        )
 
 
 @dataclass(frozen=True)
@@ -182,6 +243,22 @@ class ItemRecord:
     created_at: str | None = None
     updated_at: str | None = None
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ItemRecord:
+        """dict から ItemRecord を生成."""
+        return cls(
+            id=d.get("id", 0),
+            item_key=d.get("item_key", ""),
+            url=d.get("url"),
+            name=d.get("name", ""),
+            store=d.get("store", ""),
+            thumb_url=d.get("thumb_url"),
+            search_keyword=d.get("search_keyword"),
+            search_cond=d.get("search_cond"),
+            created_at=d.get("created_at"),
+            updated_at=d.get("updated_at"),
+        )
+
 
 @dataclass(frozen=True)
 class ItemStats:
@@ -190,6 +267,15 @@ class ItemStats:
     lowest_price: int | None
     highest_price: int | None
     data_count: int
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> ItemStats:
+        """dict から ItemStats を生成."""
+        return cls(
+            lowest_price=d.get("lowest_price"),
+            highest_price=d.get("highest_price"),
+            data_count=d.get("data_count", 0),
+        )
 
 
 @dataclass(frozen=True)
@@ -212,6 +298,26 @@ class EventRecord:
     store: str | None = None
     url: str | None = None
     thumb_url: str | None = None
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> EventRecord:
+        """dict から EventRecord を生成."""
+        notified_raw = d.get("notified", 0)
+        notified = bool(notified_raw) if isinstance(notified_raw, int) else notified_raw
+        return cls(
+            id=d.get("id", 0),
+            item_id=d.get("item_id", 0),
+            event_type=d.get("event_type", ""),
+            price=d.get("price"),
+            old_price=d.get("old_price"),
+            threshold_days=d.get("threshold_days"),
+            created_at=d.get("created_at", ""),
+            notified=notified,
+            item_name=d.get("item_name"),
+            store=d.get("store"),
+            url=d.get("url"),
+            thumb_url=d.get("thumb_url"),
+        )
 
 
 @dataclass

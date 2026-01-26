@@ -9,12 +9,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
-
-import price_watch.history
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import price_watch.config
+    from price_watch.managers import HistoryManager
+    from price_watch.models import EventRecord
 
 
 class EventType(str, Enum):
@@ -39,6 +39,7 @@ class EventResult:
 
 
 def check_back_in_stock(
+    history: HistoryManager,
     item_id: int,
     current_stock: int | None,
     last_stock: int | None,
@@ -51,6 +52,7 @@ def check_back_in_stock(
     イベントを発生させる。クロール失敗は在庫なし継続時間に含めない。
 
     Args:
+        history: HistoryManager インスタンス
         item_id: アイテム ID
         current_stock: 現在の在庫状態（None: 不明, 0: なし, 1: あり）
         last_stock: 前回の在庫状態（None: 不明, 0: なし, 1: あり）
@@ -70,7 +72,7 @@ def check_back_in_stock(
         return None
 
     # 在庫なしの継続時間を確認
-    out_of_stock_hours = price_watch.history.get_out_of_stock_duration_hours(item_id)
+    out_of_stock_hours = history.get_out_of_stock_duration_hours(item_id)
     if out_of_stock_hours is None or out_of_stock_hours < min_out_of_stock_hours:
         logging.debug(
             "Skipping back_in_stock event: out of stock duration %.1f hours < %.1f hours",
@@ -80,7 +82,7 @@ def check_back_in_stock(
         return None
 
     # 無視区間内に同じイベントがあるかチェック
-    if price_watch.history.has_event_in_hours(item_id, EventType.BACK_IN_STOCK.value, ignore_hours):
+    if history.has_event_in_hours(item_id, EventType.BACK_IN_STOCK.value, ignore_hours):
         logging.debug("Skipping back_in_stock event: recent event exists within %d hours", ignore_hours)
         return EventResult(event_type=EventType.BACK_IN_STOCK, should_notify=False)
 
@@ -88,24 +90,25 @@ def check_back_in_stock(
     return EventResult(event_type=EventType.BACK_IN_STOCK, should_notify=True)
 
 
-def check_crawl_failure(item_id: int) -> EventResult | None:
+def check_crawl_failure(history: HistoryManager, item_id: int) -> EventResult | None:
     """クロール失敗イベントを判定.
 
     過去24時間、一度も正常にクロールできていない場合にイベント発生。
     前回の判定から24時間経過していれば再通知。
 
     Args:
+        history: HistoryManager インスタンス
         item_id: アイテム ID
 
     Returns:
         イベント結果。該当しない場合は None。
     """
     # 過去24時間に成功したクロールがあるかチェック
-    if price_watch.history.has_successful_crawl_in_hours(item_id, 24):
+    if history.has_successful_crawl_in_hours(item_id, 24):
         return None
 
     # 過去24時間以内にこのイベントが既に発生しているかチェック
-    if price_watch.history.has_event_in_hours(item_id, EventType.CRAWL_FAILURE.value, 24):
+    if history.has_event_in_hours(item_id, EventType.CRAWL_FAILURE.value, 24):
         logging.debug("Skipping crawl_failure event: recent event exists within 24 hours")
         return EventResult(event_type=EventType.CRAWL_FAILURE, should_notify=False)
 
@@ -113,6 +116,7 @@ def check_crawl_failure(item_id: int) -> EventResult | None:
 
 
 def check_data_retrieval_failure(
+    history: HistoryManager,
     item_id: int,
     min_failure_hours: float = 6.0,
     ignore_hours: int = 6,
@@ -122,6 +126,7 @@ def check_data_retrieval_failure(
     価格・在庫両方の情報が min_failure_hours 以上取得できていない場合にイベント発生。
 
     Args:
+        history: HistoryManager インスタンス
         item_id: アイテム ID
         min_failure_hours: イベント発生の最小失敗継続時間（時間）
         ignore_hours: 無視する時間数（重複通知防止）
@@ -130,13 +135,13 @@ def check_data_retrieval_failure(
         イベント結果。該当しない場合は None。
     """
     # データ取得失敗の継続時間を取得
-    no_data_hours = price_watch.history.get_no_data_duration_hours(item_id)
+    no_data_hours = history.get_no_data_duration_hours(item_id)
 
     if no_data_hours is None or no_data_hours < min_failure_hours:
         return None
 
     # 無視区間内に同じイベントがあるかチェック
-    if price_watch.history.has_event_in_hours(item_id, EventType.DATA_RETRIEVAL_FAILURE.value, ignore_hours):
+    if history.has_event_in_hours(item_id, EventType.DATA_RETRIEVAL_FAILURE.value, ignore_hours):
         logging.debug(
             "Skipping data_retrieval_failure event: recent event exists within %d hours",
             ignore_hours,
@@ -148,6 +153,7 @@ def check_data_retrieval_failure(
 
 
 def check_lowest_price(
+    history: HistoryManager,
     item_id: int,
     current_price: int,
     ignore_hours: int,
@@ -155,6 +161,7 @@ def check_lowest_price(
     """過去最安値更新イベントを判定.
 
     Args:
+        history: HistoryManager インスタンス
         item_id: アイテム ID
         current_price: 現在の価格
         ignore_hours: 無視する時間数
@@ -163,7 +170,7 @@ def check_lowest_price(
         イベント結果。該当しない場合は None。
     """
     # 過去全期間の最安値を取得
-    lowest_price = price_watch.history.get_lowest_price_in_period(item_id, days=None)
+    lowest_price = history.get_lowest_in_period(item_id, days=None)
 
     if lowest_price is None:
         # 初めての価格記録の場合は最安値イベントを発生させない
@@ -173,7 +180,7 @@ def check_lowest_price(
         return None
 
     # 無視区間内に同じイベントがあるかチェック
-    if price_watch.history.has_event_in_hours(item_id, EventType.LOWEST_PRICE.value, ignore_hours):
+    if history.has_event_in_hours(item_id, EventType.LOWEST_PRICE.value, ignore_hours):
         logging.debug("Skipping lowest_price event: recent event exists within %d hours", ignore_hours)
         return EventResult(
             event_type=EventType.LOWEST_PRICE,
@@ -191,6 +198,7 @@ def check_lowest_price(
 
 
 def check_price_drop(
+    history: HistoryManager,
     item_id: int,
     current_price: int,
     windows: list[price_watch.config.PriceDropWindow],
@@ -198,6 +206,7 @@ def check_price_drop(
     """価格下落イベントを判定.
 
     Args:
+        history: HistoryManager インスタンス
         item_id: アイテム ID
         current_price: 現在の価格
         windows: 価格下落判定ウィンドウのリスト
@@ -207,7 +216,7 @@ def check_price_drop(
     """
     for window in windows:
         # 指定期間内の最安値を取得
-        lowest_in_period = price_watch.history.get_lowest_price_in_period(item_id, days=window.days)
+        lowest_in_period = history.get_lowest_in_period(item_id, days=window.days)
 
         if lowest_in_period is None:
             continue
@@ -255,10 +264,17 @@ def check_price_drop(
     return None
 
 
-def record_event(result: EventResult, item_id: int, *, notified: bool = False) -> int:
+def record_event(
+    history: HistoryManager,
+    result: EventResult,
+    item_id: int,
+    *,
+    notified: bool = False,
+) -> int:
     """イベントを記録.
 
     Args:
+        history: HistoryManager インスタンス
         result: イベント判定結果
         item_id: アイテム ID
         notified: 通知済みフラグ
@@ -266,7 +282,7 @@ def record_event(result: EventResult, item_id: int, *, notified: bool = False) -
     Returns:
         イベント ID
     """
-    return price_watch.history.insert_event(
+    return history.insert_event(
         item_id=item_id,
         event_type=result.event_type.value,
         price=result.price,
@@ -276,19 +292,7 @@ def record_event(result: EventResult, item_id: int, *, notified: bool = False) -
     )
 
 
-def get_recent_events(limit: int = 10) -> list[dict[str, Any]]:
-    """最新のイベントを取得.
-
-    Args:
-        limit: 取得件数
-
-    Returns:
-        イベントリスト
-    """
-    return price_watch.history.get_recent_events(limit)
-
-
-def format_event_message(event: dict[str, Any]) -> str:
+def format_event_message(event: EventRecord) -> str:
     """イベントからメッセージを生成.
 
     Args:
@@ -297,11 +301,11 @@ def format_event_message(event: dict[str, Any]) -> str:
     Returns:
         フォーマットされたメッセージ
     """
-    event_type = event.get("event_type", "")
-    item_name = event.get("item_name", "不明")
-    price = event.get("price")
-    old_price = event.get("old_price")
-    threshold_days = event.get("threshold_days")
+    event_type = event.event_type
+    item_name = event.item_name or "不明"
+    price = event.price
+    old_price = event.old_price
+    threshold_days = event.threshold_days
 
     match event_type:
         case EventType.BACK_IN_STOCK.value:

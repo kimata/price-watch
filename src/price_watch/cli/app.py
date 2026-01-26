@@ -25,7 +25,7 @@ import my_lib.logger
 
 import price_watch.app_context
 import price_watch.const
-import price_watch.history
+import price_watch.managers.history
 import price_watch.processor
 import price_watch.target
 
@@ -145,7 +145,7 @@ class AppRunner:
             if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
                 # メルカリ検索の場合は item_key を使用
                 search_keyword = item.search_keyword or item.name
-                item_key = price_watch.history.generate_item_key(
+                item_key = price_watch.managers.history.generate_item_key(
                     search_keyword=search_keyword,
                     search_cond="",
                 )

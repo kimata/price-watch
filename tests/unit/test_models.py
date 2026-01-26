@@ -174,10 +174,17 @@ class TestPriceRecord:
 
     def test_create(self) -> None:
         """作成"""
-        record = PriceRecord(price=1000, stock=1, crawl_status=1, time="2024-01-15 10:00:00")
+        record = PriceRecord(price=1000, stock=1, time="2024-01-15 10:00:00")
         assert record.price == 1000
         assert record.stock == 1
-        assert record.crawl_status == 1
+        assert record.time == "2024-01-15 10:00:00"
+
+    def test_from_dict(self) -> None:
+        """dict から作成"""
+        d = {"price": 1000, "stock": 1, "time": "2024-01-15 10:00:00"}
+        record = PriceRecord.from_dict(d)
+        assert record.price == 1000
+        assert record.stock == 1
         assert record.time == "2024-01-15 10:00:00"
 
 

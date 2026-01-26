@@ -504,7 +504,7 @@ class TestHistoryManager:
         result = manager.get_last(url="https://example.com/item/1")
 
         assert result is not None
-        assert result["price"] == 1000
+        assert result.price == 1000
 
     def test_insert_event_and_get_last_event(self, manager: HistoryManager) -> None:
         """insert_event と get_last_event の委譲"""
@@ -521,7 +521,7 @@ class TestHistoryManager:
 
         event = manager.get_last_event(item_id, "PRICE_DROP")
         assert event is not None
-        assert event["price"] == 800
+        assert event.price == 800
 
     def test_get_all_items(self, manager: HistoryManager) -> None:
         """get_all_items の委譲"""

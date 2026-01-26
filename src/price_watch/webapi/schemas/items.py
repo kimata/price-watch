@@ -44,7 +44,7 @@ class PriceHistoryPoint(BaseSchema):
     time: str
     price: int | None
     effective_price: int | None
-    stock: int
+    stock: int | None
 
 
 class StoreEntry(BaseSchema):
@@ -62,7 +62,7 @@ class StoreEntry(BaseSchema):
     point_rate: float
     lowest_price: int | None
     highest_price: int | None
-    stock: int
+    stock: int | None
     last_updated: str
     history: list[PriceHistoryPoint]
     product_url: str | None = None  # メルカリ: 最安商品への直接リンク

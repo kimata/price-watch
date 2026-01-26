@@ -11,14 +11,35 @@ from flask_pydantic import validate
 import price_watch.config
 import price_watch.event
 import price_watch.file_cache
-import price_watch.history
+import price_watch.managers.history
 import price_watch.metrics
+import price_watch.models
 import price_watch.target
 import price_watch.thumbnail
 import price_watch.webapi.ogp
 import price_watch.webapi.schemas
+from price_watch.managers import HistoryManager
 
 blueprint = flask.Blueprint("page", __name__)
+
+# HistoryManager のキャッシュ（遅延初期化）
+_history_manager: HistoryManager | None = None
+
+
+def _get_history_manager() -> HistoryManager:
+    """HistoryManager を取得（遅延初期化）."""
+    global _history_manager
+    if _history_manager is not None:
+        return _history_manager
+    config = _get_app_config()
+    if config is None:
+        msg = "App config not available"
+        raise RuntimeError(msg)
+    manager = price_watch.managers.history.HistoryManager.create(config.data.price)
+    manager.initialize()
+    _history_manager = manager
+    return _history_manager
+
 
 # target.yaml のキャッシュ（ファイル更新時刻が変わった場合のみ再読み込み）
 _target_config_cache: price_watch.file_cache.FileCache[price_watch.target.TargetConfig] = (
@@ -63,9 +84,9 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         # メルカリ検索の場合は keyword + cond から item_key を生成
         if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
             keyword = item.search_keyword or item.name
-            keys.add(price_watch.history.generate_item_key(search_keyword=keyword, search_cond=""))
+            keys.add(price_watch.managers.history.generate_item_key(search_keyword=keyword, search_cond=""))
         else:
-            keys.add(price_watch.history.url_hash(item.url))
+            keys.add(price_watch.managers.history.url_hash(item.url))
     return keys
 
 
@@ -97,7 +118,7 @@ def _calc_effective_price(price: int | None, point_rate: float) -> int | None:
 
 
 def _build_history_entries(
-    history: list[dict[str, Any]], point_rate: float
+    history: list[price_watch.models.PriceRecord], point_rate: float
 ) -> list[price_watch.webapi.schemas.PriceHistoryPoint]:
     """履歴エントリリストを構築.
 
@@ -105,40 +126,40 @@ def _build_history_entries(
     """
     return [
         price_watch.webapi.schemas.PriceHistoryPoint(
-            time=h["time"],
-            price=h["price"],
-            effective_price=_calc_effective_price(h["price"], point_rate),
-            stock=h["stock"],
+            time=h.time,
+            price=h.price,
+            effective_price=_calc_effective_price(h.price, point_rate),
+            stock=h.stock,
         )
         for h in history
     ]
 
 
 def _build_store_entry(
-    item: dict[str, Any],
-    latest: dict[str, Any],
-    stats: dict[str, Any],
-    history: list[dict[str, Any]],
+    item: price_watch.models.ItemRecord,
+    latest: price_watch.models.LatestPriceRecord,
+    stats: price_watch.models.ItemStats,
+    history: list[price_watch.models.PriceRecord],
     point_rate: float,
 ) -> price_watch.webapi.schemas.StoreEntry:
     """ストアエントリを構築."""
-    current_price = latest["price"]  # None の場合がある
+    current_price = latest.price  # None の場合がある
     effective_price = _calc_effective_price(current_price, point_rate)
 
     return price_watch.webapi.schemas.StoreEntry(
-        item_key=item["item_key"],
-        store=item["store"],
-        url=item.get("url"),
+        item_key=item.item_key,
+        store=item.store,
+        url=item.url,
         current_price=current_price,
         effective_price=effective_price,
         point_rate=point_rate,
-        lowest_price=stats["lowest_price"],
-        highest_price=stats["highest_price"],
-        stock=latest["stock"],
-        last_updated=latest["time"],
+        lowest_price=stats.lowest_price,
+        highest_price=stats.highest_price,
+        stock=latest.stock,
+        last_updated=latest.time,
         history=_build_history_entries(history, point_rate),
-        product_url=item.get("url"),  # メルカリの場合は最安商品URL
-        search_keyword=item.get("search_keyword"),
+        product_url=item.url,  # メルカリの場合は最安商品URL
+        search_keyword=item.search_keyword,
     )
 
 
@@ -149,7 +170,9 @@ def _find_best_store(
 
     effective_price が None の場合は最後に配置する。
     """
-    in_stock_stores = [s for s in stores if s.stock > 0 and s.effective_price is not None]
+    in_stock_stores = [
+        s for s in stores if s.stock is not None and s.stock > 0 and s.effective_price is not None
+    ]
     if in_stock_stores:
         return min(in_stock_stores, key=lambda s: s.effective_price or 0)
     # 在庫なし、または全て価格なしの場合は effective_price が有効なものを優先
@@ -199,15 +222,15 @@ def _get_store_definitions(
     ]
 
 
-def _build_store_entry_without_history(
-    item: dict[str, Any],
+def _build_store_entry_without_history_from_record(
+    item: price_watch.models.ItemRecord,
     point_rate: float,
 ) -> price_watch.webapi.schemas.StoreEntry:
-    """履歴がないアイテム用のストアエントリを構築."""
+    """履歴がないアイテム用のストアエントリを構築（ItemRecord版）."""
     return price_watch.webapi.schemas.StoreEntry(
-        item_key=item.get("item_key", ""),
-        store=item["store"],
-        url=item.get("url"),
+        item_key=item.item_key,
+        store=item.store,
+        url=item.url,
         current_price=None,  # 価格未取得
         effective_price=None,  # 価格未取得
         point_rate=point_rate,
@@ -216,54 +239,48 @@ def _build_store_entry_without_history(
         stock=0,  # 履歴がない = まだ在庫確認できていない
         last_updated="",
         history=[],
-        product_url=item.get("url"),
-        search_keyword=item.get("search_keyword"),
+        product_url=item.url,
+        search_keyword=item.search_keyword,
     )
 
 
 def _process_item(
-    item: dict[str, Any],
+    item: price_watch.models.ItemRecord,
     days: int | None,
     target_config: price_watch.target.TargetConfig | None,
 ) -> dict[str, Any] | None:
     """1つのアイテムを処理してストアデータを構築."""
-    # ポイント還元率を取得
-    point_rate = _get_point_rate(target_config, item["store"])
+    history = _get_history_manager()
 
-    # item に id がない場合（target.yaml のみにあるアイテム）
-    if "id" not in item:
-        store_entry = _build_store_entry_without_history(item, point_rate)
-        return {
-            "store_entry": store_entry,
-            "thumb_url": item.get("thumb_url"),
-        }
+    # ポイント還元率を取得
+    point_rate = _get_point_rate(target_config, item.store)
 
     # 最新価格を取得
-    latest = price_watch.history.get_latest_price(item["id"])
+    latest = history.get_latest(item.id)
     if not latest:
         # 履歴がないアイテムも表示（在庫なしとして）
-        store_entry = _build_store_entry_without_history(item, point_rate)
+        store_entry = _build_store_entry_without_history_from_record(item, point_rate)
         return {
             "store_entry": store_entry,
-            "thumb_url": item.get("thumb_url"),
+            "thumb_url": item.thumb_url,
         }
 
     # 統計情報を取得
-    stats = price_watch.history.get_item_stats(item["id"], days)
+    stats = history.get_stats(item.id, days)
 
     # 価格履歴を取得
-    _, hist = price_watch.history.get_item_history(item["item_key"], days)
+    _, hist = history.get_history(item.item_key, days)
 
     store_entry = _build_store_entry(item, latest, stats, hist, point_rate)
 
     return {
         "store_entry": store_entry,
-        "thumb_url": item["thumb_url"],
+        "thumb_url": item.thumb_url,
     }
 
 
 def _group_items_by_name(
-    all_items: list[dict[str, Any]],
+    all_items: list[price_watch.models.ItemRecord],
     target_item_keys: set[str],
     days: int | None,
     target_config: price_watch.target.TargetConfig | None,
@@ -275,18 +292,18 @@ def _group_items_by_name(
     # DBにあるアイテムを処理
     for item in all_items:
         # target.yaml に含まれないアイテムはスキップ
-        if target_item_keys and item["item_key"] not in target_item_keys:
+        if target_item_keys and item.item_key not in target_item_keys:
             continue
 
         store_data = _process_item(item, days, target_config)
         if not store_data:
             continue
 
-        item_name = item["name"]
+        item_name = item.name
         if item_name not in items_by_name:
             items_by_name[item_name] = []
         items_by_name[item_name].append(store_data)
-        processed_keys.add(item["item_key"])
+        processed_keys.add(item.item_key)
 
     # target.yaml にあるがDBにないアイテムを追加
     if target_config:
@@ -300,27 +317,31 @@ def _group_items_by_name(
             # メルカリ検索の場合の item_key を生成
             if resolved_item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
                 keyword = resolved_item.search_keyword or resolved_item.name
-                item_key = price_watch.history.generate_item_key(search_keyword=keyword, search_cond="")
+                item_key = price_watch.managers.history.generate_item_key(
+                    search_keyword=keyword, search_cond=""
+                )
             else:
-                item_key = price_watch.history.url_hash(resolved_item.url)
+                item_key = price_watch.managers.history.url_hash(resolved_item.url)
 
             if item_key in processed_keys:
                 continue
 
-            # target.yaml のアイテムを dict 形式に変換
-            item_dict: dict[str, Any] = {
-                "name": resolved_item.name,
-                "store": resolved_item.store,
-                "url": resolved_item.url if resolved_item.url else None,
-                "item_key": item_key,
-                "thumb_url": getattr(resolved_item, "thumb_url", None),
-            }
+            # target.yaml のアイテムを ItemRecord 形式に変換（DBにないので id=0）
+            item_record = price_watch.models.ItemRecord(
+                id=0,
+                item_key=item_key,
+                url=resolved_item.url if resolved_item.url else None,
+                name=resolved_item.name,
+                store=resolved_item.store,
+                thumb_url=getattr(resolved_item, "thumb_url", None),
+                search_keyword=(
+                    resolved_item.search_keyword or resolved_item.name
+                    if resolved_item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH
+                    else None
+                ),
+            )
 
-            # メルカリ検索用フィールドを追加
-            if resolved_item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
-                item_dict["search_keyword"] = resolved_item.search_keyword or resolved_item.name
-
-            store_data = _process_item(item_dict, days, target_config)
+            store_data = _process_item_without_db(item_record, target_config)
             if not store_data:
                 continue
 
@@ -330,6 +351,22 @@ def _group_items_by_name(
             items_by_name[item_name].append(store_data)
 
     return items_by_name
+
+
+def _process_item_without_db(
+    item: price_watch.models.ItemRecord,
+    target_config: price_watch.target.TargetConfig | None,
+) -> dict[str, Any] | None:
+    """DB に存在しないアイテムを処理してストアデータを構築."""
+    # ポイント還元率を取得
+    point_rate = _get_point_rate(target_config, item.store)
+
+    # 履歴がないアイテムとして表示
+    store_entry = _build_store_entry_without_history_from_record(item, point_rate)
+    return {
+        "store_entry": store_entry,
+        "thumb_url": item.thumb_url,
+    }
 
 
 @blueprint.route("/api/items")
@@ -345,7 +382,7 @@ def get_items(
         target_config = _get_target_config()
         target_item_keys = _get_target_item_keys(target_config)
 
-        all_items = price_watch.history.get_all_items()
+        all_items = _get_history_manager().get_all_items()
 
         # アイテム名でグルーピング
         items_by_name = _group_items_by_name(all_items, target_item_keys, days, target_config)
@@ -395,7 +432,7 @@ def get_item_history(
     try:
         days = _parse_days(query.days)
 
-        item, hist = price_watch.history.get_item_history(item_key, days)
+        item, hist = _get_history_manager().get_history(item_key, days)
 
         if item is None:
             error = price_watch.webapi.schemas.ErrorResponse(error="Item not found")
@@ -403,7 +440,7 @@ def get_item_history(
 
         # ポイント還元率を取得（キャッシュ使用）
         target_config = _get_target_config()
-        point_rate = _get_point_rate(target_config, item["store"])
+        point_rate = _get_point_rate(target_config, item.store)
 
         # 履歴を構築（effective_price 付き）
         formatted_history = _build_history_entries(hist, point_rate)
@@ -428,7 +465,7 @@ def get_item_events(item_key: str) -> flask.Response | tuple[flask.Response, int
         if limit < 1:
             limit = 1
 
-        events = price_watch.history.get_item_events(item_key, limit)
+        events = _get_history_manager().get_item_events(item_key, limit)
 
         if not events:
             # アイテムが存在しない場合も空リストを返す（404 ではなく）
@@ -438,18 +475,18 @@ def get_item_events(item_key: str) -> flask.Response | tuple[flask.Response, int
         formatted_events = []
         for evt in events:
             formatted_event = {
-                "id": evt["id"],
-                "item_name": evt["item_name"],
-                "store": evt["store"],
-                "url": evt["url"],
-                "thumb_url": evt["thumb_url"],
-                "event_type": evt["event_type"],
-                "price": evt["price"],
-                "old_price": evt["old_price"],
-                "threshold_days": evt["threshold_days"],
-                "created_at": evt["created_at"],
+                "id": evt.id,
+                "item_name": evt.item_name,
+                "store": evt.store,
+                "url": evt.url,
+                "thumb_url": evt.thumb_url,
+                "event_type": evt.event_type,
+                "price": evt.price,
+                "old_price": evt.old_price,
+                "threshold_days": evt.threshold_days,
+                "created_at": evt.created_at,
                 "message": price_watch.event.format_event_message(evt),
-                "title": price_watch.event.format_event_title(evt["event_type"]),
+                "title": price_watch.event.format_event_title(evt.event_type),
             }
             formatted_events.append(formatted_event)
 
@@ -472,24 +509,24 @@ def get_events() -> flask.Response | tuple[flask.Response, int]:
         if limit < 1:
             limit = 1
 
-        events = price_watch.event.get_recent_events(limit)
+        events = _get_history_manager().get_recent_events(limit)
 
         # イベントにメッセージを追加
         formatted_events = []
         for evt in events:
             formatted_event = {
-                "id": evt["id"],
-                "item_name": evt["item_name"],
-                "store": evt["store"],
-                "url": evt["url"],
-                "thumb_url": evt["thumb_url"],
-                "event_type": evt["event_type"],
-                "price": evt["price"],
-                "old_price": evt["old_price"],
-                "threshold_days": evt["threshold_days"],
-                "created_at": evt["created_at"],
+                "id": evt.id,
+                "item_name": evt.item_name,
+                "store": evt.store,
+                "url": evt.url,
+                "thumb_url": evt.thumb_url,
+                "event_type": evt.event_type,
+                "price": evt.price,
+                "old_price": evt.old_price,
+                "threshold_days": evt.threshold_days,
+                "created_at": evt.created_at,
                 "message": price_watch.event.format_event_message(evt),
-                "title": price_watch.event.format_event_title(evt["event_type"]),
+                "title": price_watch.event.format_event_title(evt.event_type),
             }
             formatted_events.append(formatted_event)
 
@@ -576,15 +613,15 @@ def _get_item_data_for_ogp(
     target_config = _get_target_config()
 
     # DB から全アイテムを取得
-    all_items = price_watch.history.get_all_items()
+    all_items = _get_history_manager().get_all_items()
 
     # item_key に一致するアイテムを検索
-    matching_items = [item for item in all_items if item["item_key"] == item_key]
+    matching_items = [item for item in all_items if item.item_key == item_key]
 
     if not matching_items:
         return None, []
 
-    item_name = matching_items[0]["name"]
+    item_name = matching_items[0].name
     stores: list[price_watch.webapi.schemas.StoreEntry] = []
 
     for item in matching_items:

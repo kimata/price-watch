@@ -6,7 +6,7 @@
 
 from price_watch.managers.browser_manager import BrowserManager
 from price_watch.managers.config_manager import ConfigManager
-from price_watch.managers.history_manager import HistoryManager
+from price_watch.managers.history import HistoryManager
 from price_watch.managers.metrics_manager import MetricsManager
 
 __all__ = [

@@ -245,6 +245,8 @@ class TestProcessAmazonItems:
         mock_config = MagicMock()
         mock_config.check.judge = None
         mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
@@ -262,13 +264,9 @@ class TestProcessAmazonItems:
             crawl_status=price_watch.models.CrawlStatus.SUCCESS,
         )
 
-        with (
-            patch(
-                "price_watch.store.amazon.paapi.check_item_list",
-                return_value=[mock_checked],
-            ),
-            patch("price_watch.history.insert", return_value=1),
-            patch("price_watch.history.last", return_value=None),
+        with patch(
+            "price_watch.store.amazon.paapi.check_item_list",
+            return_value=[mock_checked],
         ):
             processor.process_amazon_items(items)
 
@@ -281,6 +279,8 @@ class TestProcessAmazonItems:
         mock_app.debug_mode = True
         mock_config = MagicMock()
         mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         items = [
@@ -303,11 +303,7 @@ class TestProcessAmazonItems:
                 received_items.extend(item_list)  # type: ignore[arg-type]
             return []
 
-        with (
-            patch("price_watch.store.amazon.paapi.check_item_list", side_effect=check_mock),
-            patch("price_watch.history.insert", return_value=1),
-            patch("price_watch.history.last", return_value=None),
-        ):
+        with patch("price_watch.store.amazon.paapi.check_item_list", side_effect=check_mock):
             processor.process_amazon_items(items)
 
         # デバッグモードでは1アイテムのリストで呼ばれる
@@ -430,6 +426,8 @@ class TestProcessData:
         mock_config = MagicMock()
         mock_config.check.judge = None
         mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         item = price_watch.models.CheckedItem(
@@ -439,11 +437,7 @@ class TestProcessData:
             crawl_status=price_watch.models.CrawlStatus.SUCCESS,
         )
 
-        with (
-            patch("price_watch.history.insert", return_value=1),
-            patch("price_watch.history.last", return_value=None),
-        ):
-            result = processor._process_data(item)
+        result = processor._process_data(item)
 
         assert result is True
 
@@ -453,6 +447,12 @@ class TestProcessData:
         mock_config = MagicMock()
         mock_config.check.judge = None
         mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        # PriceHistoryRecord を返すようにする
+        mock_last = MagicMock()
+        mock_last.price = 900
+        mock_last.stock = 1
+        mock_app.history_manager.get_last.return_value = mock_last
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         item = price_watch.models.CheckedItem(
@@ -462,13 +462,8 @@ class TestProcessData:
             price=1000,
             crawl_status=price_watch.models.CrawlStatus.SUCCESS,
         )
-        last = {"price": 900, "stock": 1}
 
-        with (
-            patch("price_watch.history.insert", return_value=1),
-            patch("price_watch.history.last", return_value=last),
-        ):
-            result = processor._process_data(item)
+        result = processor._process_data(item)
 
         assert result is True
         assert item.old_price == 900
@@ -495,7 +490,9 @@ class TestCheckAndNotifyEvents:
             stock=price_watch.models.StockStatus.IN_STOCK,
             crawl_status=price_watch.models.CrawlStatus.SUCCESS,
         )
-        last = {"stock": 0}
+        # PriceHistoryRecord のモック
+        mock_last = MagicMock()
+        mock_last.stock = 0
 
         mock_result = MagicMock()
         mock_result.should_notify = True
@@ -506,7 +503,7 @@ class TestCheckAndNotifyEvents:
             patch("price_watch.event.check_lowest_price", return_value=None),
             patch.object(processor, "_notify_and_record_event"),
         ):
-            processor._check_and_notify_events(item, last, 1, crawl_status=1)
+            processor._check_and_notify_events(item, mock_last, 1, crawl_status=1)
 
 
 class TestNotifyAndRecordEvent:

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import flask
 import pytest
 
+import price_watch.models
 import price_watch.target
 import price_watch.webapi.page
 
@@ -109,8 +110,8 @@ class TestBuildHistoryEntries:
     def test_builds_entries(self) -> None:
         """履歴エントリを構築"""
         history = [
-            {"time": "2024-01-15 10:00:00", "price": 1000, "stock": 1},
-            {"time": "2024-01-16 10:00:00", "price": 900, "stock": 1},
+            price_watch.models.PriceRecord(time="2024-01-15 10:00:00", price=1000, stock=1),
+            price_watch.models.PriceRecord(time="2024-01-16 10:00:00", price=900, stock=1),
         ]
 
         result = price_watch.webapi.page._build_history_entries(history, 10.0)
@@ -124,7 +125,7 @@ class TestBuildHistoryEntries:
     def test_handles_none_price(self) -> None:
         """価格が None の履歴も処理"""
         history = [
-            {"time": "2024-01-15 10:00:00", "price": None, "stock": 0},
+            price_watch.models.PriceRecord(time="2024-01-15 10:00:00", price=None, stock=0),
         ]
 
         result = price_watch.webapi.page._build_history_entries(history, 10.0)
@@ -272,7 +273,7 @@ class TestGetTargetItemKeys:
         mock_config = MagicMock()
         mock_config.resolve_items.return_value = [mock_item]
 
-        with patch("price_watch.history.url_hash", return_value="hash123"):
+        with patch("price_watch.managers.history.url_hash", return_value="hash123"):
             result = price_watch.webapi.page._get_target_item_keys(mock_config)
 
         assert "hash123" in result
@@ -287,7 +288,7 @@ class TestGetTargetItemKeys:
         mock_config = MagicMock()
         mock_config.resolve_items.return_value = [mock_item]
 
-        with patch("price_watch.history.generate_item_key", return_value="mercari_key"):
+        with patch("price_watch.managers.history.generate_item_key", return_value="mercari_key"):
             result = price_watch.webapi.page._get_target_item_keys(mock_config)
 
         assert "mercari_key" in result
@@ -357,20 +358,24 @@ class TestGetItems:
     def test_returns_items(self, client: flask.testing.FlaskClient) -> None:
         """アイテム一覧を返す"""
         mock_items = [
-            {
-                "id": 1,
-                "name": "Item1",
-                "store": "Store1",
-                "item_key": "key1",
-                "url": "http://example.com",
-                "thumb_url": "http://example.com/thumb.png",
-            }
+            price_watch.models.ItemRecord(
+                id=1,
+                name="Item1",
+                store="Store1",
+                item_key="key1",
+                url="http://example.com",
+                thumb_url="http://example.com/thumb.png",
+                search_keyword=None,
+            )
         ]
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = mock_items
+        mock_history_manager.get_latest.return_value = None
 
         with (
             patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch("price_watch.history.get_all_items", return_value=mock_items),
-            patch("price_watch.history.get_latest_price", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/api/items")
 
@@ -378,10 +383,12 @@ class TestGetItems:
 
     def test_handles_exception(self, client: flask.testing.FlaskClient) -> None:
         """例外時は 500 を返す"""
-        with patch.object(
-            price_watch.webapi.page._target_config_cache,
-            "get",
-            side_effect=Exception("DB error"),
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.side_effect = Exception("DB error")
+
+        with (
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/api/items")
 
@@ -393,15 +400,23 @@ class TestGetItemHistory:
 
     def test_returns_history(self, client: flask.testing.FlaskClient) -> None:
         """履歴を返す"""
-        mock_item = {"store": "Store1"}
-        mock_history = [{"time": "2024-01-15 10:00:00", "price": 1000, "stock": 1}]
+        mock_item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            name="Item1",
+            store="Store1",
+            url="http://example.com",
+            thumb_url=None,
+            search_keyword=None,
+        )
+        mock_history = [price_watch.models.PriceRecord(time="2024-01-15 10:00:00", price=1000, stock=1)]
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_history.return_value = (mock_item, mock_history)
 
         with (
-            patch(
-                "price_watch.history.get_item_history",
-                return_value=(mock_item, mock_history),
-            ),
             patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/api/items/key1/history")
 
@@ -411,7 +426,10 @@ class TestGetItemHistory:
 
     def test_returns_404_for_missing_item(self, client: flask.testing.FlaskClient) -> None:
         """アイテムがない場合は 404"""
-        with patch("price_watch.history.get_item_history", return_value=(None, [])):
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_history.return_value = (None, [])
+
+        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
             response = client.get("/price/api/items/missing/history")
 
         assert response.status_code == 404
@@ -423,26 +441,36 @@ class TestGetItemEvents:
     def test_returns_events(self, client: flask.testing.FlaskClient) -> None:
         """イベントを返す"""
         mock_events = [
-            {
-                "id": 1,
-                "item_name": "Item1",
-                "store": "Store1",
-                "url": "http://example.com",
-                "thumb_url": None,
-                "event_type": "price_drop",
-                "price": 900,
-                "old_price": 1000,
-                "threshold_days": 30,
-                "created_at": "2024-01-15 10:00:00",
-            }
+            price_watch.models.EventRecord(
+                id=1,
+                item_id=1,
+                item_name="Item1",
+                store="Store1",
+                url="http://example.com",
+                thumb_url=None,
+                event_type="price_drop",
+                price=900,
+                old_price=1000,
+                threshold_days=30,
+                notified=True,
+                created_at="2024-01-15 10:00:00",
+            )
         ]
 
-        with (
-            patch("price_watch.history.get_item_events", return_value=mock_events),
-            patch("price_watch.event.format_event_message", return_value="Message"),
-            patch("price_watch.event.format_event_title", return_value="Title"),
-        ):
-            response = client.get("/price/api/items/key1/events")
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_item_events.return_value = mock_events
+
+        # グローバル変数を直接設定
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = mock_history_manager
+        try:
+            with (
+                patch("price_watch.event.format_event_message", return_value="Message"),
+                patch("price_watch.event.format_event_title", return_value="Title"),
+            ):
+                response = client.get("/price/api/items/key1/events")
+        finally:
+            price_watch.webapi.page._history_manager = original
 
         assert response.status_code == 200
         data = response.get_json()
@@ -450,8 +478,16 @@ class TestGetItemEvents:
 
     def test_returns_empty_for_no_events(self, client: flask.testing.FlaskClient) -> None:
         """イベントがない場合は空リスト"""
-        with patch("price_watch.history.get_item_events", return_value=[]):
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_item_events.return_value = []
+
+        # グローバル変数を直接設定
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = mock_history_manager
+        try:
             response = client.get("/price/api/items/key1/events")
+        finally:
+            price_watch.webapi.page._history_manager = original
 
         assert response.status_code == 200
         data = response.get_json()
@@ -459,10 +495,18 @@ class TestGetItemEvents:
 
     def test_respects_limit(self, client: flask.testing.FlaskClient) -> None:
         """limit パラメータを尊重"""
-        with patch("price_watch.history.get_item_events", return_value=[]) as mock_get:
-            client.get("/price/api/items/key1/events?limit=25")
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_item_events.return_value = []
 
-        mock_get.assert_called_once_with("key1", 25)
+        # グローバル変数を直接設定
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = mock_history_manager
+        try:
+            client.get("/price/api/items/key1/events?limit=25")
+        finally:
+            price_watch.webapi.page._history_manager = original
+
+        mock_history_manager.get_item_events.assert_called_once_with("key1", 25)
 
 
 class TestGetEvents:
@@ -471,26 +515,36 @@ class TestGetEvents:
     def test_returns_events(self, client: flask.testing.FlaskClient) -> None:
         """イベント一覧を返す"""
         mock_events = [
-            {
-                "id": 1,
-                "item_name": "Item1",
-                "store": "Store1",
-                "url": "http://example.com",
-                "thumb_url": None,
-                "event_type": "price_drop",
-                "price": 900,
-                "old_price": 1000,
-                "threshold_days": 30,
-                "created_at": "2024-01-15 10:00:00",
-            }
+            price_watch.models.EventRecord(
+                id=1,
+                item_id=1,
+                item_name="Item1",
+                store="Store1",
+                url="http://example.com",
+                thumb_url=None,
+                event_type="price_drop",
+                price=900,
+                old_price=1000,
+                threshold_days=30,
+                notified=True,
+                created_at="2024-01-15 10:00:00",
+            )
         ]
 
-        with (
-            patch("price_watch.event.get_recent_events", return_value=mock_events),
-            patch("price_watch.event.format_event_message", return_value="Message"),
-            patch("price_watch.event.format_event_title", return_value="Title"),
-        ):
-            response = client.get("/price/api/events")
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_recent_events.return_value = mock_events
+
+        # グローバル変数を直接設定
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = mock_history_manager
+        try:
+            with (
+                patch("price_watch.event.format_event_message", return_value="Message"),
+                patch("price_watch.event.format_event_title", return_value="Title"),
+            ):
+                response = client.get("/price/api/events")
+        finally:
+            price_watch.webapi.page._history_manager = original
 
         assert response.status_code == 200
         data = response.get_json()
@@ -677,21 +731,32 @@ class TestItemDetailPage:
     def test_returns_html(self, client: flask.testing.FlaskClient) -> None:
         """HTML を返す"""
         mock_items = [
-            {
-                "id": 1,
-                "name": "Item1",
-                "store": "Store1",
-                "item_key": "key1",
-                "url": "http://example.com",
-                "thumb_url": None,
-            }
+            price_watch.models.ItemRecord(
+                id=1,
+                name="Item1",
+                store="Store1",
+                item_key="key1",
+                url="http://example.com",
+                thumb_url=None,
+                search_keyword=None,
+            )
         ]
+
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15 10:00:00"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = mock_items
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (mock_items[0], [])
 
         with (
             patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
             patch.object(price_watch.webapi.page._config_cache, "get", return_value=None),
-            patch("price_watch.history.get_all_items", return_value=mock_items),
-            patch("price_watch.history.get_latest_price", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/items/key1")
 
@@ -700,9 +765,12 @@ class TestItemDetailPage:
 
     def test_returns_404_for_missing_item(self, client: flask.testing.FlaskClient) -> None:
         """アイテムがない場合は 404"""
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = []
+
         with (
             patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch("price_watch.history.get_all_items", return_value=[]),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/items/missing")
 
@@ -718,10 +786,13 @@ class TestOgpImage:
         mock_config.data.cache = pathlib.Path("/tmp/cache")
         mock_config.data.thumb = pathlib.Path("/tmp/thumb")
 
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = []
+
         with (
             patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
             patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch("price_watch.history.get_all_items", return_value=[]),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/ogp/missing.png")
 
@@ -817,14 +888,20 @@ class TestBuildStoreEntry:
 
     def test_builds_entry(self) -> None:
         """ストアエントリを構築"""
-        item = {
-            "item_key": "key1",
-            "store": "Store1",
-            "url": "http://example.com",
-        }
-        latest = {"price": 1000, "stock": 1, "time": "2024-01-15 10:00:00"}
-        stats = {"lowest_price": 900, "highest_price": 1100}
-        history = [{"time": "2024-01-15 10:00:00", "price": 1000, "stock": 1}]
+        item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            store="Store1",
+            url="http://example.com",
+            name="Item1",
+            thumb_url=None,
+            search_keyword=None,
+        )
+        latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15 10:00:00"
+        )
+        stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+        history = [price_watch.models.PriceRecord(time="2024-01-15 10:00:00", price=1000, stock=1)]
 
         result = price_watch.webapi.page._build_store_entry(item, latest, stats, history, 10.0)
 
@@ -835,17 +912,21 @@ class TestBuildStoreEntry:
 
 
 class TestBuildStoreEntryWithoutHistory:
-    """_build_store_entry_without_history 関数のテスト"""
+    """_build_store_entry_without_history_from_record 関数のテスト"""
 
     def test_builds_entry(self) -> None:
         """履歴なしストアエントリを構築"""
-        item = {
-            "item_key": "key1",
-            "store": "Store1",
-            "url": "http://example.com",
-        }
+        item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            store="Store1",
+            url="http://example.com",
+            name="Item1",
+            thumb_url=None,
+            search_keyword=None,
+        )
 
-        result = price_watch.webapi.page._build_store_entry_without_history(item, 10.0)
+        result = price_watch.webapi.page._build_store_entry_without_history_from_record(item, 10.0)
 
         assert result.item_key == "key1"
         assert result.store == "Store1"
@@ -858,42 +939,49 @@ class TestProcessItem:
 
     def test_processes_item_with_history(self) -> None:
         """履歴ありアイテムを処理"""
-        item = {
-            "id": 1,
-            "item_key": "key1",
-            "store": "Store1",
-            "url": "http://example.com",
-            "thumb_url": "http://example.com/thumb.png",
-        }
+        item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            store="Store1",
+            url="http://example.com",
+            name="Item1",
+            thumb_url="http://example.com/thumb.png",
+            search_keyword=None,
+        )
 
-        with (
-            patch(
-                "price_watch.history.get_latest_price",
-                return_value={"price": 1000, "stock": 1, "time": "2024-01-15"},
-            ),
-            patch(
-                "price_watch.history.get_item_stats",
-                return_value={"lowest_price": 900, "highest_price": 1100},
-            ),
-            patch(
-                "price_watch.history.get_item_history",
-                return_value=(None, []),
-            ),
-        ):
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (item, [])
+
+        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
             result = price_watch.webapi.page._process_item(item, 30, None)
 
         assert result is not None
         assert result["store_entry"].store == "Store1"
 
-    def test_handles_item_without_id(self) -> None:
-        """id のないアイテムを処理"""
-        item = {
-            "store": "Store1",
-            "url": "http://example.com",
-            "thumb_url": None,
-        }
+    def test_handles_item_without_latest(self) -> None:
+        """latest がないアイテムを処理"""
+        item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            store="Store1",
+            url="http://example.com",
+            name="Item1",
+            thumb_url=None,
+            search_keyword=None,
+        )
 
-        result = price_watch.webapi.page._process_item(item, 30, None)
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_latest.return_value = None
+
+        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+            result = price_watch.webapi.page._process_item(item, 30, None)
 
         assert result is not None
         assert result["store_entry"].current_price is None

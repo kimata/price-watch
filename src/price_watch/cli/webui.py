@@ -19,7 +19,6 @@ import signal
 import sys
 
 import price_watch.config
-import price_watch.history
 import price_watch.webapi.server
 
 
@@ -55,12 +54,11 @@ class WebUIRunner:
             logging.warning("Static directory not found: %s", static_dir_path)
             logging.warning("Run 'cd frontend && npm run build' to build the frontend")
 
-        # 設定ファイルのデータパスで history モジュールを初期化
+        # 設定ファイルのデータパスを確認
         data_path = self.config.data.price
         db_file = data_path / "price_history.db"
         logging.info("Data path: %s (absolute: %s)", data_path, data_path.resolve())
         logging.info("DB file exists: %s", db_file.exists())
-        price_watch.history.init(data_path)
 
         self.server_handle = price_watch.webapi.server.start(self.port, static_dir_path=static_dir_path)
 

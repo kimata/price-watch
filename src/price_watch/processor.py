@@ -14,7 +14,6 @@ import selenium.common.exceptions
 
 import price_watch.const
 import price_watch.event
-import price_watch.history
 import price_watch.log_format
 import price_watch.managers.metrics_manager
 import price_watch.models
@@ -320,12 +319,13 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
+        history = self.app.history_manager
+
         # 履歴を記録
-        crawl_status = 1 if item.crawl_status == price_watch.models.CrawlStatus.SUCCESS else 0
-        item_id = price_watch.history.insert(item.to_history_dict(), crawl_status=crawl_status)
+        item_id = history.insert_checked_item(item)
 
         # 最新の履歴を取得
-        last = price_watch.history.last(item_key=item_key) if item_key else price_watch.history.last(item.url)
+        last = history.get_last(item_key=item_key) if item_key else history.get_last(item.url)
 
         # 新規監視開始
         if last is None:
@@ -333,10 +333,11 @@ class ItemProcessor:
             return True
 
         # 既存アイテムの更新
-        if last.get("price") is not None:
-            item.old_price = last["price"]
+        if last.price is not None:
+            item.old_price = last.price
 
         # イベント判定
+        crawl_status = 1 if item.crawl_status == price_watch.models.CrawlStatus.SUCCESS else 0
         self._check_and_notify_events(item, last, item_id, crawl_status)
 
         self._log_item_status(item)
@@ -346,44 +347,46 @@ class ItemProcessor:
     def _check_and_notify_events(
         self,
         item: price_watch.models.CheckedItem,
-        last: dict[str, object],
+        last: price_watch.models.PriceHistoryRecord,
         item_id: int,
         crawl_status: int,
     ) -> None:
         """イベントを判定して通知."""
+        history = self.app.history_manager
         judge_config = self.config.check.judge
         ignore_hours = judge_config.ignore.hour if judge_config else 24
         windows = judge_config.windows if judge_config else []
 
         current_price = item.price
         current_stock = item.stock_as_int()
-        last_stock_raw = last.get("stock")
-        last_stock: int | None = int(str(last_stock_raw)) if last_stock_raw is not None else None
+        last_stock = last.stock
 
         if crawl_status == 1:
             # 在庫復活判定
-            result = price_watch.event.check_back_in_stock(item_id, current_stock, last_stock, ignore_hours)
+            result = price_watch.event.check_back_in_stock(
+                history, item_id, current_stock, last_stock, ignore_hours
+            )
             if result is not None and result.should_notify:
                 result.price = current_price
                 self._notify_and_record_event(result, item, item_id)
 
             # 価格関連イベント
             if current_price is not None and current_stock == 1:
-                result = price_watch.event.check_lowest_price(item_id, current_price, ignore_hours)
+                result = price_watch.event.check_lowest_price(history, item_id, current_price, ignore_hours)
                 if result is not None and result.should_notify:
                     self._notify_and_record_event(result, item, item_id)
 
                 if windows:
-                    result = price_watch.event.check_price_drop(item_id, current_price, windows)
+                    result = price_watch.event.check_price_drop(history, item_id, current_price, windows)
                     if result is not None and result.should_notify:
                         self._notify_and_record_event(result, item, item_id)
         else:
             # クロール失敗時
-            result = price_watch.event.check_crawl_failure(item_id)
+            result = price_watch.event.check_crawl_failure(history, item_id)
             if result is not None and result.should_notify:
                 self._notify_and_record_event(result, item, item_id)
 
-            result = price_watch.event.check_data_retrieval_failure(item_id)
+            result = price_watch.event.check_data_retrieval_failure(history, item_id)
             if result is not None and result.should_notify:
                 self._notify_and_record_event(result, item, item_id)
 
@@ -401,7 +404,7 @@ class ItemProcessor:
         )
 
         notified = price_watch.notify.event(self.config.slack, result, item) is not None
-        price_watch.event.record_event(result, item_id, notified=notified)
+        price_watch.event.record_event(self.app.history_manager, result, item_id, notified=notified)
 
     def _handle_crawl_failure(
         self,

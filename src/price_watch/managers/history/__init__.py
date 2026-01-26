@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from price_watch.managers.history.connection import HistoryDBConnection
 from price_watch.managers.history.event_repository import EventRepository
@@ -16,6 +16,17 @@ from price_watch.managers.history.item_repository import ItemRepository
 from price_watch.managers.history.migrations import HistoryMigrations
 from price_watch.managers.history.price_repository import PriceRepository
 from price_watch.managers.history.utils import generate_item_key, url_hash
+
+if TYPE_CHECKING:
+    from price_watch.models import (
+        CheckedItem,
+        EventRecord,
+        ItemRecord,
+        ItemStats,
+        LatestPriceRecord,
+        PriceHistoryRecord,
+        PriceRecord,
+    )
 
 __all__ = [
     "EventRepository",
@@ -85,7 +96,7 @@ class HistoryManager:
         """
         return self.prices.insert(item, crawl_status=crawl_status)
 
-    def get_last(self, url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
+    def get_last(self, url: str | None = None, *, item_key: str | None = None) -> PriceHistoryRecord | None:
         """最新の価格履歴を取得.
 
         Args:
@@ -95,9 +106,12 @@ class HistoryManager:
         Returns:
             最新の価格履歴、または None
         """
-        return self.prices.get_last(url, item_key=item_key)
+        import price_watch.models
 
-    def get_lowest(self, url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
+        result = self.prices.get_last(url, item_key=item_key)
+        return price_watch.models.PriceHistoryRecord.from_dict(result) if result else None
+
+    def get_lowest(self, url: str | None = None, *, item_key: str | None = None) -> PriceHistoryRecord | None:
         """最安値の価格履歴を取得.
 
         Args:
@@ -107,11 +121,14 @@ class HistoryManager:
         Returns:
             最安値の価格履歴、または None
         """
-        return self.prices.get_lowest(url, item_key=item_key)
+        import price_watch.models
+
+        result = self.prices.get_lowest(url, item_key=item_key)
+        return price_watch.models.PriceHistoryRecord.from_dict(result) if result else None
 
     def get_history(
         self, item_key: str, days: int | None = None
-    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    ) -> tuple[ItemRecord | None, list[PriceRecord]]:
         """アイテムの価格履歴を取得.
 
         Args:
@@ -121,7 +138,12 @@ class HistoryManager:
         Returns:
             (アイテム情報, 価格履歴リスト) のタプル
         """
-        return self.prices.get_history(item_key, days)
+        import price_watch.models
+
+        item_dict, history_list = self.prices.get_history(item_key, days)
+        item = price_watch.models.ItemRecord.from_dict(item_dict) if item_dict else None
+        history = [price_watch.models.PriceRecord.from_dict(h) for h in history_list]
+        return item, history
 
     def get_item_id(self, url: str | None = None, *, item_key: str | None = None) -> int | None:
         """アイテム ID を取得.
@@ -135,7 +157,7 @@ class HistoryManager:
         """
         return self.items.get_id(url, item_key=item_key)
 
-    def get_item_by_id(self, item_id: int) -> dict[str, Any] | None:
+    def get_item_by_id(self, item_id: int) -> ItemRecord | None:
         """アイテム ID からアイテム情報を取得.
 
         Args:
@@ -144,15 +166,20 @@ class HistoryManager:
         Returns:
             アイテム情報、または None
         """
-        return self.items.get_by_id(item_id)
+        import price_watch.models
 
-    def get_all_items(self) -> list[dict[str, Any]]:
+        result = self.items.get_by_id(item_id)
+        return price_watch.models.ItemRecord.from_dict(result) if result else None
+
+    def get_all_items(self) -> list[ItemRecord]:
         """全アイテムを取得.
 
         Returns:
             アイテムリスト
         """
-        return self.items.get_all()
+        import price_watch.models
+
+        return [price_watch.models.ItemRecord.from_dict(item) for item in self.items.get_all()]
 
     def insert_event(
         self,
@@ -186,7 +213,7 @@ class HistoryManager:
             notified=notified,
         )
 
-    def get_last_event(self, item_id: int, event_type: str) -> dict[str, Any] | None:
+    def get_last_event(self, item_id: int, event_type: str) -> EventRecord | None:
         """指定タイプの最新イベントを取得.
 
         Args:
@@ -196,7 +223,10 @@ class HistoryManager:
         Returns:
             イベント情報、または None
         """
-        return self.events.get_last(item_id, event_type)
+        import price_watch.models
+
+        result = self.events.get_last(item_id, event_type)
+        return price_watch.models.EventRecord.from_dict(result) if result else None
 
     def has_event_in_hours(self, item_id: int, event_type: str, hours: int) -> bool:
         """指定時間内に同じイベントが発生しているか確認.
@@ -211,7 +241,7 @@ class HistoryManager:
         """
         return self.events.has_event_in_hours(item_id, event_type, hours)
 
-    def get_recent_events(self, limit: int = 10) -> list[dict[str, Any]]:
+    def get_recent_events(self, limit: int = 10) -> list[EventRecord]:
         """最新のイベントを取得.
 
         Args:
@@ -220,7 +250,9 @@ class HistoryManager:
         Returns:
             イベントのリスト
         """
-        return self.events.get_recent(limit)
+        import price_watch.models
+
+        return [price_watch.models.EventRecord.from_dict(e) for e in self.events.get_recent(limit)]
 
     def mark_event_notified(self, event_id: int) -> None:
         """イベントを通知済みにする.
@@ -230,7 +262,7 @@ class HistoryManager:
         """
         self.events.mark_notified(event_id)
 
-    def get_item_events(self, item_key: str, limit: int = 50) -> list[dict[str, Any]]:
+    def get_item_events(self, item_key: str, limit: int = 50) -> list[EventRecord]:
         """指定アイテムのイベント履歴を取得.
 
         Args:
@@ -240,9 +272,11 @@ class HistoryManager:
         Returns:
             イベントのリスト
         """
-        return self.events.get_by_item(item_key, limit)
+        import price_watch.models
 
-    def get_stats(self, item_id: int, days: int | None = None) -> dict[str, Any]:
+        return [price_watch.models.EventRecord.from_dict(e) for e in self.events.get_by_item(item_key, limit)]
+
+    def get_stats(self, item_id: int, days: int | None = None) -> ItemStats:
         """アイテムの統計情報を取得.
 
         Args:
@@ -252,9 +286,11 @@ class HistoryManager:
         Returns:
             統計情報
         """
-        return self.prices.get_stats(item_id, days)
+        import price_watch.models
 
-    def get_latest(self, item_id: int) -> dict[str, Any] | None:
+        return price_watch.models.ItemStats.from_dict(self.prices.get_stats(item_id, days))
+
+    def get_latest(self, item_id: int) -> LatestPriceRecord | None:
         """アイテムの最新価格を取得.
 
         Args:
@@ -263,7 +299,10 @@ class HistoryManager:
         Returns:
             最新価格情報、または None
         """
-        return self.prices.get_latest(item_id)
+        import price_watch.models
+
+        result = self.prices.get_latest(item_id)
+        return price_watch.models.LatestPriceRecord.from_dict(result) if result else None
 
     def get_lowest_in_period(self, item_id: int, days: int | None = None) -> int | None:
         """指定期間内の最安値を取得.
@@ -300,7 +339,7 @@ class HistoryManager:
         """
         return self.prices.get_out_of_stock_duration_hours(item_id)
 
-    def get_last_successful_crawl(self, item_id: int) -> dict[str, Any] | None:
+    def get_last_successful_crawl(self, item_id: int) -> LatestPriceRecord | None:
         """最後に成功したクロールを取得.
 
         Args:
@@ -309,7 +348,10 @@ class HistoryManager:
         Returns:
             クロール情報、または None
         """
-        return self.prices.get_last_successful_crawl(item_id)
+        import price_watch.models
+
+        result = self.prices.get_last_successful_crawl(item_id)
+        return price_watch.models.LatestPriceRecord.from_dict(result) if result else None
 
     def get_no_data_duration_hours(self, item_id: int) -> float | None:
         """データ取得失敗の継続時間を取得.
@@ -321,3 +363,45 @@ class HistoryManager:
             継続時間（時間）、または None
         """
         return self.prices.get_no_data_duration_hours(item_id)
+
+    def insert_checked_item(self, item: CheckedItem) -> int:
+        """CheckedItem から価格履歴を挿入.
+
+        Args:
+            item: チェック済みアイテム
+
+        Returns:
+            アイテム ID
+        """
+        item_dict = {
+            "name": item.name,
+            "store": item.store,
+            "url": item.url,
+            "thumb_url": item.thumb_url,
+            "search_keyword": item.search_keyword,
+            "search_cond": item.search_cond,
+            "price": item.price,
+            "stock": item.stock.to_int(),
+        }
+
+        crawl_status = 1 if item.is_success() else 0
+        return self.prices.insert(item_dict, crawl_status=crawl_status)
+
+    @staticmethod
+    def generate_item_key(
+        url: str | None = None,
+        *,
+        search_keyword: str | None = None,
+        search_cond: str | None = None,
+    ) -> str:
+        """アイテムキーを生成.
+
+        Args:
+            url: URL（通常ストア用）
+            search_keyword: 検索キーワード（メルカリ用）
+            search_cond: 検索条件（未使用）
+
+        Returns:
+            12文字のハッシュ
+        """
+        return generate_item_key(url, search_keyword=search_keyword, search_cond=search_cond)

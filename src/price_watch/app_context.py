@@ -82,8 +82,8 @@ class PriceWatchApp:
         config = config_manager.config
 
         # 各 Manager を作成
-        history_manager = price_watch.managers.HistoryManager(
-            data_path=config.data.price,
+        history_manager = price_watch.managers.HistoryManager.create(
+            config.data.price,
         )
         browser_manager = price_watch.managers.BrowserManager(
             selenium_data_dir=config.data.selenium,

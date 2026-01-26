@@ -57,7 +57,6 @@ class TestWebUIRunnerStart:
 
         with (
             patch("price_watch.config.load", return_value=mock_config),
-            patch("price_watch.history.init"),
             patch("price_watch.webapi.server.start", return_value=mock_handle) as mock_start,
         ):
             runner.start()
@@ -79,7 +78,6 @@ class TestWebUIRunnerStart:
 
         with (
             patch("price_watch.config.load", return_value=mock_config),
-            patch("price_watch.history.init"),
             patch("price_watch.webapi.server.start", return_value=MagicMock()),
         ):
             # 警告が出力されるがエラーにはならない
