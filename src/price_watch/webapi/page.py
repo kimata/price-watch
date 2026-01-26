@@ -600,12 +600,22 @@ def _render_ogp_html(
     item_name: str,
     best_store: price_watch.webapi.schemas.StoreEntry,
     ogp_image_url: str,
+    ogp_image_square_url: str,
     page_url: str,
     static_dir: pathlib.Path | None,
 ) -> str:
     """OGP メタタグ付き HTML を生成.
 
     ビルド済みの index.html をベースに、OGP メタタグを挿入する。
+
+    Args:
+        item_key: アイテムキー
+        item_name: アイテム名
+        best_store: 最安ストア情報
+        ogp_image_url: OGP 画像 URL（1200x630、Facebook/LINE 等用）
+        ogp_image_square_url: 正方形 OGP 画像 URL（1200x1200、Twitter 用）
+        page_url: ページ URL
+        static_dir: 静的ファイルディレクトリ
     """
     # 価格のフォーマット
     price_text = f"¥{best_store.effective_price:,}" if best_store.effective_price else "価格未取得"
@@ -621,11 +631,11 @@ def _render_ogp_html(
     <meta property="og:type" content="product">
     <meta property="og:site_name" content="Price Watch">
 
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
+    <!-- Twitter Card（正方形画像を使用） -->
+    <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="{_escape_html(item_name)}">
     <meta name="twitter:description" content="{_escape_html(description)}">
-    <meta name="twitter:image" content="{_escape_html(ogp_image_url)}">
+    <meta name="twitter:image" content="{_escape_html(ogp_image_square_url)}">
 """
 
     # item_key を渡すスクリプト
@@ -708,15 +718,19 @@ def item_detail_page(item_key: str) -> flask.Response | tuple[flask.Response, in
         best_store = _find_best_store(stores)
 
         # URL を構築
+        base_url = flask.request.url_root.rstrip("/")
         page_url = flask.request.url
-        ogp_image_url = flask.request.url_root.rstrip("/") + f"/price/ogp/{item_key}.png"
+        ogp_image_url = f"{base_url}/price/ogp/{item_key}.png"
+        ogp_image_square_url = f"{base_url}/price/ogp/{item_key}_square.png"
 
         # 設定からstatic_dirを取得
         app_config = _get_app_config()
         static_dir = app_config.webapp.static_dir_path if app_config else None
 
         # HTML を生成
-        html = _render_ogp_html(item_key, item_name, best_store, ogp_image_url, page_url, static_dir)
+        html = _render_ogp_html(
+            item_key, item_name, best_store, ogp_image_url, ogp_image_square_url, page_url, static_dir
+        )
 
         return flask.Response(html, mimetype="text/html")
 
