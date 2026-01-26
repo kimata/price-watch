@@ -180,7 +180,7 @@ class ItemProcessor:
         else:
             logging.info("[Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
 
-        store_name = "amazon.co.jp"
+        store_name = amazon_items[0].store
         with price_watch.managers.metrics_manager.StoreContext(
             self.app.metrics_manager, store_name
         ) as store_ctx:
@@ -224,7 +224,7 @@ class ItemProcessor:
         if not mercari_items:
             return
 
-        store_name = "mercari.com"
+        store_name = mercari_items[0].store
 
         # デバッグモードでは1アイテムのみ
         if self.app.debug_mode:
@@ -321,7 +321,7 @@ class ItemProcessor:
         if not yahoo_items:
             return
 
-        store_name = "shopping.yahoo.co.jp"
+        store_name = yahoo_items[0].store
 
         # デバッグモードでは1アイテムのみ
         if self.app.debug_mode:
