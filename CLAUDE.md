@@ -10,8 +10,8 @@
 
 - Amazon.co.jp（PA-API / スクレイピング）
 - メルカリ（キーワード検索）
+- Yahoo!ショッピング（API 検索 / スクレイピング）
 - ヨドバシ.com
-- Yahoo ショッピング
 - Switch Science
 - Ubiquiti Store USA
 - Lenovo
@@ -152,6 +152,7 @@ src/
     ├── store/                  # ストア別価格取得
     │   ├── scrape.py           # スクレイピングによる価格チェック
     │   ├── mercari.py          # メルカリ検索
+    │   ├── yahoo.py            # Yahoo!ショッピング検索
     │   └── amazon/             # Amazon 関連モジュール
     │       ├── paapi.py        # Amazon PA-API による価格取得
     │       └── paapi_rate_limiter.py # PA-API レート制限
@@ -208,7 +209,7 @@ success = runner.execute()
 
 #### ItemProcessor (`processor.py`)
 
-各チェック方法（スクレイピング、PA-API、メルカリ）の共通処理を提供。
+各チェック方法（スクレイピング、PA-API、メルカリ、Yahoo）の共通処理を提供。
 
 ```python
 processor = ItemProcessor(app=app, loop=0)
@@ -240,7 +241,8 @@ price-watch (cli/app.py)
 │   └── ItemProcessor.process_all() → 全アイテム処理
 │       ├── process_scrape_items() → スクレイピング
 │       ├── process_amazon_items() → PA-API
-│       └── process_mercari_items() → メルカリ検索
+│       ├── process_mercari_items() → メルカリ検索
+│       └── process_yahoo_items() → Yahoo検索
 └── app.shutdown() → 終了処理
 ```
 
@@ -286,7 +288,7 @@ MercariSearchCondition # メルカリ検索条件
 
 ```python
 # Enum
-CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH
+CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH, YAHOO_SEARCH
 ActionType: CLICK, INPUT, SIXDIGIT, RECAPTCHA
 
 # Protocol
@@ -330,6 +332,10 @@ store:
         host: "webservices.amazon.co.jp"
         region: "us-west-2"
 
+    yahoo:
+        client_id: "..."
+        secret: "..."
+
 data:
     selenium: ./data # Selenium プロファイル
     dump: ./data/debug # デバッグダンプ
@@ -355,6 +361,9 @@ store_list:
     - name: Amazon
       check_method: my_lib.store.amazon.api
 
+    - name: Yahoo
+      check_method: my_lib.store.yahoo.api
+
 item_list:
     - name: 商品名
       store: ヨドバシ
@@ -363,6 +372,20 @@ item_list:
     - name: Amazon 商品
       store: Amazon
       asin: B0XXXXXXXX
+
+    # Yahoo検索（キーワード検索）
+    - name: Yahoo商品
+      store: Yahoo
+      search_keyword: 検索キーワード # 省略時は name で検索
+      price:
+          - 10000 # price_min
+          - 50000 # price_max
+      cond: new # new（デフォルト）or used
+
+    # Yahoo検索（JANコード検索）
+    - name: Yahoo商品（JAN）
+      store: Yahoo
+      jan_code: "4901234567890"
 ```
 
 ## デプロイ
@@ -403,6 +426,7 @@ docker compose up
 | my_lib.healthz         | Liveness チェック                             |
 | my_lib.footprint       | タイムスタンプファイル管理                    |
 | my_lib.store.amazon.\* | Amazon API 関連                               |
+| my_lib.store.yahoo.\*  | Yahoo!ショッピング API 関連                   |
 
 ## コーディング規約
 
@@ -626,6 +650,13 @@ def get_price() -> dict[str, Any] | None:
 ```
 
 ## 開発ワークフロー規約
+
+### リポジトリ構成
+
+- **プライマリリポジトリ**: GitLab (`gitlab.green-rabbit.net`)
+- **ミラーリポジトリ**: GitHub (`github.com/kimata/price-watch`)
+
+GitLab にプッシュすると、自動的に GitHub にミラーリングされます。GitHub への直接プッシュは不要です。
 
 ### コミット時の注意
 
