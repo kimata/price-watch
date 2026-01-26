@@ -595,6 +595,11 @@ def _get_item_data_for_ogp(
     return item_name, stores
 
 
+def _is_facebook_crawler(user_agent: str) -> bool:
+    """Facebook クローラーかどうかを判定."""
+    return "facebookexternalhit" in user_agent.lower()
+
+
 def _render_ogp_html(
     item_key: str,
     item_name: str,
@@ -603,6 +608,8 @@ def _render_ogp_html(
     ogp_image_square_url: str,
     page_url: str,
     static_dir: pathlib.Path | None,
+    *,
+    is_facebook: bool = False,
 ) -> str:
     """OGP メタタグ付き HTML を生成.
 
@@ -612,21 +619,25 @@ def _render_ogp_html(
         item_key: アイテムキー
         item_name: アイテム名
         best_store: 最安ストア情報
-        ogp_image_url: OGP 画像 URL（1200x630、Facebook/LINE 等用）
-        ogp_image_square_url: 正方形 OGP 画像 URL（1200x1200、Twitter 用）
+        ogp_image_url: OGP 画像 URL（1200x630、Facebook 用）
+        ogp_image_square_url: 正方形 OGP 画像 URL（1200x1200、LINE/はてな/Twitter 用）
         page_url: ページ URL
         static_dir: 静的ファイルディレクトリ
+        is_facebook: Facebook クローラーからのアクセスかどうか
     """
     # 価格のフォーマット
     price_text = f"¥{best_store.effective_price:,}" if best_store.effective_price else "価格未取得"
     description = f"最安値: {price_text} ({best_store.store})"
+
+    # og:image の URL を決定（Facebook は横長、それ以外は正方形）
+    og_image_url = ogp_image_url if is_facebook else ogp_image_square_url
 
     # OGP メタタグ
     ogp_tags = f"""
     <!-- OGP メタタグ -->
     <meta property="og:title" content="{_escape_html(item_name)}">
     <meta property="og:description" content="{_escape_html(description)}">
-    <meta property="og:image" content="{_escape_html(ogp_image_url)}">
+    <meta property="og:image" content="{_escape_html(og_image_url)}">
     <meta property="og:url" content="{_escape_html(page_url)}">
     <meta property="og:type" content="product">
     <meta property="og:site_name" content="Price Watch">
@@ -723,13 +734,24 @@ def item_detail_page(item_key: str) -> flask.Response | tuple[flask.Response, in
         ogp_image_url = f"{base_url}/price/ogp/{item_key}.png"
         ogp_image_square_url = f"{base_url}/price/ogp/{item_key}_square.png"
 
+        # User-Agent から Facebook クローラーかどうかを判定
+        user_agent = flask.request.headers.get("User-Agent", "")
+        is_facebook = _is_facebook_crawler(user_agent)
+
         # 設定からstatic_dirを取得
         app_config = _get_app_config()
         static_dir = app_config.webapp.static_dir_path if app_config else None
 
         # HTML を生成
         html = _render_ogp_html(
-            item_key, item_name, best_store, ogp_image_url, ogp_image_square_url, page_url, static_dir
+            item_key,
+            item_name,
+            best_store,
+            ogp_image_url,
+            ogp_image_square_url,
+            page_url,
+            static_dir,
+            is_facebook=is_facebook,
         )
 
         return flask.Response(html, mimetype="text/html")
