@@ -535,11 +535,11 @@ def _generate_price_graph_x_axis_only(
     ax.set_yticklabels([])
     ax.tick_params(axis="y", length=0)
 
-    # X軸の設定（目盛り数を制限）
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m/%-d"))
+    # X軸の設定（目盛り数を制限、日本語形式）
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%-m月%-d日"))
     ax.xaxis.set_major_locator(mdates.AutoDateLocator(maxticks=5))
     tick_color = "#666666"
-    ax.tick_params(axis="x", labelsize=20, labelcolor=tick_color, colors=tick_color)
+    ax.tick_params(axis="x", labelsize=40, labelcolor=tick_color, colors=tick_color)
 
     # グリッド（Y軸のみ、薄く）
     ax.xaxis.grid(False)
@@ -822,8 +822,8 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
 
     # フォントを取得
     font_title = _get_pillow_font(52, font_paths.jp_bold if font_paths else None)
-    font_price = _get_pillow_font(90, font_paths.en_bold if font_paths else None)
-    font_label = _get_pillow_font(32, font_paths.jp_medium if font_paths else None)
+    font_price = _get_pillow_font(180, font_paths.en_bold if font_paths else None)
+    font_label = _get_pillow_font(64, font_paths.jp_medium if font_paths else None)
 
     # マージン
     margin = 40
@@ -853,13 +853,13 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
 
     # --- 価格・ストア名を右側に表示 ---
     price_text = _format_price(data.best_price)
-    store_text = _truncate_text(img, data.best_store, font_label, 350)
+    store_text = _truncate_text(img, data.best_store, font_label, 700)
 
     price_width, price_height = _get_text_size(img, price_text, font_price)
     store_width, store_height = _get_text_size(img, store_text, font_label)
 
-    box_padding = 5
-    text_gap = 8
+    box_padding = 10
+    text_gap = 16
     max_text_width = max(price_width, store_width)
     info_width = max_text_width + box_padding * 2
     info_height = box_padding + price_height + text_gap + store_height + box_padding
