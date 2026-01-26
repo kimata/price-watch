@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
-テスト用の価格履歴データベースを作成するスクリプト
+テスト用の価格履歴データベースを作成するスクリプト。
 
 E2E テストで使用するダミーデータを含むデータベースを作成します。
 
 Usage:
-    python scripts/create_test_history_db.py -o <output_path>
+  create_test_history_db.py -o OUTPUT [-D]
 
 Options:
-    -o, --output  出力先のデータベースファイルパス
+  -o OUTPUT         : 出力先のデータベースファイルパス。
+  -D                : デバッグモードで動作します。
 """
 
-import argparse
+from __future__ import annotations
+
 import hashlib
+import logging
 import pathlib
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -227,14 +230,17 @@ def generate_sample_data(conn: sqlite3.Connection) -> None:
                 insert_price_history(conn, item_id, price, stock, time)
 
 
-def main() -> None:
-    """メイン処理."""
-    parser = argparse.ArgumentParser(description="テスト用の価格履歴データベースを作成")
-    parser.add_argument("-o", "--output", required=True, help="出力先のデータベースファイルパス")
+if __name__ == "__main__":
+    import docopt
+    import my_lib.logger
 
-    args = parser.parse_args()
+    assert __doc__ is not None  # noqa: S101
+    args = docopt.docopt(__doc__)
 
-    output_path = pathlib.Path(args.output)
+    output_path = pathlib.Path(args["-o"])
+    debug_mode = args["-D"]
+
+    my_lib.logger.init("create-test-db", level=logging.DEBUG if debug_mode else logging.INFO)
 
     # 出力ディレクトリが存在しない場合は作成
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -245,15 +251,15 @@ def main() -> None:
 
     # データベースを作成
     with sqlite3.connect(output_path) as conn:
-        print(f"Creating database: {output_path}")
+        logging.info("Creating database: %s", output_path)
 
         # テーブルを作成
         create_tables(conn)
-        print("Tables created.")
+        logging.info("Tables created.")
 
         # サンプルデータを挿入
         generate_sample_data(conn)
-        print("Sample data inserted.")
+        logging.info("Sample data inserted.")
 
         # 確認用のクエリ
         cur = conn.cursor()
@@ -263,10 +269,6 @@ def main() -> None:
         cur.execute("SELECT COUNT(*) FROM price_history")
         history_count = cur.fetchone()[0]
 
-        print("Database created successfully:")
-        print(f"  - Items: {item_count}")
-        print(f"  - Price history records: {history_count}")
-
-
-if __name__ == "__main__":
-    main()
+        logging.info("Database created successfully:")
+        logging.info("  - Items: %d", item_count)
+        logging.info("  - Price history records: %d", history_count)
