@@ -23,9 +23,9 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 OGP_WIDTH = 1200
 OGP_HEIGHT = 630
 
-# グラフ領域サイズ
-GRAPH_WIDTH = 850
-GRAPH_HEIGHT = 450
+# グラフ領域サイズ（OGP全面に表示）
+GRAPH_WIDTH = 1200
+GRAPH_HEIGHT = 630
 
 # キャッシュ有効期間（秒）
 CACHE_TTL_SEC = 3600
@@ -282,13 +282,12 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
     ax.xaxis.grid(False)
     ax.yaxis.grid(True, linestyle="-", alpha=0.3)
 
-    # 凡例を上部に表示（Chart.js と同様）
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=min(len(store_histories), 4), fontsize=12)
+    # 凡例は省略（小さく表示された際に読めないため）
 
     # スタイル調整
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="both", labelsize=14)
+    ax.tick_params(axis="both", labelsize=16)
 
     plt.tight_layout()
 
@@ -301,81 +300,94 @@ def _generate_price_graph(store_histories: list[StoreHistory]) -> Image.Image:
 
 
 def generate_ogp_image(data: OgpData) -> Image.Image:
-    """OGP 画像を生成."""
-    # 1200x630 の白い画像を作成
-    img = Image.new("RGB", (OGP_WIDTH, OGP_HEIGHT), color=(255, 255, 255))
-    draw = ImageDraw.Draw(img)
+    """OGP 画像を生成.
 
-    # フォントを取得
-    font_title = _get_pillow_font(36)
-    font_price = _get_pillow_font(48)
-    font_label = _get_pillow_font(20)
-    font_store = _get_pillow_font(24)
+    グラフを全面に配置し、サムネイルを左下背景に、価格情報を右上にオーバーレイ。
+    小さく表示された場合も商品と価格が分かるようにする。
+    """
+    # --- グラフを全面に配置 ---
+    if data.store_histories:
+        img = _generate_price_graph(data.store_histories)
+        # グラフのサイズを OGP サイズに調整
+        if img.size != (OGP_WIDTH, OGP_HEIGHT):
+            img = img.resize((OGP_WIDTH, OGP_HEIGHT), Image.Resampling.LANCZOS)
+        # RGB に変換（RGBA の場合があるため）
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+    else:
+        img = Image.new("RGB", (OGP_WIDTH, OGP_HEIGHT), color=(255, 255, 255))
 
-    # 左側エリアの幅
-    left_width = OGP_WIDTH - GRAPH_WIDTH - 60  # 60 は margin
-
-    # --- 左側: サムネイル + 商品情報 ---
-    y_offset = 40
-
-    # 商品名（最大幅で切り詰め）
-    title_text = _truncate_text(data.item_name, font_title, left_width - 40)
-    draw.text((30, y_offset), title_text, font=font_title, fill=(30, 30, 30))
-    y_offset += 60
-
-    # サムネイル画像
-    thumb_size = 180
+    # --- サムネイルを左下背景に配置（半透明）---
+    thumb_size = 280
     if data.thumb_path and data.thumb_path.exists():
         try:
             thumb = Image.open(data.thumb_path)
             thumb.thumbnail((thumb_size, thumb_size), Image.Resampling.LANCZOS)
-            # サムネイルを中央に配置
-            thumb_x = 30 + (thumb_size - thumb.width) // 2
-            thumb_y = y_offset + (thumb_size - thumb.height) // 2
-            img.paste(thumb, (thumb_x, thumb_y))
+
+            # 半透明の白い背景を作成
+            thumb_bg = Image.new("RGBA", (thumb_size + 20, thumb_size + 20), (255, 255, 255, 200))
+
+            # サムネイルを背景に貼り付け
+            thumb_x = 10 + (thumb_size - thumb.width) // 2
+            thumb_y = 10 + (thumb_size - thumb.height) // 2
+            if thumb.mode == "RGBA":
+                thumb_bg.paste(thumb, (thumb_x, thumb_y), thumb)
+            else:
+                thumb_bg.paste(thumb, (thumb_x, thumb_y))
+
+            # img を RGBA に変換してからブレンド
+            img = img.convert("RGBA")
+            # 左下に配置
+            paste_x = 30
+            paste_y = OGP_HEIGHT - thumb_size - 80
+            img.paste(thumb_bg, (paste_x, paste_y), thumb_bg)
+            img = img.convert("RGB")
         except Exception:
             logging.warning("Failed to load thumbnail: %s", data.thumb_path)
 
-    y_offset += thumb_size + 30
+    draw = ImageDraw.Draw(img)
 
-    # 現在価格
-    draw.text((30, y_offset), "現在価格", font=font_label, fill=(100, 100, 100))
-    y_offset += 28
+    # フォントを取得
+    font_title = _get_pillow_font(32)
+    font_price = _get_pillow_font(56)
+    font_label = _get_pillow_font(20)
+
+    # --- 右上に価格情報をオーバーレイ ---
+    # 半透明の背景ボックス
+    info_width = 400
+    info_height = 160
+    info_x = OGP_WIDTH - info_width - 30
+    info_y = 30
+
+    # 半透明背景を描画
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    overlay_draw.rounded_rectangle(
+        [(info_x, info_y), (info_x + info_width, info_y + info_height)],
+        radius=10,
+        fill=(255, 255, 255, 230),
+    )
+    img = img.convert("RGBA")
+    img = Image.alpha_composite(img, overlay)
+    img = img.convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # 商品名（右上のボックス内、最大幅で切り詰め）
+    title_text = _truncate_text(data.item_name, font_title, info_width - 30)
+    draw.text((info_x + 15, info_y + 15), title_text, font=font_title, fill=(50, 50, 50))
+
+    # 現在価格（大きく表示）
     price_text = _format_price(data.best_price)
-    draw.text((30, y_offset), price_text, font=font_price, fill=(30, 30, 30))
-    y_offset += 60
+    draw.text((info_x + 15, info_y + 55), price_text, font=font_price, fill=(220, 50, 50))
 
-    # 最安ストア
-    draw.text((30, y_offset), "最安ストア", font=font_label, fill=(100, 100, 100))
-    y_offset += 28
-    store_text = _truncate_text(data.best_store, font_store, left_width - 40)
-    draw.text((30, y_offset), store_text, font=font_store, fill=(30, 30, 30))
-    y_offset += 40
-
-    # 最安値
-    if data.lowest_price is not None:
-        draw.text((30, y_offset), "最安値", font=font_label, fill=(100, 100, 100))
-        y_offset += 28
-        lowest_text = _format_price(data.lowest_price)
-        draw.text((30, y_offset), lowest_text, font=font_store, fill=(100, 100, 100))
-
-    # --- 右側: 価格推移グラフ ---
-    if data.store_histories:
-        graph_img = _generate_price_graph(data.store_histories)
-        # グラフを右側に配置
-        graph_x = left_width + 30
-        graph_y = 80
-        # グラフのサイズを調整
-        graph_img = graph_img.resize(
-            (GRAPH_WIDTH, GRAPH_HEIGHT),
-            Image.Resampling.LANCZOS,
-        )
-        img.paste(graph_img, (graph_x, graph_y))
+    # 最安ストア名
+    store_text = _truncate_text(data.best_store, font_label, info_width - 30)
+    draw.text((info_x + 15, info_y + 120), store_text, font=font_label, fill=(100, 100, 100))
 
     # Price Watch ロゴ（右下）
-    font_logo = _get_pillow_font(18)
+    font_logo = _get_pillow_font(16)
     logo_text = "Price Watch"
-    draw.text((OGP_WIDTH - 150, OGP_HEIGHT - 40), logo_text, font=font_logo, fill=(150, 150, 150))
+    draw.text((OGP_WIDTH - 130, OGP_HEIGHT - 35), logo_text, font=font_logo, fill=(150, 150, 150))
 
     return img
 

@@ -35,11 +35,10 @@ class TestOgpConstants:
         assert OGP_HEIGHT == 630
 
     def test_graph_dimensions(self):
-        """グラフ領域のサイズ"""
-        assert GRAPH_WIDTH == 850
-        assert GRAPH_HEIGHT == 450
-        # グラフ幅は OGP 幅より小さいこと
-        assert GRAPH_WIDTH < OGP_WIDTH
+        """グラフ領域のサイズ（OGP全面に表示）"""
+        # グラフは OGP 全面に表示
+        assert GRAPH_WIDTH == OGP_WIDTH
+        assert GRAPH_HEIGHT == OGP_HEIGHT
 
     def test_cache_ttl(self):
         """キャッシュ有効期間が1時間であること"""
