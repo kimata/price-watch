@@ -1081,7 +1081,10 @@ def has_event_in_hours(item_id: int, event_type: str, hours: int) -> bool:
 
 
 def get_recent_events(limit: int = 10) -> list[dict[str, Any]]:
-    """最新のイベントを取得（アイテム情報付き）."""
+    """最新のイベントを取得（アイテム情報付き）.
+
+    サムネイル画像は、該当アイテムになければ同じ商品名の他のストアから取得する。
+    """
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:
         conn.row_factory = _dict_factory  # type: ignore[assignment]
         cur = conn.cursor()
@@ -1099,7 +1102,10 @@ def get_recent_events(limit: int = 10) -> list[dict[str, Any]]:
                 i.name as item_name,
                 i.store,
                 i.url,
-                i.thumb_url
+                COALESCE(
+                    i.thumb_url,
+                    (SELECT thumb_url FROM items WHERE name = i.name AND thumb_url IS NOT NULL LIMIT 1)
+                ) as thumb_url
             FROM events e
             JOIN items i ON e.item_id = i.id
             ORDER BY e.created_at DESC
@@ -1119,6 +1125,8 @@ def mark_event_notified(event_id: int) -> None:
 
 def get_item_events(item_key: str, limit: int = 50) -> list[dict[str, Any]]:
     """指定アイテムのイベント履歴を取得（アイテム情報付き）.
+
+    サムネイル画像は、該当アイテムになければ同じ商品名の他のストアから取得する。
 
     Args:
         item_key: アイテムキー
@@ -1144,7 +1152,10 @@ def get_item_events(item_key: str, limit: int = 50) -> list[dict[str, Any]]:
                 i.name as item_name,
                 i.store,
                 i.url,
-                i.thumb_url
+                COALESCE(
+                    i.thumb_url,
+                    (SELECT thumb_url FROM items WHERE name = i.name AND thumb_url IS NOT NULL LIMIT 1)
+                ) as thumb_url
             FROM events e
             JOIN items i ON e.item_id = i.id
             WHERE i.item_key = ?

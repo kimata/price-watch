@@ -1,4 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
+import { BellIcon } from "@heroicons/react/24/outline";
+import {
+    CubeIcon,
+    ExclamationTriangleIcon,
+    FireIcon,
+    ArrowTrendingDownIcon,
+} from "@heroicons/react/24/solid";
 import { fetchEvents } from "../services/apiService";
 import type { Event, EventType } from "../types";
 
@@ -9,44 +16,44 @@ interface EventBannerProps {
 const EVENT_CONFIG: Record<
     EventType,
     {
-        emoji: string;
-        icon: string;
+        Icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
         bgColor: string;
         borderColor: string;
         textColor: string;
+        iconColor: string;
         label: string;
     }
 > = {
     back_in_stock: {
-        emoji: "📦",
-        icon: "cube",
+        Icon: CubeIcon,
         bgColor: "bg-emerald-50",
-        borderColor: "border-emerald-300",
+        borderColor: "border-emerald-200",
         textColor: "text-emerald-700",
+        iconColor: "text-emerald-500",
         label: "在庫復活",
     },
     crawl_failure: {
-        emoji: "⚠️",
-        icon: "exclamation-triangle",
+        Icon: ExclamationTriangleIcon,
         bgColor: "bg-amber-50",
-        borderColor: "border-amber-300",
+        borderColor: "border-amber-200",
         textColor: "text-amber-700",
+        iconColor: "text-amber-500",
         label: "取得失敗",
     },
     lowest_price: {
-        emoji: "🔥",
-        icon: "fire",
+        Icon: FireIcon,
         bgColor: "bg-rose-50",
-        borderColor: "border-rose-300",
+        borderColor: "border-rose-200",
         textColor: "text-rose-700",
+        iconColor: "text-rose-500",
         label: "最安値更新",
     },
     price_drop: {
-        emoji: "📉",
-        icon: "trending-down",
+        Icon: ArrowTrendingDownIcon,
         bgColor: "bg-sky-50",
-        borderColor: "border-sky-300",
+        borderColor: "border-sky-200",
         textColor: "text-sky-700",
+        iconColor: "text-sky-500",
         label: "値下げ",
     },
 };
@@ -105,9 +112,9 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
         return (
             <div className="mb-6 p-4 bg-gray-50 rounded-lg animate-pulse">
                 <div className="h-6 bg-gray-200 rounded w-32 mb-3"></div>
-                <div className="flex space-x-4 overflow-hidden">
+                <div className="space-y-2">
                     {[1, 2, 3].map((i) => (
-                        <div key={i} className="flex-shrink-0 w-72 h-24 bg-gray-200 rounded-lg"></div>
+                        <div key={i} className="h-12 bg-gray-200 rounded"></div>
                     ))}
                 </div>
             </div>
@@ -118,11 +125,11 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
         return (
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <span className="text-xl">🔔</span>
+                    <BellIcon className="w-5 h-5 text-gray-500" />
                     最新イベント
                 </h2>
                 <div className="p-6 bg-red-50 border border-red-200 rounded-xl text-center">
-                    <span className="text-2xl mb-2 block">❌</span>
+                    <ExclamationTriangleIcon className="w-8 h-8 text-red-400 mx-auto mb-2" />
                     <p className="text-red-600 text-sm">{error}</p>
                 </div>
             </div>
@@ -133,13 +140,15 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
         return (
             <div className="mb-6">
                 <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <span className="text-xl">🔔</span>
+                    <BellIcon className="w-5 h-5 text-gray-500" />
                     最新イベント
                 </h2>
                 <div className="p-6 bg-gray-50 border border-gray-200 rounded-xl text-center">
-                    <span className="text-2xl mb-2 block">📭</span>
+                    <BellIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                     <p className="text-gray-500 text-sm">まだイベントはありません</p>
-                    <p className="text-gray-400 text-xs mt-1">価格変動や在庫復活があると、ここに表示されます</p>
+                    <p className="text-gray-400 text-xs mt-1">
+                        価格変動や在庫復活があると、ここに表示されます
+                    </p>
                 </div>
             </div>
         );
@@ -148,96 +157,121 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
     return (
         <div className="mb-6">
             <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <span className="text-xl">🔔</span>
+                <BellIcon className="w-5 h-5 text-gray-500" />
                 最新イベント
                 <span className="text-sm font-normal text-gray-400">({events.length}件)</span>
             </h2>
-            <div className="flex space-x-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-                {events.map((event) => {
-                    const config = EVENT_CONFIG[event.event_type] || EVENT_CONFIG.price_drop;
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full">
+                    <tbody className="divide-y divide-gray-100">
+                        {events.map((event) => {
+                            const config = EVENT_CONFIG[event.event_type] || EVENT_CONFIG.price_drop;
+                            const IconComponent = config.Icon;
 
-                    return (
-                        <a
-                            key={event.id}
-                            href={event.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={`flex-shrink-0 w-[480px] p-3 rounded-xl border-2 ${config.bgColor} ${config.borderColor} hover:shadow-lg hover:scale-[1.01] transition-all duration-200 cursor-pointer`}
-                        >
-                            <div className="flex items-center gap-3">
-                                {/* サムネイル */}
-                                <div className="relative flex-shrink-0">
-                                    {event.thumb_url ? (
-                                        <img
-                                            src={event.thumb_url}
-                                            alt={event.item_name}
-                                            className="w-12 h-12 object-cover rounded-lg"
-                                        />
-                                    ) : (
-                                        <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
-                                            <svg
-                                                className="w-6 h-6 text-gray-400"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    strokeWidth={2}
-                                                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                                />
-                                            </svg>
-                                        </div>
-                                    )}
-                                    {/* 絵文字バッジ */}
-                                    <span className="absolute -top-1 -right-1 text-base drop-shadow-sm">
-                                        {config.emoji}
-                                    </span>
-                                </div>
-
-                                {/* イベントラベル */}
-                                <span
-                                    className={`flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${config.bgColor} ${config.textColor} border ${config.borderColor}`}
+                            return (
+                                <tr
+                                    key={event.id}
+                                    className={`${config.bgColor} hover:brightness-95 transition-all duration-150`}
                                 >
-                                    {config.label}
-                                </span>
+                                    {/* サムネイル */}
+                                    <td className="w-16 p-2">
+                                        <a
+                                            href={event.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block"
+                                        >
+                                            {event.thumb_url ? (
+                                                <img
+                                                    src={event.thumb_url}
+                                                    alt={event.item_name}
+                                                    className="w-12 h-12 object-cover rounded-lg"
+                                                />
+                                            ) : (
+                                                <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                                                    <svg
+                                                        className="w-6 h-6 text-gray-400"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                    >
+                                                        <path
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                            strokeWidth={2}
+                                                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                                                        />
+                                                    </svg>
+                                                </div>
+                                            )}
+                                        </a>
+                                    </td>
 
-                                {/* 商品名 */}
-                                <p className="flex-1 text-sm text-gray-800 font-medium truncate min-w-0">
-                                    {event.item_name}
-                                </p>
-
-                                {/* 価格情報 */}
-                                {event.price !== null && (
-                                    <div className="flex-shrink-0 flex items-center gap-1">
-                                        {event.old_price !== null && (
-                                            <>
-                                                <span className="text-xs text-gray-400 line-through">
-                                                    {formatPrice(event.old_price)}
-                                                </span>
-                                                <span className="text-gray-400 text-xs">→</span>
-                                            </>
-                                        )}
-                                        <span className={`text-sm font-bold ${config.textColor}`}>
-                                            {formatPrice(event.price)}
+                                    {/* イベントタイプ */}
+                                    <td className="w-28 px-2 py-2">
+                                        <span
+                                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${config.textColor} bg-white/60 border ${config.borderColor}`}
+                                        >
+                                            <IconComponent className={`w-3.5 h-3.5 ${config.iconColor}`} />
+                                            {config.label}
                                         </span>
-                                        {event.old_price !== null && event.old_price > event.price && (
-                                            <span className="text-xs text-rose-500 font-medium">
-                                                -{((event.old_price - event.price) / event.old_price * 100).toFixed(0)}%
-                                            </span>
-                                        )}
-                                    </div>
-                                )}
+                                    </td>
 
-                                {/* 時間 */}
-                                <span className="flex-shrink-0 text-xs text-gray-400">
-                                    {formatTimeAgo(event.created_at)}
-                                </span>
-                            </div>
-                        </a>
-                    );
-                })}
+                                    {/* 商品名 */}
+                                    <td className="px-2 py-2">
+                                        <a
+                                            href={event.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block hover:underline"
+                                        >
+                                            <p className="text-sm text-gray-800 font-medium line-clamp-2">
+                                                {event.item_name}
+                                            </p>
+                                            <p className="text-xs text-gray-500 mt-0.5">{event.store}</p>
+                                        </a>
+                                    </td>
+
+                                    {/* 価格情報 */}
+                                    <td className="w-40 px-2 py-2 text-right">
+                                        {event.price !== null && (
+                                            <div className="flex flex-col items-end">
+                                                <span className={`text-sm font-bold ${config.textColor}`}>
+                                                    {formatPrice(event.price)}
+                                                </span>
+                                                {event.old_price !== null && (
+                                                    <div className="flex items-center gap-1 text-xs text-gray-400">
+                                                        <span className="line-through">
+                                                            {formatPrice(event.old_price)}
+                                                        </span>
+                                                        {event.old_price > event.price && (
+                                                            <span className="text-rose-500 font-medium">
+                                                                -
+                                                                {(
+                                                                    ((event.old_price - event.price) /
+                                                                        event.old_price) *
+                                                                    100
+                                                                ).toFixed(0)}
+                                                                %
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </td>
+
+                                    {/* 時間 */}
+                                    <td className="w-20 px-2 py-2 text-right">
+                                        <span className="text-xs text-gray-400">
+                                            {formatTimeAgo(event.created_at)}
+                                        </span>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
             </div>
         </div>
     );
