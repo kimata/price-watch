@@ -513,7 +513,6 @@ def _build_ogp_data(
     item_name: str,
     stores: list[price_watch.webapi.schemas.StoreEntry],
     target_config: price_watch.target.TargetConfig | None,
-    thumb_dir: pathlib.Path,
 ) -> price_watch.webapi.ogp.OgpData:
     """OGP 用データを構築."""
     # 最安ストアを特定
@@ -523,14 +522,11 @@ def _build_ogp_data(
     all_lowest = [s.lowest_price for s in stores if s.lowest_price is not None]
     lowest_price = min(all_lowest) if all_lowest else None
 
-    # サムネイルパスを取得
+    # サムネイルパスを取得（item_name から生成されたハッシュファイル名を使用）
     thumb_path: pathlib.Path | None = None
-    for s in stores:
-        if s.item_key:
-            potential_path = thumb_dir / f"{s.item_key}.png"
-            if potential_path.exists():
-                thumb_path = potential_path
-                break
+    potential_path = price_watch.thumbnail.get_thumb_path(item_name)
+    if potential_path.exists():
+        thumb_path = potential_path
 
     # ストアごとの履歴を構築
     store_histories: list[price_watch.webapi.ogp.StoreHistory] = []
@@ -736,7 +732,6 @@ def ogp_image(item_key: str) -> flask.Response:
             return flask.Response("Configuration not found", status=500)
 
         cache_dir = app_config.data.cache
-        thumb_dir = app_config.data.thumb
 
         # アイテムデータを取得
         item_name, stores = _get_item_data_for_ogp(item_key)
@@ -748,7 +743,7 @@ def ogp_image(item_key: str) -> flask.Response:
         target_config = _get_target_config()
 
         # OGP データを構築
-        ogp_data = _build_ogp_data(item_name, stores, target_config, thumb_dir)
+        ogp_data = _build_ogp_data(item_name, stores, target_config)
 
         # 画像を生成/キャッシュから取得
         image_path = price_watch.webapi.ogp.get_or_generate_ogp_image(
