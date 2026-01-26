@@ -193,8 +193,13 @@ def _check_impl(
             stock_found = True
             result.stock = price_watch.models.StockStatus.IN_STOCK
 
-        # 価格を取得
-        price_text = driver.find_element(By.XPATH, item.price_xpath).text
+        # 価格を取得（複数要素がマッチする場合、表示されているものを優先）
+        price_elements = driver.find_elements(By.XPATH, item.price_xpath)
+        price_element = next(
+            (e for e in price_elements if e.is_displayed()),
+            price_elements[0] if price_elements else None,
+        )
+        price_text = price_element.text if price_element else ""
         try:
             m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
             if m is None:
