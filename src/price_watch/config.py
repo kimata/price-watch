@@ -15,6 +15,7 @@ from typing import Any
 import my_lib.config
 import my_lib.notify.slack
 import my_lib.store.amazon.config
+import my_lib.store.yahoo.config
 import my_lib.webapp.config
 
 CONFIG_FILE_PATH = pathlib.Path("config.yaml")
@@ -92,6 +93,7 @@ class StoreConfig:
     """ストア設定"""
 
     amazon_api: my_lib.store.amazon.config.AmazonApiConfig | None = None
+    yahoo_api: my_lib.store.yahoo.config.YahooApiConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> StoreConfig:
@@ -99,7 +101,10 @@ class StoreConfig:
         amazon_api = None
         if "amazon" in data:
             amazon_api = my_lib.store.amazon.config.AmazonApiConfig.parse(data["amazon"])
-        return cls(amazon_api=amazon_api)
+        yahoo_api = None
+        if "yahoo" in data:
+            yahoo_api = my_lib.store.yahoo.config.YahooApiConfig.parse(data["yahoo"])
+        return cls(amazon_api=amazon_api, yahoo_api=yahoo_api)
 
 
 @dataclass(frozen=True)

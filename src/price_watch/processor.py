@@ -21,6 +21,7 @@ import price_watch.notify
 import price_watch.store.amazon.paapi
 import price_watch.store.mercari
 import price_watch.store.scrape
+import price_watch.store.yahoo
 import price_watch.target
 
 if TYPE_CHECKING:
@@ -60,6 +61,9 @@ class ItemProcessor:
 
         # 3. メルカリ検索対象
         self.process_mercari_items(item_list)
+
+        # 4. Yahoo検索対象
+        self.process_yahoo_items(item_list)
 
     def process_scrape_items(self, item_list: list[ResolvedItem]) -> None:
         """スクレイピング対象アイテムを処理.
@@ -304,6 +308,87 @@ class ItemProcessor:
 
         return crawl_success
 
+    def process_yahoo_items(self, item_list: list[ResolvedItem]) -> None:
+        """Yahoo検索対象アイテムを処理.
+
+        Args:
+            item_list: 全アイテムリスト
+        """
+        yahoo_items = [
+            item for item in item_list if item.check_method == price_watch.target.CheckMethod.YAHOO_SEARCH
+        ]
+
+        if not yahoo_items:
+            return
+
+        store_name = "shopping.yahoo.co.jp"
+
+        # デバッグモードでは1アイテムのみ
+        if self.app.debug_mode:
+            yahoo_items = yahoo_items[:1]
+            logging.info("[デバッグモード] Yahoo検索: 1件のアイテムをチェック")
+        else:
+            logging.info("[Yahoo検索] %d件のアイテムをチェック中...", len(yahoo_items))
+
+        with price_watch.managers.metrics_manager.StoreContext(
+            self.app.metrics_manager, store_name
+        ) as store_ctx:
+            for item in yahoo_items:
+                if self.app.should_terminate:
+                    return
+
+                success = self._process_yahoo_item(item, store_name)
+                if success:
+                    store_ctx.record_success()
+                else:
+                    store_ctx.record_failure()
+
+                if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                    return
+
+    def _process_yahoo_item(self, item: ResolvedItem, store_name: str) -> bool:
+        """Yahooアイテムを処理.
+
+        Args:
+            item: 監視対象アイテム
+            store_name: ストア名
+
+        Returns:
+            成功時 True
+        """
+        crawl_success = False
+
+        try:
+            checked = price_watch.store.yahoo.check(self.config, item)
+            crawl_success = checked.is_success()
+            item_key = price_watch.store.yahoo.generate_item_key(checked)
+
+            self._process_data(checked, item_key=item_key)
+
+            if crawl_success:
+                self.app.update_liveness()
+                self.error_count[item_key] = 0
+                if self.app.debug_mode:
+                    self.debug_check_results[store_name] = True
+                    logging.info("[デバッグモード] %s: 成功", store_name)
+            else:
+                self._handle_crawl_failure(checked, store_name, item_key=item_key)
+
+        except Exception:
+            # 例外時は CheckedItem を生成
+            checked = price_watch.models.CheckedItem.from_resolved_item(item)
+            checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+            item_key = price_watch.store.yahoo.generate_item_key(checked)
+
+            self.error_count[item_key] = self.error_count.get(item_key, 0) + 1
+            logging.exception("Failed to check yahoo item: %s", item.name)
+            self._process_data(checked, item_key=item_key)
+            if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
+                self.error_count[item_key] = 0
+            self._mark_debug_failure(store_name, "例外発生")
+
+        return crawl_success
+
     def _process_data(
         self,
         item: price_watch.models.CheckedItem,
@@ -314,7 +399,7 @@ class ItemProcessor:
 
         Args:
             item: チェック済みアイテム
-            item_key: アイテムキー（メルカリ用）
+            item_key: アイテムキー（メルカリ・Yahoo用）
 
         Returns:
             成功時 True

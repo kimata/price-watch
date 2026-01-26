@@ -22,6 +22,11 @@ store:
         host: webservices.amazon.co.jp
         region: us-west-2
 
+    # Yahoo!ショッピング API で価格を取得するための設定
+    yahoo:
+        client_id: XXXXXXXXXXXXXXXXXXXX
+        secret: XXXXXXXXXXXXXXXXXXXX
+
 data:
     selenium: ./data # Selenium プロファイルを保存するディレクトリ
     dump: ./data/debug # デバッグダンプを保存するディレクトリ

@@ -29,6 +29,7 @@ class CheckMethod(str, Enum):
     SCRAPE = "scrape"
     AMAZON_PAAPI = "my_lib.store.amazon.api"
     MERCARI_SEARCH = "my_lib.store.mercari.search"
+    YAHOO_SEARCH = "my_lib.store.yahoo.api"
 
 
 class ActionType(str, Enum):
@@ -197,11 +198,12 @@ class ItemDefinition:
     unavailable_xpath: str | None = None
     price_unit: str | None = None
     preload: PreloadConfig | None = None
-    # メルカリ検索用
+    # メルカリ検索・Yahoo検索用
     search_keyword: str | None = None  # 検索キーワード（省略時は name で検索）
-    exclude_keyword: str | None = None  # 除外キーワード
+    exclude_keyword: str | None = None  # 除外キーワード（メルカリのみ）
     price_range: list[int] | None = None  # [min] or [min, max]
-    cond: str | None = None  # "NEW|LIKE_NEW" 形式
+    cond: str | None = None  # メルカリ: "NEW|LIKE_NEW" 形式、Yahoo: "new" or "used"
+    jan_code: str | None = None  # JANコード（Yahoo検索用）
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> ItemDefinition:
@@ -233,6 +235,7 @@ class ItemDefinition:
             exclude_keyword=data.get("exclude_keyword"),
             price_range=price_range,
             cond=data.get("cond"),
+            jan_code=data.get("jan_code"),
         )
 
 
@@ -242,7 +245,7 @@ class ResolvedItem:
 
     name: str
     store: str
-    url: str  # メルカリの場合は空文字列（動的に更新される）
+    url: str  # メルカリ・Yahoo検索の場合は空文字列（動的に更新される）
     asin: str | None = None
     check_method: CheckMethod = CheckMethod.SCRAPE
     price_xpath: str | None = None
@@ -253,11 +256,12 @@ class ResolvedItem:
     color: str | None = None  # ストアの色（hex形式）
     actions: list[ActionStep] = field(default_factory=list)
     preload: PreloadConfig | None = None
-    # メルカリ検索用
+    # メルカリ検索・Yahoo検索用
     search_keyword: str | None = None
-    exclude_keyword: str | None = None
+    exclude_keyword: str | None = None  # メルカリのみ
     price_range: list[int] | None = None
     cond: str | None = None
+    jan_code: str | None = None  # Yahoo検索用
 
     @classmethod
     def from_item_and_store(cls, item: ItemDefinition, store: StoreDefinition | None) -> ResolvedItem:
@@ -287,8 +291,8 @@ class ResolvedItem:
         if url is None and item.asin is not None:
             url = f"https://www.amazon.co.jp/dp/{item.asin}"
 
-        # メルカリ検索の場合は URL がなくても OK（検索結果から動的に取得）
-        if url is None and store_check_method == CheckMethod.MERCARI_SEARCH:
+        # メルカリ検索・Yahoo検索の場合は URL がなくても OK（検索結果から動的に取得）
+        if url is None and store_check_method in (CheckMethod.MERCARI_SEARCH, CheckMethod.YAHOO_SEARCH):
             url = ""  # 空文字列（後から検索結果で更新）
         elif url is None:
             raise ValueError(f"Item '{item.name}' has no url or asin")
@@ -312,6 +316,7 @@ class ResolvedItem:
             exclude_keyword=item.exclude_keyword,
             price_range=item.price_range,
             cond=item.cond,
+            jan_code=item.jan_code,
         )
 
 
