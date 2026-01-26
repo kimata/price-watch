@@ -47,6 +47,8 @@ class PriceWatchApp:
     metrics_manager: MetricsManager
     port: int = 5000
     debug_mode: bool = False
+    item_filter: str | None = None
+    store_filter: str | None = None
 
     # 内部状態
     _server_handle: ServerHandle | None = field(default=None, init=False, repr=False)
@@ -62,6 +64,8 @@ class PriceWatchApp:
         port: int = 5000,
         *,
         debug_mode: bool = False,
+        item_filter: str | None = None,
+        store_filter: str | None = None,
     ) -> PriceWatchApp:
         """設定ファイルから PriceWatchApp を生成.
 
@@ -70,6 +74,8 @@ class PriceWatchApp:
             target_file: ターゲット設定ファイルパス
             port: WebUI ポート番号
             debug_mode: デバッグモード
+            item_filter: 商品名フィルター（部分一致）
+            store_filter: ストア名フィルター（部分一致）
 
         Returns:
             PriceWatchApp インスタンス
@@ -99,6 +105,8 @@ class PriceWatchApp:
             metrics_manager=metrics_manager,
             port=port,
             debug_mode=debug_mode,
+            item_filter=item_filter,
+            store_filter=store_filter,
         )
 
     @property
@@ -193,11 +201,42 @@ class PriceWatchApp:
         """解決済みアイテムリストを取得.
 
         ターゲット設定を再読み込みしてから解決します。
+        item_filter や store_filter が設定されている場合はフィルタリングします。
 
         Returns:
             解決済みアイテムのリスト
         """
-        return self.config_manager.get_resolved_items()
+        items = self.config_manager.get_resolved_items()
+
+        # フィルタリング
+        if self.item_filter or self.store_filter:
+            filtered = []
+            for item in items:
+                # ストア名フィルター（部分一致）
+                if self.store_filter and self.store_filter not in item.store:
+                    continue
+                # 商品名フィルター（部分一致）
+                if self.item_filter and self.item_filter not in item.name:
+                    continue
+                filtered.append(item)
+
+            if not filtered:
+                logging.warning(
+                    "フィルター条件に一致するアイテムが見つかりません: item=%s, store=%s",
+                    self.item_filter,
+                    self.store_filter,
+                )
+            else:
+                logging.info(
+                    "フィルター適用: %d件 -> %d件 (item=%s, store=%s)",
+                    len(items),
+                    len(filtered),
+                    self.item_filter,
+                    self.store_filter,
+                )
+            items = filtered
+
+        return items
 
     def shutdown(self) -> None:
         """アプリケーションを終了.

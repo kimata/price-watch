@@ -326,6 +326,8 @@ class TestMain:
             "-t": "target.yaml",
             "-p": "5001",
             "-D": True,
+            "--item": None,
+            "--store": None,
         }
 
         with (
@@ -341,3 +343,30 @@ class TestMain:
         assert call_args[0][1] == pathlib.Path("target.yaml")
         assert call_args[0][2] == 5001
         assert call_args[1]["debug_mode"] is True
+        assert call_args[1]["item_filter"] is None
+        assert call_args[1]["store_filter"] is None
+
+    def test_parses_args_with_filters(self) -> None:
+        """フィルターオプションをパースして実行"""
+        mock_args = {
+            "-c": "config.yaml",
+            "-t": "target.yaml",
+            "-p": "5000",
+            "-D": False,
+            "--item": "商品名",
+            "--store": "ストア名",
+        }
+
+        with (
+            patch("docopt.docopt", return_value=mock_args),
+            patch("my_lib.logger.init"),
+            patch("price_watch.cli.app.run") as mock_run,
+        ):
+            price_watch.cli.app.main()
+
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        # --item や --store を指定した場合は自動的にデバッグモードになる
+        assert call_args[1]["debug_mode"] is True
+        assert call_args[1]["item_filter"] == "商品名"
+        assert call_args[1]["store_filter"] == "ストア名"

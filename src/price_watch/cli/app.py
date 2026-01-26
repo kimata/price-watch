@@ -3,13 +3,15 @@
 商品価格を監視し、価格変動を通知します。
 
 Usage:
-  price-watch [-c CONFIG] [-t TARGET] [-p PORT] [-D]
+  price-watch [-c CONFIG] [-t TARGET] [-p PORT] [-D] [--item ITEM] [--store STORE]
 
 Options:
   -c CONFIG         : CONFIG を設定ファイルとして読み込んで実行します。[default: config.yaml]
   -t TARGET         : TARGET を価格監視対象の設定ファイルとして読み込んで実行します。[default: target.yaml]
   -p PORT           : WebUI サーバーを動かすポート番号。[default: 5000]
   -D                : デバッグモードで動作します。
+  --item ITEM       : 特定の商品名を指定してチェックします（部分一致）。-D と併用。
+  --store STORE     : 特定のストア名を指定してチェックします（部分一致）。-D と併用。
 """
 
 from __future__ import annotations
@@ -188,6 +190,8 @@ def run(
     port: int,
     *,
     debug_mode: bool = False,
+    item_filter: str | None = None,
+    store_filter: str | None = None,
 ) -> None:
     """価格監視を実行.
 
@@ -196,6 +200,8 @@ def run(
         target_file: ターゲット設定ファイルパス
         port: WebUI ポート番号
         debug_mode: デバッグモード
+        item_filter: 商品名フィルター（部分一致）
+        store_filter: ストア名フィルター（部分一致）
     """
     # アプリケーションコンテキストを作成
     app = price_watch.app_context.PriceWatchApp.create(
@@ -203,6 +209,8 @@ def run(
         target_file=target_file,
         port=port,
         debug_mode=debug_mode,
+        item_filter=item_filter,
+        store_filter=store_filter,
     )
 
     # シグナルハンドラを設定
@@ -237,6 +245,12 @@ def main() -> None:
     target_file = pathlib.Path(args["-t"])
     port = int(args["-p"])
     debug_mode = args["-D"]
+    item_filter: str | None = args["--item"]
+    store_filter: str | None = args["--store"]
+
+    # --item や --store を指定した場合は自動的にデバッグモードにする
+    if item_filter or store_filter:
+        debug_mode = True
 
     log_level = logging.DEBUG if debug_mode else logging.INFO
     my_lib.logger.init("bot.price_watch", level=log_level)
@@ -244,8 +258,19 @@ def main() -> None:
     logging.info("Start.")
     logging.info("Using config: %s", config_file)
     logging.info("Using target: %s", target_file)
+    if item_filter:
+        logging.info("Item filter: %s", item_filter)
+    if store_filter:
+        logging.info("Store filter: %s", store_filter)
 
-    run(config_file, target_file, port, debug_mode=debug_mode)
+    run(
+        config_file,
+        target_file,
+        port,
+        debug_mode=debug_mode,
+        item_filter=item_filter,
+        store_filter=store_filter,
+    )
 
 
 if __name__ == "__main__":
