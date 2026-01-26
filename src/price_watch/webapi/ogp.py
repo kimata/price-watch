@@ -225,8 +225,9 @@ def _generate_price_graph(
 
     fig, ax = plt.subplots(figsize=(GRAPH_WIDTH / 100, GRAPH_HEIGHT / 100), dpi=100)
 
-    # 背景色を設定（プロットエリアは透明）
-    fig.patch.set_facecolor("white")
+    # 背景を完全透明に設定（後でサムネイルの上に重ねるため）
+    fig.patch.set_facecolor("none")
+    fig.patch.set_alpha(0)
     ax.set_facecolor("none")
 
     all_prices: list[int] = []
@@ -374,7 +375,7 @@ def _generate_price_graph(
     plt.tight_layout()
 
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.1, facecolor="white")
+    fig.savefig(buf, format="png", bbox_inches="tight", pad_inches=0.1, transparent=True)
     buf.seek(0)
     plt.close(fig)
 
@@ -410,34 +411,25 @@ def _draw_rounded_rect_overlay(
 def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Image.Image:
     """OGP 画像を生成.
 
-    グラフを全面に配置し、サムネイルを左下背景に、価格情報を右上にオーバーレイ。
-    小さく表示された場合も商品と価格が分かるようにする。
+    白背景 → サムネイル → グラフ → テキストの順で合成。
+    サムネイルはグラフの後ろに配置される。
 
     Args:
         data: OGP 画像生成用データ
         font_paths: フォントパス設定
     """
-    # --- グラフを全面に配置 ---
-    if data.store_histories:
-        img = _generate_price_graph(data.store_histories, font_paths=font_paths)
-        # グラフのサイズを OGP サイズに調整
-        if img.size != (OGP_WIDTH, OGP_HEIGHT):
-            img = img.resize((OGP_WIDTH, OGP_HEIGHT), Image.Resampling.LANCZOS)
-        # RGB に変換（RGBA の場合があるため）
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-    else:
-        img = Image.new("RGB", (OGP_WIDTH, OGP_HEIGHT), color=(255, 255, 255))
+    # --- 1. 白背景を作成 ---
+    img = Image.new("RGBA", (OGP_WIDTH, OGP_HEIGHT), color=(255, 255, 255, 255))
 
-    # --- サムネイルを左下背景に配置（アスペクト比を維持） ---
+    # --- 2. サムネイルを左下に配置（アスペクト比を維持） ---
     if data.thumb_path and data.thumb_path.exists():
         try:
             thumb = Image.open(data.thumb_path)
             thumb_w, thumb_h = thumb.size
 
-            # 最大サイズ（プロットエリアの30% x 70%程度）
-            max_thumb_width = int(OGP_WIDTH * 0.30)
-            max_thumb_height = int(OGP_HEIGHT * 0.65)
+            # 最大サイズ（プロットエリアの36% x 78%程度）※1.2倍に拡大
+            max_thumb_width = int(OGP_WIDTH * 0.36)
+            max_thumb_height = int(OGP_HEIGHT * 0.78)
 
             # アスペクト比を維持してリサイズ
             thumb_aspect = thumb_w / thumb_h if thumb_h > 0 else 1.0
@@ -454,13 +446,12 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
 
             thumb_resized: Image.Image = thumb.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-            # 半透明化（alpha=0.4相当）
+            # 半透明化（alpha=0.35相当、グラフの下なので少し薄め）
             thumb_rgba: Image.Image = (
                 thumb_resized.convert("RGBA") if thumb_resized.mode != "RGBA" else thumb_resized
             )
-            # 透明度を調整
             alpha_data = thumb_rgba.split()[3]
-            alpha_data = alpha_data.point(lambda x: int(x * 0.4))
+            alpha_data = alpha_data.point(lambda x: int(x * 0.35))
             thumb_rgba.putalpha(alpha_data)
 
             # 左下に配置（軸ラベル分のマージンを考慮）
@@ -468,11 +459,24 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
             paste_y = OGP_HEIGHT - new_height - 60  # X軸ラベル分
 
             # 合成
-            img = img.convert("RGBA")
             img.paste(thumb_rgba, (paste_x, paste_y), thumb_rgba)
-            img = img.convert("RGB")
         except Exception:
             logging.warning("Failed to load thumbnail: %s", data.thumb_path)
+
+    # --- 3. グラフを上に重ねる（透明背景） ---
+    if data.store_histories:
+        graph_img = _generate_price_graph(data.store_histories, font_paths=font_paths)
+        # グラフのサイズを OGP サイズに調整
+        if graph_img.size != (OGP_WIDTH, OGP_HEIGHT):
+            graph_img = graph_img.resize((OGP_WIDTH, OGP_HEIGHT), Image.Resampling.LANCZOS)
+        # RGBA に変換
+        if graph_img.mode != "RGBA":
+            graph_img = graph_img.convert("RGBA")
+        # グラフを合成（透明部分はサムネイルが見える）
+        img = Image.alpha_composite(img, graph_img)
+
+    # RGB に変換
+    img = img.convert("RGB")
 
     # フォントを取得（小さく表示された際も読めるように大きめ）
     # 商品名: 日本語 Bold、価格: 英語 Bold、ストア名: 日本語 Medium
