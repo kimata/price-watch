@@ -450,12 +450,12 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
 
             thumb_resized: Image.Image = thumb.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-            # 半透明化（alpha=0.5相当）
+            # 半透明化（alpha=0.65相当）
             thumb_rgba: Image.Image = (
                 thumb_resized.convert("RGBA") if thumb_resized.mode != "RGBA" else thumb_resized
             )
             alpha_data = thumb_rgba.split()[3]
-            alpha_data = alpha_data.point(lambda x: int(x * 0.5))
+            alpha_data = alpha_data.point(lambda x: int(x * 0.65))
             thumb_rgba.putalpha(alpha_data)
 
             # 左下に配置（軸ラベル分のマージンを考慮）
@@ -566,9 +566,10 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     logo_text = "Price Watch"
     draw = ImageDraw.Draw(img)
     logo_width, logo_height = _get_text_size(img, logo_text, font_logo)
-    logo_margin = 3
-    logo_x = OGP_WIDTH - logo_width - logo_margin
-    logo_y = OGP_HEIGHT - logo_height - logo_margin
+    logo_margin_x = 3
+    logo_margin_y = 10  # 下側がはみ出ないよう余裕を持たせる
+    logo_x = OGP_WIDTH - logo_width - logo_margin_x
+    logo_y = OGP_HEIGHT - logo_height - logo_margin_y
     draw.text((logo_x, logo_y), logo_text, font=font_logo, fill=(150, 150, 150))
 
     return img
