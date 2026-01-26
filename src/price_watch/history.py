@@ -927,6 +927,66 @@ def has_successful_crawl_in_hours(item_id: int, hours: int) -> bool:
         return row[0] > 0 if row else False
 
 
+def get_out_of_stock_duration_hours(item_id: int) -> float | None:
+    """在庫なし状態の継続時間（時間）を取得.
+
+    最新の記録から遡って、連続して在庫なし（stock=0）の継続時間を計算する。
+    クロール失敗（crawl_status=0）は無視してスキップする。
+    在庫あり（stock=1）の記録があれば、そこで継続は途切れる。
+
+    Args:
+        item_id: アイテム ID
+
+    Returns:
+        在庫なしの継続時間（時間）。在庫なし状態でない場合は None。
+    """
+    from datetime import datetime
+
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        # 成功したクロール（crawl_status=1）のみを取得、最新順
+        cur.execute(
+            """
+            SELECT stock, time
+            FROM price_history
+            WHERE item_id = ?
+              AND crawl_status = 1
+            ORDER BY time DESC
+            """,
+            (item_id,),
+        )
+        rows = cur.fetchall()
+
+        if not rows:
+            return None
+
+        # 最新の記録が在庫あり（stock=1）なら、在庫なし継続中ではない
+        # ただし、この関数は「前回まで在庫なしだった期間」を返すので
+        # 今回在庫ありになった場合に、前回までの在庫なし期間を返す
+        oldest_out_of_stock_time = None
+
+        for stock, time_str in rows:
+            if stock == 1:
+                # 在庫ありの記録に到達したら終了
+                break
+            elif stock == 0:
+                # 在庫なしの記録を更新
+                oldest_out_of_stock_time = time_str
+
+        if oldest_out_of_stock_time is None:
+            return None
+
+        # 継続時間を計算
+        now = my_lib.time.now()
+        oldest_time = datetime.fromisoformat(oldest_out_of_stock_time)
+        # タイムゾーンを揃える
+        if now.tzinfo and oldest_time.tzinfo is None:
+            oldest_time = oldest_time.replace(tzinfo=now.tzinfo)
+
+        duration_seconds = (now - oldest_time).total_seconds()
+        return duration_seconds / 3600  # 時間に変換
+
+
 def get_last_successful_crawl(item_id: int) -> dict[str, Any] | None:
     """最後に成功したクロールを取得."""
     with my_lib.sqlite_util.connect(_get_db_path()) as conn:

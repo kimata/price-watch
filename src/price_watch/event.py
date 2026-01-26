@@ -42,14 +42,19 @@ def check_back_in_stock(
     current_stock: int | None,
     last_stock: int | None,
     ignore_hours: int,
+    min_out_of_stock_hours: float = 3.0,
 ) -> EventResult | None:
     """在庫復活イベントを判定.
+
+    在庫なしが min_out_of_stock_hours 以上継続した後に在庫が復活した場合に
+    イベントを発生させる。クロール失敗は在庫なし継続時間に含めない。
 
     Args:
         item_id: アイテム ID
         current_stock: 現在の在庫状態（None: 不明, 0: なし, 1: あり）
         last_stock: 前回の在庫状態（None: 不明, 0: なし, 1: あり）
-        ignore_hours: 無視する時間数
+        ignore_hours: 無視する時間数（重複通知防止）
+        min_out_of_stock_hours: 在庫復活と判定するための最小在庫なし継続時間（時間）
 
     Returns:
         イベント結果。該当しない場合は None。
@@ -63,11 +68,22 @@ def check_back_in_stock(
     if last_stock is None or last_stock != 0 or current_stock != 1:
         return None
 
+    # 在庫なしの継続時間を確認
+    out_of_stock_hours = price_watch.history.get_out_of_stock_duration_hours(item_id)
+    if out_of_stock_hours is None or out_of_stock_hours < min_out_of_stock_hours:
+        logging.debug(
+            "Skipping back_in_stock event: out of stock duration %.1f hours < %.1f hours",
+            out_of_stock_hours or 0,
+            min_out_of_stock_hours,
+        )
+        return None
+
     # 無視区間内に同じイベントがあるかチェック
     if price_watch.history.has_event_in_hours(item_id, EventType.BACK_IN_STOCK.value, ignore_hours):
         logging.debug("Skipping back_in_stock event: recent event exists within %d hours", ignore_hours)
         return EventResult(event_type=EventType.BACK_IN_STOCK, should_notify=False)
 
+    logging.info("Back in stock detected: out of stock for %.1f hours", out_of_stock_hours)
     return EventResult(event_type=EventType.BACK_IN_STOCK, should_notify=True)
 
 
