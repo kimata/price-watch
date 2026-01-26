@@ -33,6 +33,7 @@ class HistoryMigrations:
         インデックス作成前に実行する必要があります。
         """
         self.migrate_to_nullable_price()
+        self.migrate_to_nullable_stock()
         self.migrate_add_crawl_status()
         self.migrate_url_hash_to_item_key()
 
@@ -194,6 +195,97 @@ class HistoryMigrations:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
 
         logging.info("Migration to nullable price completed successfully")
+
+    def migrate_to_nullable_stock(self) -> None:
+        """stock カラムを NULL 許可に変更するマイグレーション.
+
+        crawl_status=0 (失敗) の場合、stock は不明なため NULL を許可する。
+        SQLite は ALTER COLUMN をサポートしていないため、
+        テーブルを再作成してデータを移行する。
+        """
+        with my_lib.sqlite_util.connect(self.db.db_path) as conn:
+            cur = conn.cursor()
+
+            # テーブルが存在するか確認
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='price_history'")
+            if not cur.fetchone():
+                logging.info("No price_history table found")
+                return
+
+            # 現在のスキーマを確認（stock カラムが NOT NULL かどうか）
+            cur.execute("PRAGMA table_info(price_history)")
+            columns = cur.fetchall()
+            stock_col = next((col for col in columns if col[1] == "stock"), None)
+
+            if stock_col is None:
+                logging.info("stock column not found")
+                return
+
+            # notnull フラグ: 1 = NOT NULL, 0 = NULL 許可
+            if stock_col[3] == 0:
+                logging.info("stock column already allows NULL")
+                return
+
+            logging.info("Starting migration to allow NULL in stock column...")
+
+            # crawl_status カラムが存在するか確認
+            has_crawl_status = any(col[1] == "crawl_status" for col in columns)
+
+            if has_crawl_status:
+                # crawl_status カラムがある場合
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS price_history_new(
+                        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_id      INTEGER NOT NULL,
+                        price        INTEGER,
+                        stock        INTEGER,
+                        time         TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                        crawl_status INTEGER NOT NULL DEFAULT 1,
+                        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+
+                # データを移行
+                cur.execute(
+                    """
+                    INSERT INTO price_history_new (id, item_id, price, stock, time, crawl_status)
+                    SELECT id, item_id, price, stock, time, crawl_status FROM price_history
+                    """
+                )
+            else:
+                # crawl_status カラムがない場合
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS price_history_new(
+                        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                        item_id INTEGER NOT NULL,
+                        price   INTEGER,
+                        stock   INTEGER,
+                        time    TIMESTAMP DEFAULT(DATETIME('now','localtime')),
+                        FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
+                    )
+                    """
+                )
+
+                # データを移行
+                cur.execute(
+                    """
+                    INSERT INTO price_history_new (id, item_id, price, stock, time)
+                    SELECT id, item_id, price, stock, time FROM price_history
+                    """
+                )
+
+            # 旧テーブルを削除し、新テーブルをリネーム
+            cur.execute("DROP TABLE price_history")
+            cur.execute("ALTER TABLE price_history_new RENAME TO price_history")
+
+            # インデックスを再作成
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
+
+        logging.info("Migration to nullable stock completed successfully")
 
     def migrate_add_crawl_status(self) -> None:
         """crawl_status カラムを追加するマイグレーション."""
