@@ -149,13 +149,12 @@ src/
     ├── target.py               # ターゲット設定クラス（dataclass + Protocol）
     ├── item.py                 # アイテムリスト管理
     │
-    ├── amazon/                 # Amazon 関連モジュール
-    │   ├── paapi.py            # Amazon PA-API による価格取得
-    │   └── paapi_rate_limiter.py # PA-API レート制限
-    │
-    ├── store/                  # ストア別価格取得（スクレイピング）
+    ├── store/                  # ストア別価格取得
     │   ├── scrape.py           # スクレイピングによる価格チェック
-    │   └── mercari.py          # メルカリ検索
+    │   ├── mercari.py          # メルカリ検索
+    │   └── amazon/             # Amazon 関連モジュール
+    │       ├── paapi.py        # Amazon PA-API による価格取得
+    │       └── paapi_rate_limiter.py # PA-API レート制限
     │
     ├── captcha.py              # CAPTCHA 処理（reCAPTCHA 音声認識）
     ├── event.py                # イベント検出・記録（価格変動、在庫復活等）

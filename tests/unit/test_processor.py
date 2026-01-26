@@ -230,7 +230,7 @@ class TestProcessAmazonItems:
 
         with (
             patch(
-                "price_watch.amazon.paapi.check_item_list",
+                "price_watch.store.amazon.paapi.check_item_list",
                 return_value=[{"name": "Item1", "stock": 1, "url": "https://amazon.com/B001"}],
             ),
             patch("price_watch.history.insert", return_value=1),
@@ -264,7 +264,7 @@ class TestProcessAmazonItems:
             return []
 
         with (
-            patch("price_watch.amazon.paapi.check_item_list", side_effect=check_mock),
+            patch("price_watch.store.amazon.paapi.check_item_list", side_effect=check_mock),
             patch("price_watch.history.insert", return_value=1),
             patch("price_watch.history.last", return_value=None),
         ):
@@ -283,7 +283,7 @@ class TestProcessAmazonItems:
 
         items = [{"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"}]
 
-        with patch("price_watch.amazon.paapi.check_item_list", side_effect=Exception("Error")):
+        with patch("price_watch.store.amazon.paapi.check_item_list", side_effect=Exception("Error")):
             processor.process_amazon_items(items)
         # No exception raised
 

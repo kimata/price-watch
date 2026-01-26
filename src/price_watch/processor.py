@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING, Any
 
 import selenium.common.exceptions
 
-import price_watch.amazon.paapi
 import price_watch.const
 import price_watch.event
 import price_watch.history
 import price_watch.log_format
 import price_watch.managers.metrics_manager
 import price_watch.notify
+import price_watch.store.amazon.paapi
 import price_watch.store.mercari
 import price_watch.store.scrape
 import price_watch.target
@@ -177,7 +177,7 @@ class ItemProcessor:
         ) as store_ctx:
             success_count = 0
             try:
-                for item in price_watch.amazon.paapi.check_item_list(self.config, amazon_items):
+                for item in price_watch.store.amazon.paapi.check_item_list(self.config, amazon_items):
                     self._process_data(item, crawl_status=1)
                     success_count += 1
                     store_ctx.record_success()

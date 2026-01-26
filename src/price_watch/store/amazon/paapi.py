@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import my_lib.store.amazon.api
 import my_lib.store.amazon.config
 
-import price_watch.amazon.paapi_rate_limiter
+import price_watch.store.amazon.paapi_rate_limiter
 import price_watch.thumbnail
 
 if TYPE_CHECKING:
@@ -40,7 +40,7 @@ def check_item_list(config: AppConfig, item_list: list[dict[str, Any]]) -> list[
         amazon_items = [my_lib.store.amazon.config.AmazonItem.parse(item) for item in item_list]
 
         # レートリミッターで API 呼び出し間隔を制御（1 TPS）
-        with price_watch.amazon.paapi_rate_limiter.get_rate_limiter(tps=1.0):
+        with price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter(tps=1.0):
             # PA-API で価格チェック
             result_items = my_lib.store.amazon.api.check_item_list(api_config, amazon_items)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ruff: noqa: S101
 """
-amazon/paapi_rate_limiter.py のユニットテスト
+store/amazon/paapi_rate_limiter.py のユニットテスト
 
 PA-API レートリミッターを検証します。
 """
@@ -12,7 +12,7 @@ import threading
 import time
 from unittest.mock import patch
 
-import price_watch.amazon.paapi_rate_limiter
+import price_watch.store.amazon.paapi_rate_limiter
 
 
 class TestPaapiRateLimiter:
@@ -20,7 +20,7 @@ class TestPaapiRateLimiter:
 
     def test_first_acquire_no_wait(self):
         """最初の呼び出しは待機なし"""
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=1.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=1.0)
 
         start = time.time()
         limiter.acquire()
@@ -31,7 +31,7 @@ class TestPaapiRateLimiter:
 
     def test_acquire_respects_rate_limit(self):
         """レート制限を守る"""
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=10.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=10.0)
 
         # 連続して呼び出し
         limiter.acquire()
@@ -45,14 +45,14 @@ class TestPaapiRateLimiter:
 
     def test_context_manager(self):
         """コンテキストマネージャーとして動作"""
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=100.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=100.0)
 
         with limiter as ctx:
             assert ctx is limiter
 
     def test_context_manager_acquires(self):
         """コンテキストマネージャーは acquire を呼び出す"""
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=100.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=100.0)
 
         # 1回目
         with limiter:
@@ -68,7 +68,7 @@ class TestPaapiRateLimiter:
 
     def test_thread_safety(self):
         """スレッドセーフ"""
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=100.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=100.0)
 
         results: list[float] = []
         errors: list[Exception] = []
@@ -94,7 +94,7 @@ class TestPaapiRateLimiter:
 
     def test_high_tps(self):
         """高い TPS 設定"""
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=1000.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=1000.0)
 
         start = time.time()
         for _ in range(10):
@@ -111,48 +111,48 @@ class TestGetRateLimiter:
     def test_returns_singleton(self):
         """シングルトンを返す"""
         # グローバル状態をリセット
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
-        limiter1 = price_watch.amazon.paapi_rate_limiter.get_rate_limiter(tps=1.0)
-        limiter2 = price_watch.amazon.paapi_rate_limiter.get_rate_limiter(tps=2.0)
+        limiter1 = price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter(tps=1.0)
+        limiter2 = price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter(tps=2.0)
 
         # 同じインスタンス
         assert limiter1 is limiter2
 
         # クリーンアップ
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
     def test_creates_new_if_none(self):
         """None の場合は新規作成"""
         # グローバル状態をリセット
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
-        limiter = price_watch.amazon.paapi_rate_limiter.get_rate_limiter(tps=5.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter(tps=5.0)
 
         assert limiter is not None
         assert limiter.tps == 5.0
 
         # クリーンアップ
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
     def test_uses_default_tps(self):
         """デフォルトの TPS を使用"""
         # グローバル状態をリセット
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
-        limiter = price_watch.amazon.paapi_rate_limiter.get_rate_limiter()
+        limiter = price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter()
 
         assert limiter.tps == 1.0
 
         # クリーンアップ
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
     def test_debug_log_on_wait(self):
         """待機時にデバッグログを出力"""
         # グローバル状態をリセット
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
 
-        limiter = price_watch.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=10.0)
+        limiter = price_watch.store.amazon.paapi_rate_limiter.PaapiRateLimiter(tps=10.0)
 
         # 1回目
         limiter.acquire()
@@ -165,4 +165,4 @@ class TestGetRateLimiter:
             # 呼ばれなくてもエラーにはしない
 
         # クリーンアップ
-        price_watch.amazon.paapi_rate_limiter._rate_limiter = None
+        price_watch.store.amazon.paapi_rate_limiter._rate_limiter = None
