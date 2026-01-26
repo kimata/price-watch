@@ -6,7 +6,39 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
+
+
+@runtime_checkable
+class HasItemInfo(Protocol):
+    """アイテム情報を持つオブジェクトのプロトコル."""
+
+    @property
+    def name(self) -> str:
+        """アイテム名."""
+        ...
+
+    @property
+    def store(self) -> str:
+        """ストア名."""
+        ...
+
+
+def _get_attr(item: HasItemInfo | dict[str, Any], key: str, default: Any = None) -> Any:
+    """dict または dataclass から属性を取得.
+
+    Args:
+        item: アイテム情報（dict または dataclass）
+        key: 属性名
+        default: デフォルト値
+
+    Returns:
+        属性値
+    """
+    if isinstance(item, dict):
+        return item.get(key, default)  # type: ignore[no-matching-overload]
+    return getattr(item, key, default)
+
 
 # イベント用の絵文字
 EMOJI_NEW = "🚀"  # 初回収集
@@ -71,29 +103,29 @@ def _colorize(text: str, color: str | None) -> str:
     return f"{_hex_to_ansi(color)}{text}{ANSI_RESET}"
 
 
-def format_item_prefix(item: dict[str, Any]) -> str:
+def format_item_prefix(item: HasItemInfo | dict[str, Any]) -> str:
     """アイテムのログプレフィックスを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
 
     Returns:
         "[ストア名] アイテム名" 形式の文字列（ストア名はカラー付き）
     """
-    store = item.get("store", "unknown")
-    name = item.get("name", "unknown")
-    color = item.get("color")
+    store = _get_attr(item, "store", "unknown")
+    name = _get_attr(item, "name", "unknown")
+    color = _get_attr(item, "color")
 
     # ストア名にカラーを適用
     colored_store = _colorize(store, color)
     return f"[{colored_store}] {name}"
 
 
-def format_crawl_start(item: dict[str, Any]) -> str:
+def format_crawl_start(item: HasItemInfo | dict[str, Any]) -> str:
     """クロール開始ログメッセージを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
 
     Returns:
         フォーマットされたログメッセージ
@@ -102,76 +134,76 @@ def format_crawl_start(item: dict[str, Any]) -> str:
     return f"{EMOJI_CRAWLING} {prefix}: クロール開始"
 
 
-def format_watch_start(item: dict[str, Any]) -> str:
+def format_watch_start(item: HasItemInfo | dict[str, Any]) -> str:
     """監視開始（初回収集）ログメッセージを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
 
     Returns:
         フォーマットされたログメッセージ
     """
     prefix = format_item_prefix(item)
-    if item.get("stock") == 1:
-        price = item.get("price", 0)
-        price_unit = item.get("price_unit", "円")
+    if _get_attr(item, "stock") == 1:
+        price = _get_attr(item, "price", 0)
+        price_unit = _get_attr(item, "price_unit", "円")
         return f"{EMOJI_NEW} {prefix}: 監視開始 {price}{price_unit} (在庫あり)"
     return f"{EMOJI_NEW} {prefix}: 監視開始 (在庫なし)"
 
 
-def format_price_decrease(item: dict[str, Any], old_price: int) -> str:
+def format_price_decrease(item: HasItemInfo | dict[str, Any], old_price: int) -> str:
     """価格下落ログメッセージを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
         old_price: 変更前の価格
 
     Returns:
         フォーマットされたログメッセージ
     """
     prefix = format_item_prefix(item)
-    price = item.get("price", 0)
-    price_unit = item.get("price_unit", "円")
+    price = _get_attr(item, "price", 0)
+    price_unit = _get_attr(item, "price_unit", "円")
     return f"{EMOJI_PRICE_DOWN} {prefix}: 価格下落 {old_price}{price_unit} → {price}{price_unit}"
 
 
-def format_back_in_stock(item: dict[str, Any]) -> str:
+def format_back_in_stock(item: HasItemInfo | dict[str, Any]) -> str:
     """在庫復活ログメッセージを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
 
     Returns:
         フォーマットされたログメッセージ
     """
     prefix = format_item_prefix(item)
-    price = item.get("price", 0)
-    price_unit = item.get("price_unit", "円")
+    price = _get_attr(item, "price", 0)
+    price_unit = _get_attr(item, "price_unit", "円")
     return f"{EMOJI_BACK_IN_STOCK} {prefix}: 在庫復活 {price}{price_unit}"
 
 
-def format_item_status(item: dict[str, Any]) -> str:
+def format_item_status(item: HasItemInfo | dict[str, Any]) -> str:
     """アイテム状態ログメッセージを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
 
     Returns:
         フォーマットされたログメッセージ
     """
     prefix = format_item_prefix(item)
-    if item.get("stock") == 1:
-        price = item.get("price", 0)
-        price_unit = item.get("price_unit", "円")
+    if _get_attr(item, "stock") == 1:
+        price = _get_attr(item, "price", 0)
+        price_unit = _get_attr(item, "price_unit", "円")
         return f"{EMOJI_IN_STOCK} {prefix}: {price}{price_unit}"
     return f"{EMOJI_OUT_OF_STOCK} {prefix}: 在庫なし"
 
 
-def format_error(item: dict[str, Any], error_count: int) -> str:
+def format_error(item: HasItemInfo | dict[str, Any], error_count: int) -> str:
     """エラーログメッセージを生成.
 
     Args:
-        item: アイテム情報
+        item: アイテム情報（dict または dataclass）
         error_count: 連続エラー回数
 
     Returns:
