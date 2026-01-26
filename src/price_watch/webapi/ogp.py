@@ -487,16 +487,16 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     # プロットエリアのマージン（軸ラベル等を考慮）
     plot_right_margin = 80  # 右端の余白
     plot_top_margin = 20  # 上端の余白
-    info_padding = 15  # ボックス内のパディング
 
     # --- 商品名を上部に表示（プロットエリア全幅を使用） ---
-    title_max_width = OGP_WIDTH - plot_right_margin * 2 - info_padding * 2
+    box_padding = 5  # 上下左右の最小パディング
+    title_max_width = OGP_WIDTH - plot_right_margin * 2 - box_padding * 2
     title_text = _truncate_text(img, data.item_name, font_title, title_max_width)
-    title_width, _ = _get_text_size(img, title_text, font_title)
+    title_width, title_height = _get_text_size(img, title_text, font_title)
 
-    # 商品名の背景ボックス（右寄せ）
-    title_box_width = title_width + info_padding * 2
-    title_box_height = 80
+    # 商品名の背景ボックス（右寄せ、サイズ最小化）
+    title_box_width = title_width + box_padding * 2
+    title_box_height = title_height + box_padding * 2
     title_box_x = OGP_WIDTH - plot_right_margin - title_box_width
     title_box_y = plot_top_margin
 
@@ -506,8 +506,8 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     )
 
     # 商品名を描画（ボックス内左寄せ = 視覚的には右寄せボックス）
-    title_x = title_box_x + info_padding
-    title_y = title_box_y + (title_box_height - 58) // 2  # 垂直中央
+    title_x = title_box_x + box_padding
+    title_y = title_box_y + box_padding
     draw = ImageDraw.Draw(img)
     draw.text((title_x, title_y), title_text, font=font_title, fill=(50, 50, 50))
 
@@ -515,13 +515,15 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     price_text = _format_price(data.best_price)
     store_text = _truncate_text(img, data.best_store, font_label, 400)
 
-    price_width, _ = _get_text_size(img, price_text, font_price)
-    store_width, _ = _get_text_size(img, store_text, font_label)
+    price_width, price_height = _get_text_size(img, price_text, font_price)
+    store_width, store_height = _get_text_size(img, store_text, font_label)
 
-    # ボックス幅は価格とストア名の最大幅 + パディング
+    # ボックスサイズを最小化（テキストサイズ + 最小パディング）
+    box_padding = 5  # 上下左右の最小パディング
+    text_gap = 8  # 価格とストア名の間隔
     max_text_width = max(price_width, store_width)
-    info_width = max_text_width + info_padding * 2
-    info_height = 180  # 価格 + ストア名のみ
+    info_width = max_text_width + box_padding * 2
+    info_height = box_padding + price_height + text_gap + store_height + box_padding
 
     # プロットエリア右端に配置
     info_x = OGP_WIDTH - plot_right_margin - info_width
@@ -533,25 +535,27 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     )
 
     # テキストを右寄せで描画（my_lib.pil_util.draw_text を活用）
-    text_right_edge = info_x + info_width - info_padding
+    text_right_edge = info_x + info_width - box_padding
+    price_y = info_y + box_padding
+    store_y = price_y + price_height + text_gap
 
     # FreeTypeFont のみ my_lib.pil_util.draw_text を使用可能
     if isinstance(font_price, ImageFont.FreeTypeFont) and isinstance(font_label, ImageFont.FreeTypeFont):
         # 現在価格（右寄せ）
         my_lib.pil_util.draw_text(
-            img, price_text, (text_right_edge, info_y + 15), font_price, align="right", color="#dc3232"
+            img, price_text, (text_right_edge, price_y), font_price, align="right", color="#dc3232"
         )
         # 最安ストア名（右寄せ）
         my_lib.pil_util.draw_text(
-            img, store_text, (text_right_edge, info_y + 120), font_label, align="right", color="#646464"
+            img, store_text, (text_right_edge, store_y), font_label, align="right", color="#646464"
         )
     else:
         # フォールバック: 手動で右寄せ位置を計算
         draw = ImageDraw.Draw(img)
         price_x = text_right_edge - price_width
-        draw.text((price_x, info_y + 15), price_text, font=font_price, fill=(220, 50, 50))
+        draw.text((price_x, price_y), price_text, font=font_price, fill=(220, 50, 50))
         store_x = text_right_edge - store_width
-        draw.text((store_x, info_y + 120), store_text, font=font_label, fill=(100, 100, 100))
+        draw.text((store_x, store_y), store_text, font=font_label, fill=(100, 100, 100))
 
     # Price Watch ロゴ（右下）
     font_logo = _get_pillow_font(16, font_paths.en_medium if font_paths else None)
