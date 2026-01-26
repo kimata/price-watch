@@ -40,6 +40,14 @@ const EVENT_CONFIG: Record<
         iconColor: "text-amber-500",
         label: "取得失敗",
     },
+    data_retrieval_failure: {
+        Icon: ExclamationTriangleIcon,
+        bgColor: "bg-red-50",
+        borderColor: "border-red-200",
+        textColor: "text-red-700",
+        iconColor: "text-red-500",
+        label: "情報取得エラー",
+    },
     lowest_price: {
         Icon: FireIcon,
         bgColor: "bg-rose-50",

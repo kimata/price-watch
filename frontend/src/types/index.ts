@@ -60,7 +60,12 @@ export const PERIOD_OPTIONS: PeriodOption[] = [
 ];
 
 // イベント関連の型
-export type EventType = "back_in_stock" | "crawl_failure" | "lowest_price" | "price_drop";
+export type EventType =
+    | "back_in_stock"
+    | "crawl_failure"
+    | "data_retrieval_failure"
+    | "lowest_price"
+    | "price_drop";
 
 export interface Event {
     id: number;

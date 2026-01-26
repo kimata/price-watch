@@ -253,7 +253,10 @@ def event(
         json=json.loads(message_json),
     )
 
+    # DATA_RETRIEVAL_FAILURE は error チャンネルに通知、それ以外は info チャンネルに通知
     try:
+        if event_result.event_type == price_watch.event.EventType.DATA_RETRIEVAL_FAILURE:
+            return my_lib.notify.slack.send(slack_config, slack_config.error.channel.name, formatted)  # type: ignore[union-attr, return-value]
         return my_lib.notify.slack.send(slack_config, slack_config.info.channel.name, formatted)  # type: ignore[union-attr, return-value]
     except Exception:
         logging.exception("Failed to send event notification")
@@ -267,12 +270,12 @@ def _get_event_icon(event_type: price_watch.event.EventType) -> str:
             return ":package:"
         case price_watch.event.EventType.CRAWL_FAILURE:
             return ":warning:"
+        case price_watch.event.EventType.DATA_RETRIEVAL_FAILURE:
+            return ":x:"
         case price_watch.event.EventType.LOWEST_PRICE:
             return ":fire:"
         case price_watch.event.EventType.PRICE_DROP:
             return ":chart_with_downwards_trend:"
-        case _:
-            return ":bell:"
 
 
 def _build_event_message(
@@ -291,6 +294,10 @@ def _build_event_message(
         case price_watch.event.EventType.CRAWL_FAILURE:
             parts.append("*24時間以上クロールに失敗しています*")
             parts.append("サイトの構造が変わった可能性があります")
+
+        case price_watch.event.EventType.DATA_RETRIEVAL_FAILURE:
+            parts.append("*6時間以上情報を取得できていません*")
+            parts.append("価格・在庫情報の取得に失敗しています")
 
         case price_watch.event.EventType.LOWEST_PRICE:
             if event_result.old_price is not None and event_result.price is not None:

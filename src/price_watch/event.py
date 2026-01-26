@@ -22,6 +22,7 @@ class EventType(str, Enum):
 
     BACK_IN_STOCK = "back_in_stock"  # 在庫復活
     CRAWL_FAILURE = "crawl_failure"  # クロール失敗継続
+    DATA_RETRIEVAL_FAILURE = "data_retrieval_failure"  # 情報取得エラー（価格・在庫両方なし継続）
     LOWEST_PRICE = "lowest_price"  # 過去最安値更新
     PRICE_DROP = "price_drop"  # 価格下落
 
@@ -109,6 +110,41 @@ def check_crawl_failure(item_id: int) -> EventResult | None:
         return EventResult(event_type=EventType.CRAWL_FAILURE, should_notify=False)
 
     return EventResult(event_type=EventType.CRAWL_FAILURE, should_notify=True)
+
+
+def check_data_retrieval_failure(
+    item_id: int,
+    min_failure_hours: float = 6.0,
+    ignore_hours: int = 6,
+) -> EventResult | None:
+    """情報取得エラーイベントを判定.
+
+    価格・在庫両方の情報が min_failure_hours 以上取得できていない場合にイベント発生。
+
+    Args:
+        item_id: アイテム ID
+        min_failure_hours: イベント発生の最小失敗継続時間（時間）
+        ignore_hours: 無視する時間数（重複通知防止）
+
+    Returns:
+        イベント結果。該当しない場合は None。
+    """
+    # データ取得失敗の継続時間を取得
+    no_data_hours = price_watch.history.get_no_data_duration_hours(item_id)
+
+    if no_data_hours is None or no_data_hours < min_failure_hours:
+        return None
+
+    # 無視区間内に同じイベントがあるかチェック
+    if price_watch.history.has_event_in_hours(item_id, EventType.DATA_RETRIEVAL_FAILURE.value, ignore_hours):
+        logging.debug(
+            "Skipping data_retrieval_failure event: recent event exists within %d hours",
+            ignore_hours,
+        )
+        return EventResult(event_type=EventType.DATA_RETRIEVAL_FAILURE, should_notify=False)
+
+    logging.info("Data retrieval failure detected: no data for %.1f hours", no_data_hours)
+    return EventResult(event_type=EventType.DATA_RETRIEVAL_FAILURE, should_notify=True)
 
 
 def check_lowest_price(
@@ -274,6 +310,9 @@ def format_event_message(event: dict[str, Any]) -> str:
         case EventType.CRAWL_FAILURE.value:
             return f"{item_name} のクロールが24時間失敗しています"
 
+        case EventType.DATA_RETRIEVAL_FAILURE.value:
+            return f"{item_name} の情報取得が6時間以上失敗しています"
+
         case EventType.LOWEST_PRICE.value:
             if price is not None and old_price is not None:
                 return f"{item_name} が過去最安値を更新: {old_price:,}円 → {price:,}円"
@@ -303,6 +342,8 @@ def format_event_title(event_type: str) -> str:
             return "在庫復活"
         case EventType.CRAWL_FAILURE.value:
             return "クロール失敗"
+        case EventType.DATA_RETRIEVAL_FAILURE.value:
+            return "情報取得エラー"
         case EventType.LOWEST_PRICE.value:
             return "過去最安値"
         case EventType.PRICE_DROP.value:

@@ -341,6 +341,11 @@ class AppRunner:
             if result is not None and result.should_notify:
                 self._notify_and_record_event(slack_config, result, item, item_id)
 
+            # 情報取得エラー判定（6時間以上データ取得失敗）
+            result = price_watch.event.check_data_retrieval_failure(item_id)
+            if result is not None and result.should_notify:
+                self._notify_and_record_event(slack_config, result, item, item_id)
+
     def _notify_and_record_event(
         self,
         slack_config: my_lib.notify.slack.SlackConfigTypes,

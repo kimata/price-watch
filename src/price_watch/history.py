@@ -1006,6 +1006,68 @@ def get_last_successful_crawl(item_id: int) -> dict[str, Any] | None:
         return cur.fetchone()
 
 
+def get_no_data_duration_hours(item_id: int) -> float | None:
+    """データ取得失敗（価格・在庫両方なし）の継続時間（時間）を取得.
+
+    最新の記録から遡って、連続してデータが取得できていない継続時間を計算する。
+    データ取得成功（crawl_status=1 かつ stock IS NOT NULL）の記録があれば、
+    そこで継続は途切れる。
+
+    Args:
+        item_id: アイテム ID
+
+    Returns:
+        データ取得失敗の継続時間（時間）。データ取得失敗中でない場合は None。
+    """
+    from datetime import datetime
+
+    with my_lib.sqlite_util.connect(_get_db_path()) as conn:
+        cur = conn.cursor()
+        # 全ての履歴を取得、最新順
+        cur.execute(
+            """
+            SELECT crawl_status, stock, price, time
+            FROM price_history
+            WHERE item_id = ?
+            ORDER BY time DESC
+            """,
+            (item_id,),
+        )
+        rows = cur.fetchall()
+
+        if not rows:
+            return None
+
+        # 最新の記録がデータ取得成功（crawl_status=1 かつ stock IS NOT NULL）なら
+        # データ取得失敗中ではない
+        latest = rows[0]
+        if latest[0] == 1 and latest[1] is not None:
+            return None
+
+        # データ取得失敗の最古の時刻を探す
+        oldest_failure_time = None
+
+        for crawl_status, stock, _, time_str in rows:
+            # crawl_status=1 かつ stock IS NOT NULL ならデータ取得成功
+            if crawl_status == 1 and stock is not None:
+                break
+            # それ以外はデータ取得失敗
+            oldest_failure_time = time_str
+
+        if oldest_failure_time is None:
+            return None
+
+        # 継続時間を計算
+        now = my_lib.time.now()
+        oldest_time = datetime.fromisoformat(oldest_failure_time)
+        # タイムゾーンを揃える
+        if now.tzinfo and oldest_time.tzinfo is None:
+            oldest_time = oldest_time.replace(tzinfo=now.tzinfo)
+
+        duration_seconds = (now - oldest_time).total_seconds()
+        return duration_seconds / 3600  # 時間に変換
+
+
 # --- イベント関連 ---
 
 

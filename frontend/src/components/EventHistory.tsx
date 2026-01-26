@@ -27,6 +27,12 @@ const EVENT_CONFIG: Record<
         textColor: "text-amber-700",
         label: "取得失敗",
     },
+    data_retrieval_failure: {
+        emoji: "❌",
+        bgColor: "bg-red-100",
+        textColor: "text-red-700",
+        label: "情報取得エラー",
+    },
     lowest_price: {
         emoji: "🔥",
         bgColor: "bg-rose-100",
