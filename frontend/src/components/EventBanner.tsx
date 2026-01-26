@@ -118,7 +118,7 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
 
     if (loading) {
         return (
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg animate-pulse">
+            <div className="mt-10 mb-6 p-4 bg-gray-50 rounded-lg animate-pulse">
                 <div className="h-6 bg-gray-200 rounded w-32 mb-3"></div>
                 <div className="space-y-2">
                     {[1, 2, 3].map((i) => (
@@ -131,7 +131,7 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
 
     if (error) {
         return (
-            <div className="mb-6">
+            <div className="mt-10 mb-6">
                 <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <BellIcon className="w-5 h-5 text-gray-500" />
                     最新イベント
@@ -146,7 +146,7 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
 
     if (events.length === 0) {
         return (
-            <div className="mb-6">
+            <div className="mt-10 mb-6">
                 <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <BellIcon className="w-5 h-5 text-gray-500" />
                     最新イベント
@@ -163,7 +163,7 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
     }
 
     return (
-        <div className="mb-6">
+        <div className="mt-10 mb-6">
             <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <BellIcon className="w-5 h-5 text-gray-500" />
                 最新イベント
