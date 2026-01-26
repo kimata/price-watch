@@ -211,14 +211,12 @@ def _truncate_text(
 
 def _generate_price_graph(
     store_histories: list[StoreHistory],
-    thumb_path: pathlib.Path | None = None,
     font_paths: FontPaths | None = None,
 ) -> Image.Image:
     """価格推移グラフを生成.
 
     Args:
         store_histories: ストアごとの価格履歴
-        thumb_path: サムネイル画像のパス（プロットエリア背景に配置）
         font_paths: フォントパス設定
     """
     # matplotlib 用フォントを設定（日本語 medium を使用）
@@ -366,33 +364,7 @@ def _generate_price_graph(
 
     # 凡例は省略（小さく表示された際に読めないため）
 
-    # サムネイルをプロットエリアの最背面（左寄せ）に配置
-    if thumb_path and thumb_path.exists():
-        try:
-            thumb_img = Image.open(thumb_path)
-            # サムネイルサイズ（プロットエリアの高さの70%程度）
-            thumb_height_ratio = 0.7
-            # プロットエリアの左下に配置
-            extent_x_start = mdates.date2num(min(time_to_dt.values()))
-            extent_x_range = mdates.date2num(max(time_to_dt.values())) - extent_x_start
-            extent_y_range = y_max - y_min
-            thumb_extent_height = extent_y_range * thumb_height_ratio
-            # X方向の30%をサムネイル幅に使用
-            thumb_extent_width = extent_x_range * 0.3
-            ax.imshow(
-                thumb_img,
-                extent=(
-                    extent_x_start,
-                    extent_x_start + thumb_extent_width,
-                    y_min,
-                    y_min + thumb_extent_height,
-                ),
-                aspect="auto",
-                zorder=-10,  # 最背面に配置（グリッドより後ろ）
-                alpha=0.4,
-            )
-        except Exception:
-            logging.warning("Failed to load thumbnail for graph background: %s", thumb_path)
+    # NOTE: サムネイルはグラフ生成後に PIL で合成する（アスペクト比を正確に維持するため）
 
     # スタイル調整
     ax.spines["top"].set_visible(False)
@@ -445,9 +417,9 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
         data: OGP 画像生成用データ
         font_paths: フォントパス設定
     """
-    # --- グラフを全面に配置（サムネイルはグラフ内の背景に表示） ---
+    # --- グラフを全面に配置 ---
     if data.store_histories:
-        img = _generate_price_graph(data.store_histories, thumb_path=data.thumb_path, font_paths=font_paths)
+        img = _generate_price_graph(data.store_histories, font_paths=font_paths)
         # グラフのサイズを OGP サイズに調整
         if img.size != (OGP_WIDTH, OGP_HEIGHT):
             img = img.resize((OGP_WIDTH, OGP_HEIGHT), Image.Resampling.LANCZOS)
@@ -456,6 +428,51 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
             img = img.convert("RGB")
     else:
         img = Image.new("RGB", (OGP_WIDTH, OGP_HEIGHT), color=(255, 255, 255))
+
+    # --- サムネイルを左下背景に配置（アスペクト比を維持） ---
+    if data.thumb_path and data.thumb_path.exists():
+        try:
+            thumb = Image.open(data.thumb_path)
+            thumb_w, thumb_h = thumb.size
+
+            # 最大サイズ（プロットエリアの30% x 70%程度）
+            max_thumb_width = int(OGP_WIDTH * 0.30)
+            max_thumb_height = int(OGP_HEIGHT * 0.65)
+
+            # アスペクト比を維持してリサイズ
+            thumb_aspect = thumb_w / thumb_h if thumb_h > 0 else 1.0
+            max_aspect = max_thumb_width / max_thumb_height
+
+            if thumb_aspect > max_aspect:
+                # 幅で制限
+                new_width = max_thumb_width
+                new_height = int(max_thumb_width / thumb_aspect)
+            else:
+                # 高さで制限
+                new_height = max_thumb_height
+                new_width = int(max_thumb_height * thumb_aspect)
+
+            thumb_resized: Image.Image = thumb.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # 半透明化（alpha=0.4相当）
+            thumb_rgba: Image.Image = (
+                thumb_resized.convert("RGBA") if thumb_resized.mode != "RGBA" else thumb_resized
+            )
+            # 透明度を調整
+            alpha_data = thumb_rgba.split()[3]
+            alpha_data = alpha_data.point(lambda x: int(x * 0.4))
+            thumb_rgba.putalpha(alpha_data)
+
+            # 左下に配置（軸ラベル分のマージンを考慮）
+            paste_x = 100  # Y軸ラベル分
+            paste_y = OGP_HEIGHT - new_height - 60  # X軸ラベル分
+
+            # 合成
+            img = img.convert("RGBA")
+            img.paste(thumb_rgba, (paste_x, paste_y), thumb_rgba)
+            img = img.convert("RGB")
+        except Exception:
+            logging.warning("Failed to load thumbnail: %s", data.thumb_path)
 
     # フォントを取得（小さく表示された際も読めるように大きめ）
     # 商品名: 日本語 Bold、価格: 英語 Bold、ストア名: 日本語 Medium
