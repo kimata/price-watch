@@ -208,7 +208,7 @@ cp target.example.yaml target.yaml
 # 価格監視を開始
 uv run price-watch
 
-# デバッグモード
+# デバッグモード（各ストア1アイテムのみチェックして終了）
 uv run price-watch -D
 
 # 設定ファイル指定
@@ -217,6 +217,21 @@ uv run price-watch -c config.yaml -t target.yaml
 # Web UI ポート指定
 uv run price-watch -p 5000
 ```
+
+### 特定アイテムのデバッグ
+
+```bash
+# 特定のストアのみチェック（部分一致）
+uv run price-watch --store ヨドバシ
+
+# 特定の商品名のみチェック（部分一致）
+uv run price-watch --item "キレイキレイ"
+
+# ストアと商品名の両方で絞り込み
+uv run price-watch --item "キレイキレイ" --store "アマゾン"
+```
+
+`--item` や `--store` を指定すると自動的にデバッグモードになり、マッチしたアイテムのみをチェックして終了します。
 
 ### Web UI のみ起動
 
