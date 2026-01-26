@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+# ruff: noqa: S101
+"""
+event モジュールのユニットテスト
+
+イベント検出・フォーマット機能のテストを行います。
+"""
+
+from unittest import mock
+
+import pytest
+
+import price_watch.history
+from price_watch.event import (
+    EventResult,
+    EventType,
+    check_back_in_stock,
+    check_crawl_failure,
+    check_data_retrieval_failure,
+    check_lowest_price,
+    check_price_drop,
+    format_event_message,
+    format_event_title,
+)
+
+
+# === EventType テスト ===
+class TestEventType:
+    """EventType 列挙型のテスト"""
+
+    def test_values(self) -> None:
+        """列挙値の確認"""
+        assert EventType.BACK_IN_STOCK.value == "back_in_stock"
+        assert EventType.CRAWL_FAILURE.value == "crawl_failure"
+        assert EventType.DATA_RETRIEVAL_FAILURE.value == "data_retrieval_failure"
+        assert EventType.LOWEST_PRICE.value == "lowest_price"
+        assert EventType.PRICE_DROP.value == "price_drop"
+
+    def test_is_str_subclass(self) -> None:
+        """str のサブクラス"""
+        assert isinstance(EventType.BACK_IN_STOCK, str)
+        assert EventType.BACK_IN_STOCK == "back_in_stock"
+
+
+# === EventResult テスト ===
+class TestEventResult:
+    """EventResult dataclass のテスト"""
+
+    def test_create_minimal(self) -> None:
+        """最小構成での作成"""
+        result = EventResult(event_type=EventType.BACK_IN_STOCK, should_notify=True)
+        assert result.event_type == EventType.BACK_IN_STOCK
+        assert result.should_notify is True
+        assert result.price is None
+        assert result.old_price is None
+        assert result.threshold_days is None
+
+    def test_create_with_price(self) -> None:
+        """価格情報付きで作成"""
+        result = EventResult(
+            event_type=EventType.LOWEST_PRICE,
+            should_notify=True,
+            price=800,
+            old_price=1000,
+        )
+        assert result.price == 800
+        assert result.old_price == 1000
+
+
+# === format_event_message テスト ===
+class TestFormatEventMessage:
+    """format_event_message 関数のテスト"""
+
+    def test_back_in_stock(self) -> None:
+        """在庫復活メッセージ"""
+        event = {"event_type": "back_in_stock", "item_name": "テスト商品"}
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "在庫が復活" in msg
+
+    def test_crawl_failure(self) -> None:
+        """クロール失敗メッセージ"""
+        event = {"event_type": "crawl_failure", "item_name": "テスト商品"}
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "クロール" in msg
+        assert "24時間" in msg
+
+    def test_data_retrieval_failure(self) -> None:
+        """情報取得エラーメッセージ"""
+        event = {"event_type": "data_retrieval_failure", "item_name": "テスト商品"}
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "情報取得" in msg
+
+    def test_lowest_price_with_prices(self) -> None:
+        """過去最安値メッセージ（価格あり）"""
+        event = {
+            "event_type": "lowest_price",
+            "item_name": "テスト商品",
+            "price": 800,
+            "old_price": 1000,
+        }
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "過去最安値" in msg
+        assert "1,000円" in msg
+        assert "800円" in msg
+
+    def test_lowest_price_without_prices(self) -> None:
+        """過去最安値メッセージ（価格なし）"""
+        event = {"event_type": "lowest_price", "item_name": "テスト商品"}
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "過去最安値を更新しました" in msg
+
+    def test_price_drop_with_details(self) -> None:
+        """価格下落メッセージ（詳細あり）"""
+        event = {
+            "event_type": "price_drop",
+            "item_name": "テスト商品",
+            "price": 800,
+            "old_price": 1000,
+            "threshold_days": 7,
+        }
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "7日間" in msg
+        assert "200円" in msg  # 値下げ額
+
+    def test_unknown_event_type(self) -> None:
+        """不明なイベントタイプ"""
+        event = {"event_type": "unknown", "item_name": "テスト商品"}
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "イベントが発生" in msg
+
+    def test_missing_item_name(self) -> None:
+        """アイテム名がない場合"""
+        event = {"event_type": "back_in_stock"}
+        msg = format_event_message(event)
+        assert "不明" in msg
+
+
+# === format_event_title テスト ===
+class TestFormatEventTitle:
+    """format_event_title 関数のテスト"""
+
+    def test_back_in_stock(self) -> None:
+        """在庫復活タイトル"""
+        assert format_event_title("back_in_stock") == "在庫復活"
+
+    def test_crawl_failure(self) -> None:
+        """クロール失敗タイトル"""
+        assert format_event_title("crawl_failure") == "クロール失敗"
+
+    def test_data_retrieval_failure(self) -> None:
+        """情報取得エラータイトル"""
+        assert format_event_title("data_retrieval_failure") == "情報取得エラー"
+
+    def test_lowest_price(self) -> None:
+        """過去最安値タイトル"""
+        assert format_event_title("lowest_price") == "過去最安値"
+
+    def test_price_drop(self) -> None:
+        """価格下落タイトル"""
+        assert format_event_title("price_drop") == "価格下落"
+
+    def test_unknown(self) -> None:
+        """不明なタイプ"""
+        assert format_event_title("unknown") == "イベント"
+
+
+# === check_back_in_stock テスト ===
+class TestCheckBackInStock:
+    """check_back_in_stock 関数のテスト"""
+
+    def test_returns_none_when_current_stock_is_none(self) -> None:
+        """現在の在庫状態が不明の場合は None"""
+        result = check_back_in_stock(item_id=1, current_stock=None, last_stock=0, ignore_hours=24)
+        assert result is None
+
+    def test_returns_none_when_last_stock_is_none(self) -> None:
+        """前回の在庫状態が不明の場合は None"""
+        result = check_back_in_stock(item_id=1, current_stock=1, last_stock=None, ignore_hours=24)
+        assert result is None
+
+    def test_returns_none_when_no_stock_change(self) -> None:
+        """在庫変化がない場合は None"""
+        result = check_back_in_stock(item_id=1, current_stock=1, last_stock=1, ignore_hours=24)
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "get_out_of_stock_duration_hours")
+    def test_returns_none_when_out_of_stock_duration_short(self, mock_duration: mock.MagicMock) -> None:
+        """在庫なし継続時間が短い場合は None"""
+        mock_duration.return_value = 1.0  # 1時間（3時間未満）
+
+        result = check_back_in_stock(
+            item_id=1,
+            current_stock=1,
+            last_stock=0,
+            ignore_hours=24,
+            min_out_of_stock_hours=3.0,
+        )
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "has_event_in_hours")
+    @mock.patch.object(price_watch.history, "get_out_of_stock_duration_hours")
+    def test_returns_event_with_should_notify_false_when_recent_event(
+        self, mock_duration: mock.MagicMock, mock_has_event: mock.MagicMock
+    ) -> None:
+        """最近イベントがある場合は should_notify=False"""
+        mock_duration.return_value = 5.0
+        mock_has_event.return_value = True
+
+        result = check_back_in_stock(item_id=1, current_stock=1, last_stock=0, ignore_hours=24)
+
+        assert result is not None
+        assert result.event_type == EventType.BACK_IN_STOCK
+        assert result.should_notify is False
+
+    @mock.patch.object(price_watch.history, "has_event_in_hours")
+    @mock.patch.object(price_watch.history, "get_out_of_stock_duration_hours")
+    def test_returns_event_with_should_notify_true(
+        self, mock_duration: mock.MagicMock, mock_has_event: mock.MagicMock
+    ) -> None:
+        """条件を満たす場合は should_notify=True"""
+        mock_duration.return_value = 5.0
+        mock_has_event.return_value = False
+
+        result = check_back_in_stock(item_id=1, current_stock=1, last_stock=0, ignore_hours=24)
+
+        assert result is not None
+        assert result.event_type == EventType.BACK_IN_STOCK
+        assert result.should_notify is True
+
+
+# === check_crawl_failure テスト ===
+class TestCheckCrawlFailure:
+    """check_crawl_failure 関数のテスト"""
+
+    @mock.patch.object(price_watch.history, "has_successful_crawl_in_hours")
+    def test_returns_none_when_recent_success(self, mock_has_success: mock.MagicMock) -> None:
+        """最近成功したクロールがある場合は None"""
+        mock_has_success.return_value = True
+
+        result = check_crawl_failure(item_id=1)
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "has_event_in_hours")
+    @mock.patch.object(price_watch.history, "has_successful_crawl_in_hours")
+    def test_returns_event_with_should_notify_false_when_recent_event(
+        self, mock_has_success: mock.MagicMock, mock_has_event: mock.MagicMock
+    ) -> None:
+        """最近イベントがある場合は should_notify=False"""
+        mock_has_success.return_value = False
+        mock_has_event.return_value = True
+
+        result = check_crawl_failure(item_id=1)
+
+        assert result is not None
+        assert result.event_type == EventType.CRAWL_FAILURE
+        assert result.should_notify is False
+
+    @mock.patch.object(price_watch.history, "has_event_in_hours")
+    @mock.patch.object(price_watch.history, "has_successful_crawl_in_hours")
+    def test_returns_event_with_should_notify_true(
+        self, mock_has_success: mock.MagicMock, mock_has_event: mock.MagicMock
+    ) -> None:
+        """条件を満たす場合は should_notify=True"""
+        mock_has_success.return_value = False
+        mock_has_event.return_value = False
+
+        result = check_crawl_failure(item_id=1)
+
+        assert result is not None
+        assert result.event_type == EventType.CRAWL_FAILURE
+        assert result.should_notify is True
+
+
+# === check_data_retrieval_failure テスト ===
+class TestCheckDataRetrievalFailure:
+    """check_data_retrieval_failure 関数のテスト"""
+
+    @mock.patch.object(price_watch.history, "get_no_data_duration_hours")
+    def test_returns_none_when_duration_short(self, mock_duration: mock.MagicMock) -> None:
+        """失敗継続時間が短い場合は None"""
+        mock_duration.return_value = 2.0  # 2時間（6時間未満）
+
+        result = check_data_retrieval_failure(item_id=1)
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "has_event_in_hours")
+    @mock.patch.object(price_watch.history, "get_no_data_duration_hours")
+    def test_returns_event_with_should_notify_true(
+        self, mock_duration: mock.MagicMock, mock_has_event: mock.MagicMock
+    ) -> None:
+        """条件を満たす場合は should_notify=True"""
+        mock_duration.return_value = 8.0
+        mock_has_event.return_value = False
+
+        result = check_data_retrieval_failure(item_id=1)
+
+        assert result is not None
+        assert result.event_type == EventType.DATA_RETRIEVAL_FAILURE
+        assert result.should_notify is True
+
+
+# === check_lowest_price テスト ===
+class TestCheckLowestPrice:
+    """check_lowest_price 関数のテスト"""
+
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_none_when_no_history(self, mock_get_lowest: mock.MagicMock) -> None:
+        """履歴がない場合は None"""
+        mock_get_lowest.return_value = None
+
+        result = check_lowest_price(item_id=1, current_price=800, ignore_hours=24)
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_none_when_price_not_lower(self, mock_get_lowest: mock.MagicMock) -> None:
+        """現在価格が最安値以上の場合は None"""
+        mock_get_lowest.return_value = 800
+
+        result = check_lowest_price(item_id=1, current_price=900, ignore_hours=24)
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "has_event_in_hours")
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_event_with_prices(
+        self, mock_get_lowest: mock.MagicMock, mock_has_event: mock.MagicMock
+    ) -> None:
+        """最安値更新時にイベントを返す"""
+        mock_get_lowest.return_value = 1000
+        mock_has_event.return_value = False
+
+        result = check_lowest_price(item_id=1, current_price=800, ignore_hours=24)
+
+        assert result is not None
+        assert result.event_type == EventType.LOWEST_PRICE
+        assert result.should_notify is True
+        assert result.price == 800
+        assert result.old_price == 1000
+
+
+# === check_price_drop テスト ===
+class TestCheckPriceDrop:
+    """check_price_drop 関数のテスト"""
+
+    @pytest.fixture
+    def mock_window(self) -> mock.MagicMock:
+        """PriceDropWindow のモック"""
+        window = mock.MagicMock()
+        window.days = 7
+        window.rate = 10.0
+        window.value = None
+        return window
+
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_none_when_no_history(
+        self, mock_get_lowest: mock.MagicMock, mock_window: mock.MagicMock
+    ) -> None:
+        """履歴がない場合は None"""
+        mock_get_lowest.return_value = None
+
+        result = check_price_drop(item_id=1, current_price=800, windows=[mock_window])
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_none_when_no_drop(
+        self, mock_get_lowest: mock.MagicMock, mock_window: mock.MagicMock
+    ) -> None:
+        """価格が下がっていない場合は None"""
+        mock_get_lowest.return_value = 700  # 現在価格より安い
+
+        result = check_price_drop(item_id=1, current_price=800, windows=[mock_window])
+        assert result is None
+
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_event_when_rate_threshold_met(
+        self, mock_get_lowest: mock.MagicMock, mock_window: mock.MagicMock
+    ) -> None:
+        """パーセンテージ閾値を満たす場合にイベントを返す"""
+        mock_get_lowest.return_value = 1000  # 10% 以上の下落
+
+        result = check_price_drop(item_id=1, current_price=800, windows=[mock_window])
+
+        assert result is not None
+        assert result.event_type == EventType.PRICE_DROP
+        assert result.should_notify is True
+        assert result.price == 800
+        assert result.old_price == 1000
+        assert result.threshold_days == 7
+
+    @mock.patch.object(price_watch.history, "get_lowest_price_in_period")
+    def test_returns_event_when_value_threshold_met(self, mock_get_lowest: mock.MagicMock) -> None:
+        """絶対値閾値を満たす場合にイベントを返す"""
+        window = mock.MagicMock()
+        window.days = 7
+        window.rate = None
+        window.value = 100  # 100円以上の下落
+
+        mock_get_lowest.return_value = 1000  # 200円の下落
+
+        result = check_price_drop(item_id=1, current_price=800, windows=[window])
+
+        assert result is not None
+        assert result.should_notify is True

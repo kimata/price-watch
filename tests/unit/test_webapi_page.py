@@ -1,0 +1,928 @@
+#!/usr/bin/env python3
+# ruff: noqa: S101, S108
+"""
+webapi/page.py のユニットテスト
+
+Web API エンドポイントを検証します。
+"""
+
+from __future__ import annotations
+
+import pathlib
+from unittest.mock import MagicMock, patch
+
+import flask
+import pytest
+
+import price_watch.target
+import price_watch.webapi.page
+
+
+@pytest.fixture
+def app() -> flask.Flask:
+    """テスト用 Flask アプリケーション."""
+    app = flask.Flask(__name__)
+    app.register_blueprint(price_watch.webapi.page.blueprint, url_prefix="/price")
+    app.config["TESTING"] = True
+    return app
+
+
+@pytest.fixture
+def client(app: flask.Flask) -> flask.testing.FlaskClient:
+    """テスト用クライアント."""
+    return app.test_client()
+
+
+class TestParseDays:
+    """_parse_days 関数のテスト"""
+
+    def test_parses_numeric_string(self) -> None:
+        """数値文字列をパース"""
+        assert price_watch.webapi.page._parse_days("30") == 30
+        assert price_watch.webapi.page._parse_days("90") == 90
+
+    def test_returns_none_for_all(self) -> None:
+        """'all' の場合は None を返す"""
+        assert price_watch.webapi.page._parse_days("all") is None
+
+    def test_returns_none_for_none(self) -> None:
+        """None の場合は None を返す"""
+        assert price_watch.webapi.page._parse_days(None) is None
+
+    def test_returns_default_for_invalid(self) -> None:
+        """無効な文字列はデフォルト 30 を返す"""
+        assert price_watch.webapi.page._parse_days("invalid") == 30
+
+
+class TestCalcEffectivePrice:
+    """_calc_effective_price 関数のテスト"""
+
+    def test_calculates_effective_price(self) -> None:
+        """実質価格を計算"""
+        # 10% ポイント還元
+        assert price_watch.webapi.page._calc_effective_price(1000, 10.0) == 900
+        # 5% ポイント還元
+        assert price_watch.webapi.page._calc_effective_price(1000, 5.0) == 950
+
+    def test_returns_none_for_none_price(self) -> None:
+        """価格が None の場合は None を返す"""
+        assert price_watch.webapi.page._calc_effective_price(None, 10.0) is None
+
+    def test_zero_point_rate(self) -> None:
+        """ポイント還元率 0% の場合"""
+        assert price_watch.webapi.page._calc_effective_price(1000, 0.0) == 1000
+
+
+class TestGetPointRate:
+    """_get_point_rate 関数のテスト"""
+
+    def test_returns_store_point_rate(self) -> None:
+        """ストアのポイント還元率を返す"""
+        mock_store = MagicMock()
+        mock_store.point_rate = 5.0
+        mock_config = MagicMock()
+        mock_config.get_store.return_value = mock_store
+
+        result = price_watch.webapi.page._get_point_rate(mock_config, "TestStore")
+
+        assert result == 5.0
+        mock_config.get_store.assert_called_once_with("TestStore")
+
+    def test_returns_zero_if_store_not_found(self) -> None:
+        """ストアが見つからない場合は 0.0 を返す"""
+        mock_config = MagicMock()
+        mock_config.get_store.return_value = None
+
+        result = price_watch.webapi.page._get_point_rate(mock_config, "Unknown")
+
+        assert result == 0.0
+
+    def test_returns_zero_if_config_is_none(self) -> None:
+        """設定が None の場合は 0.0 を返す"""
+        result = price_watch.webapi.page._get_point_rate(None, "TestStore")
+        assert result == 0.0
+
+
+class TestBuildHistoryEntries:
+    """_build_history_entries 関数のテスト"""
+
+    def test_builds_entries(self) -> None:
+        """履歴エントリを構築"""
+        history = [
+            {"time": "2024-01-15 10:00:00", "price": 1000, "stock": 1},
+            {"time": "2024-01-16 10:00:00", "price": 900, "stock": 1},
+        ]
+
+        result = price_watch.webapi.page._build_history_entries(history, 10.0)
+
+        assert len(result) == 2
+        assert result[0].price == 1000
+        assert result[0].effective_price == 900
+        assert result[1].price == 900
+        assert result[1].effective_price == 810
+
+    def test_handles_none_price(self) -> None:
+        """価格が None の履歴も処理"""
+        history = [
+            {"time": "2024-01-15 10:00:00", "price": None, "stock": 0},
+        ]
+
+        result = price_watch.webapi.page._build_history_entries(history, 10.0)
+
+        assert len(result) == 1
+        assert result[0].price is None
+        assert result[0].effective_price is None
+
+
+class TestFindBestStore:
+    """_find_best_store 関数のテスト"""
+
+    def test_finds_cheapest_in_stock(self) -> None:
+        """在庫ありの中で最安を返す"""
+        store1 = MagicMock()
+        store1.stock = 1
+        store1.effective_price = 1000
+        store2 = MagicMock()
+        store2.stock = 1
+        store2.effective_price = 800
+
+        result = price_watch.webapi.page._find_best_store([store1, store2])
+
+        assert result is store2
+
+    def test_prefers_in_stock_over_out_of_stock(self) -> None:
+        """在庫ありを優先"""
+        store1 = MagicMock()
+        store1.stock = 0
+        store1.effective_price = 500
+        store2 = MagicMock()
+        store2.stock = 1
+        store2.effective_price = 1000
+
+        result = price_watch.webapi.page._find_best_store([store1, store2])
+
+        assert result is store2
+
+    def test_handles_all_out_of_stock(self) -> None:
+        """全て在庫なしの場合は価格ありの最安"""
+        store1 = MagicMock()
+        store1.stock = 0
+        store1.effective_price = 1000
+        store2 = MagicMock()
+        store2.stock = 0
+        store2.effective_price = 800
+
+        result = price_watch.webapi.page._find_best_store([store1, store2])
+
+        assert result is store2
+
+    def test_handles_all_none_prices(self) -> None:
+        """全て価格なしの場合は最初を返す"""
+        store1 = MagicMock()
+        store1.stock = 0
+        store1.effective_price = None
+        store2 = MagicMock()
+        store2.stock = 0
+        store2.effective_price = None
+
+        result = price_watch.webapi.page._find_best_store([store1, store2])
+
+        assert result is store1
+
+
+class TestFindFirstThumbUrl:
+    """_find_first_thumb_url 関数のテスト"""
+
+    def test_returns_first_thumb_url(self) -> None:
+        """最初のサムネイル URL を返す"""
+        data = [
+            {"thumb_url": None},
+            {"thumb_url": "http://example.com/thumb.png"},
+            {"thumb_url": "http://example.com/thumb2.png"},
+        ]
+
+        result = price_watch.webapi.page._find_first_thumb_url(data)
+
+        assert result == "http://example.com/thumb.png"
+
+    def test_returns_none_if_no_thumb(self) -> None:
+        """サムネイルがない場合は None を返す"""
+        data = [
+            {"thumb_url": None},
+            {"thumb_url": None},
+        ]
+
+        result = price_watch.webapi.page._find_first_thumb_url(data)
+
+        assert result is None
+
+
+class TestEscapeHtml:
+    """_escape_html 関数のテスト"""
+
+    def test_escapes_special_chars(self) -> None:
+        """特殊文字をエスケープ"""
+        result = price_watch.webapi.page._escape_html('<script>alert("test")</script>')
+
+        assert "&lt;" in result
+        assert "&gt;" in result
+        assert "&quot;" in result
+        assert "&#x27;" not in result or "'" not in result
+
+
+class TestEscapeJs:
+    """_escape_js 関数のテスト"""
+
+    def test_escapes_js_chars(self) -> None:
+        """JavaScript 文字をエスケープ"""
+        result = price_watch.webapi.page._escape_js('test"value\\n')
+
+        assert '\\"' in result
+        assert "\\\\" in result
+
+
+class TestIsFacebookCrawler:
+    """_is_facebook_crawler 関数のテスト"""
+
+    def test_detects_facebook_crawler(self) -> None:
+        """Facebook クローラーを検出"""
+        assert price_watch.webapi.page._is_facebook_crawler(
+            "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+        )
+
+    def test_returns_false_for_other_agents(self) -> None:
+        """他のユーザーエージェントには False"""
+        assert not price_watch.webapi.page._is_facebook_crawler("Mozilla/5.0")
+
+
+class TestGetTargetItemKeys:
+    """_get_target_item_keys 関数のテスト"""
+
+    def test_returns_empty_set_for_none(self) -> None:
+        """None の場合は空セット"""
+        result = price_watch.webapi.page._get_target_item_keys(None)
+        assert result == set()
+
+    def test_generates_keys_from_resolved_items(self) -> None:
+        """解決済みアイテムからキーを生成"""
+        mock_item = MagicMock()
+        mock_item.check_method = price_watch.target.CheckMethod.SCRAPE
+        mock_item.url = "http://example.com/item"
+
+        mock_config = MagicMock()
+        mock_config.resolve_items.return_value = [mock_item]
+
+        with patch("price_watch.history.url_hash", return_value="hash123"):
+            result = price_watch.webapi.page._get_target_item_keys(mock_config)
+
+        assert "hash123" in result
+
+    def test_handles_mercari_search(self) -> None:
+        """メルカリ検索のキー生成"""
+        mock_item = MagicMock()
+        mock_item.check_method = price_watch.target.CheckMethod.MERCARI_SEARCH
+        mock_item.search_keyword = "keyword"
+        mock_item.name = "Item Name"
+
+        mock_config = MagicMock()
+        mock_config.resolve_items.return_value = [mock_item]
+
+        with patch("price_watch.history.generate_item_key", return_value="mercari_key"):
+            result = price_watch.webapi.page._get_target_item_keys(mock_config)
+
+        assert "mercari_key" in result
+
+
+class TestGetStoreDefinitions:
+    """_get_store_definitions 関数のテスト"""
+
+    def test_returns_store_definitions(self) -> None:
+        """ストア定義を返す"""
+        mock_store = MagicMock()
+        mock_store.name = "Store1"
+        mock_store.point_rate = 5.0
+        mock_store.color = "#ff0000"
+
+        mock_config = MagicMock()
+        mock_config.stores = [mock_store]
+
+        result = price_watch.webapi.page._get_store_definitions(mock_config)
+
+        assert len(result) == 1
+        assert result[0].name == "Store1"
+        assert result[0].point_rate == 5.0
+        assert result[0].color == "#ff0000"
+
+    def test_returns_empty_for_none(self) -> None:
+        """None の場合は空リスト"""
+        result = price_watch.webapi.page._get_store_definitions(None)
+        assert result == []
+
+
+class TestServeThumb:
+    """serve_thumb エンドポイントのテスト"""
+
+    def test_returns_thumb_image(self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path) -> None:
+        """サムネイル画像を返す"""
+        thumb_file = tmp_path / "test.png"
+        thumb_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        with patch("price_watch.thumbnail.get_thumb_dir", return_value=tmp_path):
+            response = client.get("/price/thumb/test.png")
+
+        assert response.status_code == 200
+        assert response.content_type == "image/png"
+
+    def test_returns_404_for_missing_file(
+        self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path
+    ) -> None:
+        """ファイルがない場合は 404"""
+        with patch("price_watch.thumbnail.get_thumb_dir", return_value=tmp_path):
+            response = client.get("/price/thumb/missing.png")
+
+        assert response.status_code == 404
+
+    def test_rejects_invalid_filename(self, client: flask.testing.FlaskClient) -> None:
+        """無効なファイル名を拒否"""
+        response = client.get("/price/thumb/test.jpg")
+        assert response.status_code == 404
+
+        response = client.get("/price/thumb/../etc/passwd")
+        assert response.status_code == 404
+
+
+class TestGetItems:
+    """get_items エンドポイントのテスト"""
+
+    def test_returns_items(self, client: flask.testing.FlaskClient) -> None:
+        """アイテム一覧を返す"""
+        mock_items = [
+            {
+                "id": 1,
+                "name": "Item1",
+                "store": "Store1",
+                "item_key": "key1",
+                "url": "http://example.com",
+                "thumb_url": "http://example.com/thumb.png",
+            }
+        ]
+
+        with (
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch("price_watch.history.get_all_items", return_value=mock_items),
+            patch("price_watch.history.get_latest_price", return_value=None),
+        ):
+            response = client.get("/price/api/items")
+
+        assert response.status_code == 200
+
+    def test_handles_exception(self, client: flask.testing.FlaskClient) -> None:
+        """例外時は 500 を返す"""
+        with patch.object(
+            price_watch.webapi.page._target_config_cache,
+            "get",
+            side_effect=Exception("DB error"),
+        ):
+            response = client.get("/price/api/items")
+
+        assert response.status_code == 500
+
+
+class TestGetItemHistory:
+    """get_item_history エンドポイントのテスト"""
+
+    def test_returns_history(self, client: flask.testing.FlaskClient) -> None:
+        """履歴を返す"""
+        mock_item = {"store": "Store1"}
+        mock_history = [{"time": "2024-01-15 10:00:00", "price": 1000, "stock": 1}]
+
+        with (
+            patch(
+                "price_watch.history.get_item_history",
+                return_value=(mock_item, mock_history),
+            ),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+        ):
+            response = client.get("/price/api/items/key1/history")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "history" in data
+
+    def test_returns_404_for_missing_item(self, client: flask.testing.FlaskClient) -> None:
+        """アイテムがない場合は 404"""
+        with patch("price_watch.history.get_item_history", return_value=(None, [])):
+            response = client.get("/price/api/items/missing/history")
+
+        assert response.status_code == 404
+
+
+class TestGetItemEvents:
+    """get_item_events エンドポイントのテスト"""
+
+    def test_returns_events(self, client: flask.testing.FlaskClient) -> None:
+        """イベントを返す"""
+        mock_events = [
+            {
+                "id": 1,
+                "item_name": "Item1",
+                "store": "Store1",
+                "url": "http://example.com",
+                "thumb_url": None,
+                "event_type": "price_drop",
+                "price": 900,
+                "old_price": 1000,
+                "threshold_days": 30,
+                "created_at": "2024-01-15 10:00:00",
+            }
+        ]
+
+        with (
+            patch("price_watch.history.get_item_events", return_value=mock_events),
+            patch("price_watch.event.format_event_message", return_value="Message"),
+            patch("price_watch.event.format_event_title", return_value="Title"),
+        ):
+            response = client.get("/price/api/items/key1/events")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "events" in data
+
+    def test_returns_empty_for_no_events(self, client: flask.testing.FlaskClient) -> None:
+        """イベントがない場合は空リスト"""
+        with patch("price_watch.history.get_item_events", return_value=[]):
+            response = client.get("/price/api/items/key1/events")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["events"] == []
+
+    def test_respects_limit(self, client: flask.testing.FlaskClient) -> None:
+        """limit パラメータを尊重"""
+        with patch("price_watch.history.get_item_events", return_value=[]) as mock_get:
+            client.get("/price/api/items/key1/events?limit=25")
+
+        mock_get.assert_called_once_with("key1", 25)
+
+
+class TestGetEvents:
+    """get_events エンドポイントのテスト"""
+
+    def test_returns_events(self, client: flask.testing.FlaskClient) -> None:
+        """イベント一覧を返す"""
+        mock_events = [
+            {
+                "id": 1,
+                "item_name": "Item1",
+                "store": "Store1",
+                "url": "http://example.com",
+                "thumb_url": None,
+                "event_type": "price_drop",
+                "price": 900,
+                "old_price": 1000,
+                "threshold_days": 30,
+                "created_at": "2024-01-15 10:00:00",
+            }
+        ]
+
+        with (
+            patch("price_watch.event.get_recent_events", return_value=mock_events),
+            patch("price_watch.event.format_event_message", return_value="Message"),
+            patch("price_watch.event.format_event_title", return_value="Title"),
+        ):
+            response = client.get("/price/api/events")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "events" in data
+
+
+class TestTopPage:
+    """top_page エンドポイントのテスト"""
+
+    def test_returns_html(self, client: flask.testing.FlaskClient) -> None:
+        """HTML を返す"""
+        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+            response = client.get("/price/")
+
+        assert response.status_code == 200
+        assert response.content_type == "text/html; charset=utf-8"
+
+
+class TestMetricsPage:
+    """metrics_page エンドポイントのテスト"""
+
+    def test_returns_html(self, client: flask.testing.FlaskClient) -> None:
+        """HTML を返す"""
+        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+            response = client.get("/price/metrics")
+
+        assert response.status_code == 200
+        assert response.content_type == "text/html; charset=utf-8"
+
+
+class TestApiMetricsStatus:
+    """api_metrics_status エンドポイントのテスト"""
+
+    def test_returns_status(self, client: flask.testing.FlaskClient) -> None:
+        """ステータスを返す"""
+        mock_status = MagicMock()
+        mock_status.is_running = True
+        mock_status.session_id = 1
+        mock_status.started_at = None
+        mock_status.last_heartbeat_at = None
+        mock_status.uptime_sec = 100
+        mock_status.total_items = 10
+        mock_status.success_items = 8
+        mock_status.failed_items = 2
+
+        mock_db = MagicMock()
+        mock_db.get_current_session_status.return_value = mock_status
+
+        with patch("price_watch.webapi.page._get_metrics_db", return_value=mock_db):
+            response = client.get("/price/api/metrics/status")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["is_running"] is True
+
+    def test_returns_503_without_db(self, client: flask.testing.FlaskClient) -> None:
+        """DB がない場合は 503"""
+        with patch("price_watch.webapi.page._get_metrics_db", return_value=None):
+            response = client.get("/price/api/metrics/status")
+
+        assert response.status_code == 503
+
+
+class TestApiMetricsSessions:
+    """api_metrics_sessions エンドポイントのテスト"""
+
+    def test_returns_sessions(self, client: flask.testing.FlaskClient) -> None:
+        """セッション一覧を返す"""
+        mock_session = MagicMock()
+        mock_session.id = 1
+        mock_session.started_at.isoformat.return_value = "2024-01-15T10:00:00"
+        mock_session.ended_at = None
+        mock_session.duration_sec = 100
+        mock_session.total_items = 10
+        mock_session.success_items = 8
+        mock_session.failed_items = 2
+        mock_session.exit_reason = "normal"
+
+        mock_db = MagicMock()
+        mock_db.get_sessions.return_value = [mock_session]
+
+        with patch("price_watch.webapi.page._get_metrics_db", return_value=mock_db):
+            response = client.get("/price/api/metrics/sessions")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "sessions" in data
+
+
+class TestApiMetricsStores:
+    """api_metrics_stores エンドポイントのテスト"""
+
+    def test_returns_store_stats(self, client: flask.testing.FlaskClient) -> None:
+        """ストア統計を返す"""
+        mock_stat = MagicMock()
+        mock_stat.id = 1
+        mock_stat.session_id = 1
+        mock_stat.store_name = "Store1"
+        mock_stat.started_at.isoformat.return_value = "2024-01-15T10:00:00"
+        mock_stat.ended_at = None
+        mock_stat.duration_sec = 50
+        mock_stat.item_count = 5
+        mock_stat.success_count = 4
+        mock_stat.failed_count = 1
+
+        mock_db = MagicMock()
+        mock_db.get_store_stats.return_value = [mock_stat]
+
+        with patch("price_watch.webapi.page._get_metrics_db", return_value=mock_db):
+            response = client.get("/price/api/metrics/stores")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "store_stats" in data
+
+
+class TestApiMetricsHeatmap:
+    """api_metrics_heatmap エンドポイントのテスト"""
+
+    def test_returns_heatmap(self, client: flask.testing.FlaskClient) -> None:
+        """ヒートマップデータを返す"""
+        mock_cell = MagicMock()
+        mock_cell.date = "2024-01-15"
+        mock_cell.hour = 10
+        mock_cell.uptime_rate = 0.8
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = ["2024-01-15"]
+        mock_heatmap.hours = [10]
+        mock_heatmap.cells = [mock_cell]
+
+        mock_db = MagicMock()
+        mock_db.get_uptime_heatmap.return_value = mock_heatmap
+
+        with patch("price_watch.webapi.page._get_metrics_db", return_value=mock_db):
+            response = client.get("/price/api/metrics/heatmap")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "cells" in data
+
+
+class TestApiMetricsHeatmapSvg:
+    """api_metrics_heatmap_svg エンドポイントのテスト"""
+
+    def test_returns_svg(self, client: flask.testing.FlaskClient) -> None:
+        """SVG を返す"""
+        mock_cell = MagicMock()
+        mock_cell.date = "2024-01-15"
+        mock_cell.hour = 10
+        mock_cell.uptime_rate = 0.8
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = ["2024-01-15"]
+        mock_heatmap.hours = list(range(24))
+        mock_heatmap.cells = [mock_cell]
+
+        mock_db = MagicMock()
+        mock_db.get_uptime_heatmap.return_value = mock_heatmap
+
+        with patch("price_watch.webapi.page._get_metrics_db", return_value=mock_db):
+            response = client.get("/price/api/metrics/heatmap.svg")
+
+        assert response.status_code == 200
+        assert response.content_type == "image/svg+xml; charset=utf-8"
+
+
+class TestApiSysinfo:
+    """api_sysinfo エンドポイントのテスト"""
+
+    def test_returns_sysinfo(self, client: flask.testing.FlaskClient) -> None:
+        """システム情報を返す"""
+        response = client.get("/price/api/sysinfo")
+
+        assert response.status_code == 200
+        data = response.get_json()
+        assert "date" in data
+        assert "timezone" in data
+
+
+class TestItemDetailPage:
+    """item_detail_page エンドポイントのテスト"""
+
+    def test_returns_html(self, client: flask.testing.FlaskClient) -> None:
+        """HTML を返す"""
+        mock_items = [
+            {
+                "id": 1,
+                "name": "Item1",
+                "store": "Store1",
+                "item_key": "key1",
+                "url": "http://example.com",
+                "thumb_url": None,
+            }
+        ]
+
+        with (
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=None),
+            patch("price_watch.history.get_all_items", return_value=mock_items),
+            patch("price_watch.history.get_latest_price", return_value=None),
+        ):
+            response = client.get("/price/items/key1")
+
+        assert response.status_code == 200
+        assert response.content_type == "text/html; charset=utf-8"
+
+    def test_returns_404_for_missing_item(self, client: flask.testing.FlaskClient) -> None:
+        """アイテムがない場合は 404"""
+        with (
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch("price_watch.history.get_all_items", return_value=[]),
+        ):
+            response = client.get("/price/items/missing")
+
+        assert response.status_code == 404
+
+
+class TestOgpImage:
+    """ogp_image エンドポイントのテスト"""
+
+    def test_returns_404_for_missing_item(self, client: flask.testing.FlaskClient) -> None:
+        """アイテムがない場合は 404"""
+        mock_config = MagicMock()
+        mock_config.data.cache = pathlib.Path("/tmp/cache")
+        mock_config.data.thumb = pathlib.Path("/tmp/thumb")
+
+        with (
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch("price_watch.history.get_all_items", return_value=[]),
+        ):
+            response = client.get("/price/ogp/missing.png")
+
+        assert response.status_code == 404
+
+    def test_returns_500_without_config(self, client: flask.testing.FlaskClient) -> None:
+        """設定がない場合は 500"""
+        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+            response = client.get("/price/ogp/key1.png")
+
+        assert response.status_code == 500
+
+
+class TestGenerateHeatmapSvg:
+    """_generate_heatmap_svg 関数のテスト"""
+
+    def test_generates_svg(self) -> None:
+        """SVG を生成"""
+        mock_cell = MagicMock()
+        mock_cell.date = "2024-01-15"
+        mock_cell.hour = 10
+        mock_cell.uptime_rate = 0.8
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = ["2024-01-15"]
+        mock_heatmap.hours = list(range(24))
+        mock_heatmap.cells = [mock_cell]
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        assert b"<svg" in result
+        assert b"</svg>" in result
+
+    def test_handles_empty_data(self) -> None:
+        """空データを処理"""
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = []
+        mock_heatmap.hours = []
+        mock_heatmap.cells = []
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        assert b"No data" in result
+
+
+class TestRenderTopPageHtml:
+    """_render_top_page_html 関数のテスト"""
+
+    def test_returns_fallback_html(self) -> None:
+        """フォールバック HTML を返す"""
+        result = price_watch.webapi.page._render_top_page_html(None)
+
+        assert "<!DOCTYPE html>" in result
+        assert "Price Watch" in result
+
+    def test_uses_index_html(self, tmp_path: pathlib.Path) -> None:
+        """index.html を使用"""
+        index_file = tmp_path / "index.html"
+        index_file.write_text("<!DOCTYPE html><html><head></head><body></body></html>")
+
+        result = price_watch.webapi.page._render_top_page_html(tmp_path)
+
+        assert "og:title" in result
+
+
+class TestRenderOgpHtml:
+    """_render_ogp_html 関数のテスト"""
+
+    def test_generates_html_with_ogp_tags(self) -> None:
+        """OGP タグ付き HTML を生成"""
+        mock_store = MagicMock()
+        mock_store.effective_price = 1000
+        mock_store.store = "Store1"
+
+        result = price_watch.webapi.page._render_ogp_html(
+            item_key="key1",
+            item_name="Test Item",
+            best_store=mock_store,
+            ogp_image_url="http://example.com/ogp.png",
+            ogp_image_square_url="http://example.com/ogp_square.png",
+            page_url="http://example.com/items/key1",
+            static_dir=None,
+            is_facebook=False,
+        )
+
+        assert "og:title" in result
+        assert "Test Item" in result
+        assert "Price Watch" in result
+
+
+class TestBuildStoreEntry:
+    """_build_store_entry 関数のテスト"""
+
+    def test_builds_entry(self) -> None:
+        """ストアエントリを構築"""
+        item = {
+            "item_key": "key1",
+            "store": "Store1",
+            "url": "http://example.com",
+        }
+        latest = {"price": 1000, "stock": 1, "time": "2024-01-15 10:00:00"}
+        stats = {"lowest_price": 900, "highest_price": 1100}
+        history = [{"time": "2024-01-15 10:00:00", "price": 1000, "stock": 1}]
+
+        result = price_watch.webapi.page._build_store_entry(item, latest, stats, history, 10.0)
+
+        assert result.item_key == "key1"
+        assert result.store == "Store1"
+        assert result.current_price == 1000
+        assert result.effective_price == 900
+
+
+class TestBuildStoreEntryWithoutHistory:
+    """_build_store_entry_without_history 関数のテスト"""
+
+    def test_builds_entry(self) -> None:
+        """履歴なしストアエントリを構築"""
+        item = {
+            "item_key": "key1",
+            "store": "Store1",
+            "url": "http://example.com",
+        }
+
+        result = price_watch.webapi.page._build_store_entry_without_history(item, 10.0)
+
+        assert result.item_key == "key1"
+        assert result.store == "Store1"
+        assert result.current_price is None
+        assert result.history == []
+
+
+class TestProcessItem:
+    """_process_item 関数のテスト"""
+
+    def test_processes_item_with_history(self) -> None:
+        """履歴ありアイテムを処理"""
+        item = {
+            "id": 1,
+            "item_key": "key1",
+            "store": "Store1",
+            "url": "http://example.com",
+            "thumb_url": "http://example.com/thumb.png",
+        }
+
+        with (
+            patch(
+                "price_watch.history.get_latest_price",
+                return_value={"price": 1000, "stock": 1, "time": "2024-01-15"},
+            ),
+            patch(
+                "price_watch.history.get_item_stats",
+                return_value={"lowest_price": 900, "highest_price": 1100},
+            ),
+            patch(
+                "price_watch.history.get_item_history",
+                return_value=(None, []),
+            ),
+        ):
+            result = price_watch.webapi.page._process_item(item, 30, None)
+
+        assert result is not None
+        assert result["store_entry"].store == "Store1"
+
+    def test_handles_item_without_id(self) -> None:
+        """id のないアイテムを処理"""
+        item = {
+            "store": "Store1",
+            "url": "http://example.com",
+            "thumb_url": None,
+        }
+
+        result = price_watch.webapi.page._process_item(item, 30, None)
+
+        assert result is not None
+        assert result["store_entry"].current_price is None
+
+
+class TestBuildResultItem:
+    """_build_result_item 関数のテスト"""
+
+    def test_builds_item(self) -> None:
+        """結果アイテムを構築"""
+        mock_store = MagicMock(spec=[])
+        mock_store.item_key = "key1"
+        mock_store.store = "Store1"
+        mock_store.url = "http://example.com"
+        mock_store.current_price = 1000
+        mock_store.effective_price = 900
+        mock_store.point_rate = 10.0
+        mock_store.lowest_price = 800
+        mock_store.highest_price = 1200
+        mock_store.stock = 1
+        mock_store.last_updated = "2024-01-15 10:00:00"
+        mock_store.history = []
+        mock_store.product_url = None
+        mock_store.search_keyword = None
+
+        store_data_list = [{"store_entry": mock_store, "thumb_url": "http://example.com/thumb.png"}]
+
+        result = price_watch.webapi.page._build_result_item("Test Item", store_data_list)
+
+        assert result.name == "Test Item"
+        assert result.best_store == "Store1"
+        assert result.thumb_url == "http://example.com/thumb.png"

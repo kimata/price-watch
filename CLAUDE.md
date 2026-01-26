@@ -131,6 +131,18 @@ src/
     │   ├── webui.py            # メトリクス Web サーバー（price-watch-webui）
     │   └── healthz.py          # Liveness チェック（price-watch-healthz）
     │
+    ├── app_context.py          # アプリケーションコンテキスト（ファサード）
+    ├── processor.py            # アイテム処理（共通処理抽出）
+    ├── exceptions.py           # 例外階層
+    ├── models.py               # 型安全なデータモデル（dataclass）
+    │
+    ├── managers/               # Manager パターンによる責務分離
+    │   ├── __init__.py
+    │   ├── config_manager.py   # 設定管理（ホットリロード対応）
+    │   ├── browser_manager.py  # WebDriver ライフサイクル
+    │   ├── history_manager.py  # 履歴 DB 管理
+    │   └── metrics_manager.py  # メトリクス統計
+    │
     ├── config.py               # 型付き設定クラス（dataclass）
     ├── const.py                # 定数
     │
@@ -142,7 +154,8 @@ src/
     │   └── paapi_rate_limiter.py # PA-API レート制限
     │
     ├── store/                  # ストア別価格取得（スクレイピング）
-    │   └── scrape.py           # スクレイピングによる価格チェック
+    │   ├── scrape.py           # スクレイピングによる価格チェック
+    │   └── mercari.py          # メルカリ検索
     │
     ├── captcha.py              # CAPTCHA 処理（reCAPTCHA 音声認識）
     ├── event.py                # イベント検出・記録（価格変動、在庫復活等）
@@ -164,42 +177,117 @@ tests/
 
 ### コアコンポーネント
 
-#### AppRunner (`cli/app.py`)
+#### PriceWatchApp (`app_context.py`)
 
-アプリケーション全体のライフサイクルを管理するクラス。シグナルハンドラ、WebUI サーバー、メイン監視ループを統合します。
+全ての Manager を統合し、アプリケーションのライフサイクルを管理するファサードクラス。
 
 ```python
-runner = AppRunner(config_file, target_file, port, debug_mode=debug_mode)
-runner.setup_signal_handlers()
-runner.start_webui_server()
-runner.execute()
+# 設定ファイルから PriceWatchApp を生成
+app = PriceWatchApp.create(
+    config_file=config_file,
+    target_file=target_file,
+    port=port,
+    debug_mode=debug_mode,
+)
+
+# 初期化・実行
+app.initialize()
+app.setup_signal_handlers()
+app.start_webui_server()
+# ... 処理 ...
+app.shutdown()
 ```
+
+#### AppRunner (`cli/app.py`)
+
+PriceWatchApp と ItemProcessor を組み合わせてメインループを制御するオーケストレーター。
+
+```python
+runner = AppRunner(app=app)
+success = runner.execute()
+```
+
+#### ItemProcessor (`processor.py`)
+
+各チェック方法（スクレイピング、PA-API、メルカリ）の共通処理を提供。
+
+```python
+processor = ItemProcessor(app=app, loop=0)
+processor.process_all(item_list)
+```
+
+#### Manager クラス
+
+| Manager        | 責務                                                       |
+| -------------- | ---------------------------------------------------------- |
+| ConfigManager  | 設定・ターゲットファイルの読み込み、ホットリロード         |
+| BrowserManager | WebDriver のライフサイクル管理（遅延初期化、再作成、終了） |
+| HistoryManager | 価格履歴 DB の操作（DI 対応ラッパー）                      |
+| MetricsManager | 巡回セッションのメトリクス記録                             |
 
 #### 実行フロー
 
 ```
 price-watch (cli/app.py)
-├── initialize() → AppConfig 読み込み、履歴 DB 初期化
-├── start_webui_server() → Flask サーバー起動
-├── create_driver() → Selenium WebDriver 作成
-├── execute() → メイン監視ループ
-│   ├── _load_item_list() → target.yaml からアイテム読み込み
-│   ├── _do_work() → 各アイテムの価格チェック
-│   │   ├── scrape.check() → スクレイピング
-│   │   └── amazon.paapi.check_item_list() → PA-API
-│   ├── _process_data() → 価格変動検出・履歴保存
-│   │   └── notify.info() → Slack 通知
-│   └── _sleep_until() → 次回チェックまで待機
-└── cleanup() → 終了処理
+├── PriceWatchApp.create() → アプリケーションコンテキスト作成
+│   ├── ConfigManager → 設定読み込み
+│   ├── HistoryManager → 履歴 DB 管理
+│   ├── BrowserManager → WebDriver 管理
+│   └── MetricsManager → メトリクス管理
+├── app.initialize() → 各 Manager を初期化
+├── app.setup_signal_handlers() → シグナルハンドラ設定
+├── app.start_webui_server() → Flask サーバー起動
+├── AppRunner.execute() → メイン監視ループ
+│   └── ItemProcessor.process_all() → 全アイテム処理
+│       ├── process_scrape_items() → スクレイピング
+│       ├── process_amazon_items() → PA-API
+│       └── process_mercari_items() → メルカリ検索
+└── app.shutdown() → 終了処理
 ```
 
 ### データモデル
+
+#### exceptions.py
+
+```python
+# 例外階層
+PriceWatchError     # 基底例外
+├── ConfigError     # 設定エラー
+├── ScrapeError     # スクレイピングエラー
+│   ├── CrawlError  # クロール処理エラー
+│   └── SessionError # Selenium セッションエラー
+├── PaapiError      # Amazon PA-API エラー
+├── NotificationError # 通知送信エラー
+├── HistoryError    # 履歴 DB エラー
+└── BrowserError    # ブラウザエラー
+```
+
+#### models.py
+
+```python
+# Enum
+CrawlStatus: SUCCESS, FAILURE
+StockStatus: IN_STOCK, OUT_OF_STOCK, UNKNOWN
+
+# dataclass
+PriceResult      # 価格チェック結果（price, stock, crawl_status, thumb_url）
+CheckedItem      # チェック済みアイテム（name, store, url, price, stock 等）
+PriceRecord      # 価格履歴レコード
+ItemRecord       # アイテムレコード
+ItemStats        # アイテム統計情報
+EventRecord      # イベントレコード
+ProcessResult    # 処理結果集計
+SessionStats     # セッション統計
+StoreStats       # ストア別統計
+MercariSearchResult    # メルカリ検索結果
+MercariSearchCondition # メルカリ検索条件
+```
 
 #### target.py
 
 ```python
 # Enum
-CheckMethod: SCRAPE, AMAZON_PAAPI
+CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH
 ActionType: CLICK, INPUT, SIXDIGIT, RECAPTCHA
 
 # Protocol

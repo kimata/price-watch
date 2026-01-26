@@ -1,0 +1,602 @@
+#!/usr/bin/env python3
+# ruff: noqa: S101
+"""
+processor.py のユニットテスト
+
+アイテム処理の共通ロジックを検証します。
+"""
+
+from __future__ import annotations
+
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import selenium.common.exceptions
+
+import price_watch.processor
+
+
+class TestItemProcessorProperties:
+    """ItemProcessor のプロパティテスト"""
+
+    def test_config_returns_app_config(self) -> None:
+        """config は app の config を返す"""
+        mock_app = MagicMock()
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        assert processor.config is mock_config
+
+
+class TestProcessAll:
+    """process_all メソッドのテスト"""
+
+    def test_calls_all_processors(self) -> None:
+        """全プロセッサーを呼び出す"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        with (
+            patch.object(processor, "process_scrape_items") as mock_scrape,
+            patch.object(processor, "process_amazon_items") as mock_amazon,
+            patch.object(processor, "process_mercari_items") as mock_mercari,
+        ):
+            processor.process_all([])
+
+        mock_scrape.assert_called_once()
+        mock_amazon.assert_called_once()
+        mock_mercari.assert_called_once()
+
+
+class TestProcessScrapeItems:
+    """process_scrape_items メソッドのテスト"""
+
+    def test_returns_early_if_no_driver(self) -> None:
+        """driver がない場合は早期リターン"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor.process_scrape_items([])
+        # No exception raised
+
+    def test_filters_scrape_items(self) -> None:
+        """スクレイピング対象をフィルタリング"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.should_terminate = False
+        mock_app.debug_mode = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            {"name": "Item1", "check_method": "scrape", "store": "store1"},
+            {"name": "Item2", "check_method": "my_lib.store.amazon.api", "store": "amazon"},
+        ]
+
+        with (
+            patch.object(processor, "_process_scrape_item", return_value=True),
+            patch.object(mock_app, "wait_for_terminate", return_value=False),
+        ):
+            processor.process_scrape_items(items)
+
+        # スクレイピングアイテムのみ処理される
+
+    def test_returns_on_terminate(self) -> None:
+        """終了フラグで早期リターン"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.should_terminate = True
+        mock_app.debug_mode = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [{"name": "Item1", "check_method": "scrape", "store": "store1"}]
+
+        processor.process_scrape_items(items)
+        # Early return, no processing
+
+    def test_debug_mode_selects_one_per_store(self) -> None:
+        """デバッグモードではストアごとに1アイテム"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.should_terminate = False
+        mock_app.debug_mode = True
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            {"name": "Item1", "check_method": "scrape", "store": "store1"},
+            {"name": "Item2", "check_method": "scrape", "store": "store1"},
+            {"name": "Item3", "check_method": "scrape", "store": "store2"},
+        ]
+
+        processed_items: list[dict[str, Any]] = []
+
+        def track_process(item: dict[str, Any], store_name: str) -> bool:
+            del store_name  # Unused in mock
+            processed_items.append(item)
+            return True
+
+        with (
+            patch.object(processor, "_process_scrape_item", side_effect=track_process),
+            patch.object(mock_app, "wait_for_terminate", return_value=False),
+        ):
+            processor.process_scrape_items(items)
+
+        # 2ストアから1アイテムずつ
+        assert len(processed_items) == 2
+
+
+class TestProcessScrapeItem:
+    """_process_scrape_item メソッドのテスト"""
+
+    def test_returns_false_if_no_driver(self) -> None:
+        """driver がない場合は False"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        result = processor._process_scrape_item({}, "store")
+
+        assert result is False
+
+    def test_successful_scrape(self) -> None:
+        """成功時の処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com", "crawl_success": True}
+
+        with (
+            patch("price_watch.store.scrape.check"),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_scrape_item(item, "store")
+
+        assert result is True
+
+    def test_handles_invalid_session_exception(self) -> None:
+        """InvalidSessionIdException を処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.browser_manager.recreate_driver.return_value = True
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com"}
+
+        with (
+            patch(
+                "price_watch.store.scrape.check",
+                side_effect=selenium.common.exceptions.InvalidSessionIdException(),
+            ),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_scrape_item(item, "store")
+
+        assert result is False
+        mock_app.browser_manager.recreate_driver.assert_called_once()
+
+    def test_handles_exception(self) -> None:
+        """一般的な例外を処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com"}
+
+        with (
+            patch("price_watch.store.scrape.check", side_effect=Exception("Error")),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_scrape_item(item, "store")
+
+        assert result is False
+
+
+class TestProcessAmazonItems:
+    """process_amazon_items メソッドのテスト"""
+
+    def test_returns_early_if_no_items(self) -> None:
+        """アイテムがない場合は早期リターン"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor.process_amazon_items([])
+        # No exception raised
+
+    def test_processes_amazon_items(self) -> None:
+        """Amazon アイテムを処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            {"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"},
+            {"name": "Item2", "check_method": "scrape", "url": "https://example.com"},
+        ]
+
+        with (
+            patch(
+                "price_watch.amazon.paapi.check_item_list",
+                return_value=[{"name": "Item1", "stock": 1, "url": "https://amazon.com/B001"}],
+            ),
+            patch("price_watch.history.insert", return_value=1),
+            patch("price_watch.history.last", return_value=None),
+        ):
+            processor.process_amazon_items(items)
+
+        # 1つ以上のアイテムを処理した場合は update_liveness が呼ばれる
+        mock_app.update_liveness.assert_called_once()
+
+    def test_debug_mode_limits_to_one(self) -> None:
+        """デバッグモードでは1アイテムのみ"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = True
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            {"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"},
+            {"name": "Item2", "check_method": "my_lib.store.amazon.api", "asin": "B002"},
+        ]
+
+        received_items: list[dict[str, Any]] = []
+
+        def check_mock(*args: object) -> list[dict[str, Any]]:
+            # args[0] is config, args[1] is item_list
+            item_list = args[1]
+            if isinstance(item_list, list):
+                received_items.extend(item_list)
+            return []
+
+        with (
+            patch("price_watch.amazon.paapi.check_item_list", side_effect=check_mock),
+            patch("price_watch.history.insert", return_value=1),
+            patch("price_watch.history.last", return_value=None),
+        ):
+            processor.process_amazon_items(items)
+
+        # デバッグモードでは1アイテムのリストで呼ばれる
+        assert len(received_items) == 1
+
+    def test_handles_exception(self) -> None:
+        """例外を処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [{"name": "Item1", "check_method": "my_lib.store.amazon.api", "asin": "B001"}]
+
+        with patch("price_watch.amazon.paapi.check_item_list", side_effect=Exception("Error")):
+            processor.process_amazon_items(items)
+        # No exception raised
+
+
+class TestProcessMercariItems:
+    """process_mercari_items メソッドのテスト"""
+
+    def test_returns_early_if_no_driver(self) -> None:
+        """driver がない場合は早期リターン"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor.process_mercari_items([])
+        # No exception raised
+
+    def test_returns_early_if_no_items(self) -> None:
+        """アイテムがない場合は早期リターン"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor.process_mercari_items([])
+        # No exception raised
+
+
+class TestProcessMercariItem:
+    """_process_mercari_item メソッドのテスト"""
+
+    def test_returns_false_if_no_driver(self) -> None:
+        """driver がない場合は False"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        result = processor._process_mercari_item({}, "store")
+
+        assert result is False
+
+    def test_successful_check(self) -> None:
+        """成功時の処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "search_keyword": "test", "crawl_success": True}
+
+        with (
+            patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
+            patch("price_watch.store.mercari.check"),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_mercari_item(item, "mercari.com")
+
+        assert result is True
+
+    def test_handles_invalid_session_exception(self) -> None:
+        """InvalidSessionIdException を処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.browser_manager.recreate_driver.return_value = True
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "search_keyword": "test"}
+
+        with (
+            patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
+            patch(
+                "price_watch.store.mercari.check",
+                side_effect=selenium.common.exceptions.InvalidSessionIdException(),
+            ),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_mercari_item(item, "mercari.com")
+
+        assert result is False
+        mock_app.browser_manager.recreate_driver.assert_called_once()
+
+
+class TestProcessData:
+    """_process_data メソッドのテスト"""
+
+    def test_inserts_history(self) -> None:
+        """履歴を挿入"""
+        mock_app = MagicMock()
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com"}
+
+        with (
+            patch("price_watch.history.insert", return_value=1),
+            patch("price_watch.history.last", return_value=None),
+        ):
+            result = processor._process_data(item)
+
+        assert result is True
+
+    def test_handles_existing_item(self) -> None:
+        """既存アイテムの更新"""
+        mock_app = MagicMock()
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com", "price": 1000}
+        last = {"price": 900, "stock": 1}
+
+        with (
+            patch("price_watch.history.insert", return_value=1),
+            patch("price_watch.history.last", return_value=last),
+        ):
+            result = processor._process_data(item)
+
+        assert result is True
+        assert item.get("old_price") == 900
+
+
+class TestCheckAndNotifyEvents:
+    """_check_and_notify_events メソッドのテスト"""
+
+    def test_checks_back_in_stock(self) -> None:
+        """在庫復活を判定"""
+        mock_app = MagicMock()
+        mock_config = MagicMock()
+        mock_config.check.judge = MagicMock()
+        mock_config.check.judge.ignore.hour = 24
+        mock_config.check.judge.windows = []
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "price": 1000, "stock": 1}
+        last = {"stock": 0}
+
+        mock_result = MagicMock()
+        mock_result.should_notify = True
+        mock_result.price = None
+
+        with (
+            patch("price_watch.event.check_back_in_stock", return_value=mock_result),
+            patch("price_watch.event.check_lowest_price", return_value=None),
+            patch.object(processor, "_notify_and_record_event"),
+        ):
+            processor._check_and_notify_events(item, last, 1, crawl_status=1)
+
+
+class TestNotifyAndRecordEvent:
+    """_notify_and_record_event メソッドのテスト"""
+
+    def test_notifies_and_records(self) -> None:
+        """通知して記録"""
+        mock_app = MagicMock()
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        mock_result = MagicMock()
+        mock_result.event_type.value = "PRICE_DROP"
+        item = {"name": "Test"}
+
+        with (
+            patch("price_watch.notify.event", return_value="message_id"),
+            patch("price_watch.event.record_event"),
+        ):
+            processor._notify_and_record_event(mock_result, item, 1)
+
+
+class TestHandleCrawlFailure:
+    """_handle_crawl_failure メソッドのテスト"""
+
+    def test_increments_error_count(self) -> None:
+        """エラーカウントをインクリメント"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com"}
+
+        processor._handle_crawl_failure(item, "store")
+
+        assert processor.error_count["https://example.com"] == 1
+
+
+class TestHandleException:
+    """_handle_exception メソッドのテスト"""
+
+    def test_increments_error_count(self) -> None:
+        """エラーカウントをインクリメント"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = {"name": "Test", "url": "https://example.com"}
+
+        with patch.object(processor, "_process_data"):
+            processor._handle_exception(item, "store")
+
+        assert processor.error_count["https://example.com"] == 1
+
+
+class TestMarkDebugFailure:
+    """_mark_debug_failure メソッドのテスト"""
+
+    def test_records_failure_in_debug_mode(self) -> None:
+        """デバッグモードで失敗を記録"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = True
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor._mark_debug_failure("store", "test reason")
+
+        assert processor.debug_check_results["store"] is False
+
+    def test_does_nothing_in_normal_mode(self) -> None:
+        """通常モードでは何もしない"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor._mark_debug_failure("store", "test reason")
+
+        assert "store" not in processor.debug_check_results
+
+
+class TestGroupByStore:
+    """_group_by_store メソッドのテスト"""
+
+    def test_groups_items(self) -> None:
+        """アイテムをグループ化"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            {"name": "Item1", "store": "store1"},
+            {"name": "Item2", "store": "store2"},
+            {"name": "Item3", "store": "store1"},
+        ]
+
+        result = processor._group_by_store(items, "default")
+
+        assert len(result["store1"]) == 2
+        assert len(result["store2"]) == 1
+
+    def test_uses_default_store(self) -> None:
+        """デフォルトストアを使用"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [{"name": "Item1"}]
+
+        result = processor._group_by_store(items, "default")
+
+        assert "default" in result
+
+
+class TestSelectOneItemPerStore:
+    """_select_one_item_per_store メソッドのテスト"""
+
+    def test_selects_one_per_store(self) -> None:
+        """ストアごとに1アイテム選択"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            {"name": "Item1", "store": "store1"},
+            {"name": "Item2", "store": "store1"},
+            {"name": "Item3", "store": "store2"},
+        ]
+
+        result = processor._select_one_item_per_store(items)
+
+        assert len(result) == 2
+        stores = {item["store"] for item in result}
+        assert stores == {"store1", "store2"}
+
+
+class TestCheckDebugResults:
+    """check_debug_results メソッドのテスト"""
+
+    def test_returns_false_if_no_results(self) -> None:
+        """結果がない場合は False"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        result = processor.check_debug_results()
+
+        assert result is False
+
+    def test_returns_true_if_all_success(self) -> None:
+        """全成功時は True"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+        processor.debug_check_results = {"store1": True, "store2": True}
+
+        result = processor.check_debug_results()
+
+        assert result is True
+
+    def test_returns_false_if_any_failure(self) -> None:
+        """失敗があれば False"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+        processor.debug_check_results = {"store1": True, "store2": False}
+
+        result = processor.check_debug_results()
+
+        assert result is False
