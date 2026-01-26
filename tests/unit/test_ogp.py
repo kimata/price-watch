@@ -36,8 +36,8 @@ class TestOgpConstants:
 
     def test_graph_dimensions(self):
         """グラフ領域のサイズ"""
-        assert GRAPH_WIDTH == 700
-        assert GRAPH_HEIGHT == 380
+        assert GRAPH_WIDTH == 850
+        assert GRAPH_HEIGHT == 450
         # グラフ幅は OGP 幅より小さいこと
         assert GRAPH_WIDTH < OGP_WIDTH
 
