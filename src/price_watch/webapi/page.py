@@ -438,9 +438,11 @@ def get_items(
 
         return flask.jsonify(response.model_dump())
 
-    except Exception:
+    except Exception as e:
         logging.exception("Error getting items")
-        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        # デバッグ用にエラー詳細を含める（CI でエラー原因を特定するため）
+        error_detail = f"Internal server error: {type(e).__name__}: {e}"
+        error = price_watch.webapi.schemas.ErrorResponse(error=error_detail)
         return flask.jsonify(error.model_dump()), 500
 
 

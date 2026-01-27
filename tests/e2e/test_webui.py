@@ -91,7 +91,8 @@ class TestWebuiE2E:
         """アイテム一覧 API のテスト"""
         response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items")
 
-        assert response.ok
+        # エラー時はレスポンスボディを表示（デバッグ用）
+        assert response.ok, f"API error: {response.status} - {response.text()}"
         data = response.json()
         assert "items" in data
 
@@ -99,7 +100,8 @@ class TestWebuiE2E:
         """アイテム一覧 API（期間指定）のテスト"""
         response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items?days=30")
 
-        assert response.ok
+        # エラー時はレスポンスボディを表示（デバッグ用）
+        assert response.ok, f"API error: {response.status} - {response.text()}"
         data = response.json()
         assert "items" in data
 
@@ -128,7 +130,8 @@ class TestWebuiE2E:
         """API レスポンス構造のテスト（複数ストア対応）"""
         response = page.request.get(f"http://{host}:{port}{URL_PREFIX}/api/items")
 
-        assert response.ok
+        # エラー時はレスポンスボディを表示（デバッグ用）
+        assert response.ok, f"API error: {response.status} - {response.text()}"
         data = response.json()
         assert "items" in data
         assert "store_definitions" in data
