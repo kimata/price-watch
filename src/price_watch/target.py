@@ -252,13 +252,21 @@ class ItemDefinition:
             return [cls.parse(data)]
 
         # 新書式: store がリスト
+        # アイテムレベルで指定可能なキー（ストアエントリで未指定時のフォールバック）
+        _ITEM_LEVEL_KEYS = ["price", "cond"]
+
         result: list[ItemDefinition] = []
         for store_entry in store_data:
             # ストアエントリの属性をアイテムデータにマージ
             item_data: dict[str, Any] = {"name": data["name"]}
             item_data["store"] = store_entry["name"]
 
-            # ストアエントリからストア固有属性を取得
+            # アイテムレベルのフォールバック値を設定
+            for key in _ITEM_LEVEL_KEYS:
+                if key in data:
+                    item_data[key] = data[key]
+
+            # ストアエントリからストア固有属性を取得（アイテムレベルを上書き）
             _STORE_ENTRY_KEYS = [
                 "url",
                 "asin",

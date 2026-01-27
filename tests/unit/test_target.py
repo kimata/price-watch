@@ -358,6 +358,67 @@ class TestItemDefinition:
         assert item.jan_code == "4901234567890"
         assert item.exclude_keyword == "ジャンク"
 
+    def test_parse_list_item_level_price(self):
+        """新書式: アイテムレベルの price が全ストアにフォールバック"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {"name": "mercari.com"},
+                {"name": "yahoo.co.jp"},
+            ],
+            "price": [5000, 10000],
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert len(items) == 2
+        assert items[0].price_range == [5000, 10000]
+        assert items[1].price_range == [5000, 10000]
+
+    def test_parse_list_item_level_price_overridden_by_store(self):
+        """新書式: ストアエントリの price がアイテムレベルを上書き"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {"name": "mercari.com", "price": [3000, 8000]},
+                {"name": "yahoo.co.jp"},
+            ],
+            "price": [5000, 10000],
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert items[0].price_range == [3000, 8000]
+        assert items[1].price_range == [5000, 10000]
+
+    def test_parse_list_item_level_cond(self):
+        """新書式: アイテムレベルの cond が全ストアにフォールバック"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {"name": "mercari.com"},
+                {"name": "yahoo.co.jp"},
+            ],
+            "cond": "NEW|LIKE_NEW",
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert items[0].cond == "NEW|LIKE_NEW"
+        assert items[1].cond == "NEW|LIKE_NEW"
+
+    def test_parse_list_item_level_cond_overridden_by_store(self):
+        """新書式: ストアエントリの cond がアイテムレベルを上書き"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {"name": "mercari.com", "cond": "NEW"},
+                {"name": "yahoo.co.jp"},
+            ],
+            "cond": "NEW|LIKE_NEW",
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert items[0].cond == "NEW"
+        assert items[1].cond == "NEW|LIKE_NEW"
+
     def test_parse_list_old_format(self):
         """旧書式: store が文字列の場合は後方互換"""
         data = {
