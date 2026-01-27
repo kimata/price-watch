@@ -19,6 +19,7 @@ import signal
 import sys
 
 import price_watch.config
+import price_watch.const
 import price_watch.webapi.server
 
 
@@ -56,7 +57,7 @@ class WebUIRunner:
 
         # 設定ファイルのデータパスを確認
         data_path = self.config.data.price
-        db_file = data_path / "price_history.db"
+        db_file = data_path / price_watch.const.DB_FILE
         logging.info("Data path: %s (absolute: %s)", data_path, data_path.resolve())
         logging.info("DB file exists: %s", db_file.exists())
 

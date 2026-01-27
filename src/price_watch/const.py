@@ -9,7 +9,7 @@ import pathlib
 DATA_PATH = pathlib.Path(__file__).parent.parent.parent / "data"
 DUMP_PATH = DATA_PATH / "debug"
 THUMB_PATH = DATA_PATH / "thumb"
-DB_FILE = "price_history.db"
+DB_FILE = "price.db"
 
 # 監視間隔
 SLEEP_UNIT = 60

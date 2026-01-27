@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import time_machine
 
+import price_watch.const
 from price_watch.managers.history import (
     EventRepository,
     HistoryDBConnection,
@@ -86,7 +87,7 @@ class TestHistoryDBConnection:
     def test_create_from_data_path(self, temp_data_dir: pathlib.Path) -> None:
         """データパスから作成できる"""
         db = HistoryDBConnection.create(temp_data_dir)
-        assert db.db_path == temp_data_dir / "price_history.db"
+        assert db.db_path == temp_data_dir / price_watch.const.DB_FILE
 
     def test_initialize_creates_database(self, temp_data_dir: pathlib.Path) -> None:
         """initialize でデータベースが作成される"""
