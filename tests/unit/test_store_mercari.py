@@ -66,15 +66,21 @@ class MockSearchResult:
 class TestParseCond:
     """_parse_cond 関数のテスト"""
 
-    def test_none_returns_none(self):
-        """None は None を返す"""
+    def test_none_returns_default(self):
+        """None はデフォルト（NEW, LIKE_NEW）を返す"""
         result = price_watch.store.mercari._parse_cond(None)
-        assert result is None
+        assert result is not None
+        assert len(result) == 2
+        assert result[0].name == "NEW"
+        assert result[1].name == "LIKE_NEW"
 
-    def test_empty_string_returns_none(self):
-        """空文字列は None を返す"""
+    def test_empty_string_returns_default(self):
+        """空文字列はデフォルト（NEW, LIKE_NEW）を返す"""
         result = price_watch.store.mercari._parse_cond("")
-        assert result is None
+        assert result is not None
+        assert len(result) == 2
+        assert result[0].name == "NEW"
+        assert result[1].name == "LIKE_NEW"
 
     def test_single_condition(self):
         """単一の状態"""

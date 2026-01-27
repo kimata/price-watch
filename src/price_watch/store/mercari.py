@@ -35,7 +35,10 @@ def _parse_cond(cond_str: str | None) -> list[my_lib.store.mercari.search.ItemCo
         ItemCondition のリスト、または None
     """
     if not cond_str:
-        return None
+        return [
+            my_lib.store.mercari.search.ItemCondition.NEW,
+            my_lib.store.mercari.search.ItemCondition.LIKE_NEW,
+        ]
 
     cond_map = {
         "NEW": my_lib.store.mercari.search.ItemCondition.NEW,
