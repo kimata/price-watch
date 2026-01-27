@@ -311,6 +311,23 @@ TargetConfig     # ターゲット設定（stores, items）
 ```yaml
 check:
     interval_sec: 1800 # 監視周期（秒）
+    drop: # 価格下落イベント判定
+        ignore:
+            hour: 6 # 直近 N 時間以内の重複イベントを無視
+        windows: # 判定ウィンドウ（days 昇順にソートされる）
+            - days: 7
+              price:
+                  rate: 10 # N% 以上の下落で発火
+                  value: 1000 # N 円以上の下落で発火（通貨換算後）
+            - days: 30
+              price:
+                  rate: 5
+    lowest: # 最安値更新イベント判定（省略時は即発火）
+        rate: 1 # 直近の最安値イベントから N% 以上の下落で発火
+        value: 100 # N 円以上の下落で発火（通貨換算後）
+    currency: # 通貨換算レート（value 判定に使用）
+        - label: ドル # ストアの price_unit に対応
+          rate: 150 # 1単位あたりの円換算レート
 
 slack:
     bot_token: "xoxb-..."
