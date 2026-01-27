@@ -667,3 +667,299 @@ class TestCheckDebugResults:
         result = processor.check_debug_results()
 
         assert result is False
+
+
+class TestProcessYahooItems:
+    """process_yahoo_items メソッドのテスト"""
+
+    def test_returns_early_if_no_items(self) -> None:
+        """アイテムがない場合は早期リターン"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        processor.process_yahoo_items([])
+        # No exception raised
+
+    def test_processes_yahoo_items(self) -> None:
+        """Yahoo アイテムを処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_app.should_terminate = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
+        mock_app.wait_for_terminate.return_value = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            _create_resolved_item(name="Item1", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo"),
+            _create_resolved_item(name="Item2", check_method=CheckMethod.SCRAPE, url="https://example.com"),
+        ]
+
+        mock_checked = price_watch.models.CheckedItem(
+            name="Item1",
+            store="Yahoo",
+            url="https://store.yahoo.co.jp/item",
+            stock=price_watch.models.StockStatus.IN_STOCK,
+            crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+            search_keyword="Item1",
+        )
+
+        with (
+            patch("price_watch.store.yahoo.check", return_value=mock_checked),
+            patch("price_watch.store.yahoo.generate_item_key", return_value="yahoo_key"),
+        ):
+            processor.process_yahoo_items(items)
+
+        # 成功した場合は update_liveness が呼ばれる
+        mock_app.update_liveness.assert_called_once()
+
+    def test_debug_mode_limits_to_one(self) -> None:
+        """デバッグモードでは1アイテムのみ"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = True
+        mock_app.should_terminate = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
+        mock_app.wait_for_terminate.return_value = False
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [
+            _create_resolved_item(name="Item1", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo"),
+            _create_resolved_item(name="Item2", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo"),
+        ]
+
+        check_count = 0
+
+        def check_mock(*_args: object) -> price_watch.models.CheckedItem:
+            nonlocal check_count
+            check_count += 1
+            return price_watch.models.CheckedItem(
+                name="Item1",
+                store="Yahoo",
+                url="https://store.yahoo.co.jp/item",
+                stock=price_watch.models.StockStatus.IN_STOCK,
+                crawl_status=price_watch.models.CrawlStatus.SUCCESS,
+            )
+
+        with (
+            patch("price_watch.store.yahoo.check", side_effect=check_mock),
+            patch("price_watch.store.yahoo.generate_item_key", return_value="yahoo_key"),
+        ):
+            processor.process_yahoo_items(items)
+
+        # デバッグモードでは1アイテムのみ
+        assert check_count == 1
+
+    def test_handles_exception(self) -> None:
+        """例外を処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_app.should_terminate = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        mock_app.wait_for_terminate.return_value = False
+        # history_manager のモックを適切に設定
+        mock_app.history_manager.insert.return_value = 1
+        mock_app.history_manager.get_no_data_duration_hours.return_value = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [_create_resolved_item(name="Item1", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo")]
+
+        with (
+            patch("price_watch.store.yahoo.check", side_effect=Exception("Error")),
+            patch("price_watch.store.yahoo.generate_item_key", return_value="yahoo_key"),
+        ):
+            processor.process_yahoo_items(items)
+        # No exception raised
+
+    def test_returns_on_terminate(self) -> None:
+        """終了フラグで早期リターン"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_app.should_terminate = True
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        items = [_create_resolved_item(name="Item1", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo")]
+
+        processor.process_yahoo_items(items)
+        # Early return
+
+
+class TestProcessYahooItem:
+    """_process_yahoo_item メソッドのテスト"""
+
+    def test_successful_check(self) -> None:
+        """成功時の処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = _create_resolved_item(
+            name="Test", search_keyword="test", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo"
+        )
+
+        mock_checked = price_watch.models.CheckedItem.from_resolved_item(item)
+        mock_checked.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+
+        with (
+            patch("price_watch.store.yahoo.generate_item_key", return_value="key123"),
+            patch("price_watch.store.yahoo.check", return_value=mock_checked),
+        ):
+            result = processor._process_yahoo_item(item, "Yahoo")
+
+        assert result is True
+
+    def test_handles_crawl_failure(self) -> None:
+        """クロール失敗時の処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        mock_app.history_manager.insert_checked_item.return_value = 1
+        mock_app.history_manager.get_last.return_value = None
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = _create_resolved_item(
+            name="Test", search_keyword="test", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo"
+        )
+
+        mock_checked = price_watch.models.CheckedItem.from_resolved_item(item)
+        mock_checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+
+        with (
+            patch("price_watch.store.yahoo.generate_item_key", return_value="key123"),
+            patch("price_watch.store.yahoo.check", return_value=mock_checked),
+        ):
+            result = processor._process_yahoo_item(item, "Yahoo")
+
+        assert result is False
+
+
+class TestProcessAllWithYahoo:
+    """process_all メソッドのYahoo対応テスト"""
+
+    def test_calls_all_processors_including_yahoo(self) -> None:
+        """Yahooを含む全プロセッサーを呼び出す"""
+        mock_app = MagicMock()
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        with (
+            patch.object(processor, "process_scrape_items") as mock_scrape,
+            patch.object(processor, "process_amazon_items") as mock_amazon,
+            patch.object(processor, "process_mercari_items") as mock_mercari,
+            patch.object(processor, "process_yahoo_items") as mock_yahoo,
+        ):
+            processor.process_all([])
+
+        mock_scrape.assert_called_once()
+        mock_amazon.assert_called_once()
+        mock_mercari.assert_called_once()
+        mock_yahoo.assert_called_once()
+
+
+class TestExceptionHandling:
+    """例外処理パスのテスト"""
+
+    def test_scrape_webdriver_exception(self) -> None:
+        """WebDriverException を処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = _create_resolved_item(name="Test", url="https://example.com")
+
+        with (
+            patch(
+                "price_watch.store.scrape.check", side_effect=selenium.common.exceptions.WebDriverException()
+            ),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_scrape_item(item, "store")
+
+        assert result is False
+        # エラーカウントがインクリメントされる
+        assert processor.error_count["https://example.com"] == 1
+
+    def test_mercari_general_exception(self) -> None:
+        """メルカリの一般的な例外を処理"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = _create_resolved_item(
+            name="Test", search_keyword="test", check_method=CheckMethod.MERCARI_SEARCH
+        )
+
+        with (
+            patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
+            patch("price_watch.store.mercari.check", side_effect=Exception("Network Error")),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_mercari_item(item, "mercari.com")
+
+        assert result is False
+        assert processor.error_count["key123"] == 1
+
+    def test_yahoo_general_exception(self) -> None:
+        """Yahooの一般的な例外を処理"""
+        mock_app = MagicMock()
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_config.check.judge = None
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = _create_resolved_item(
+            name="Test", search_keyword="test", check_method=CheckMethod.YAHOO_SEARCH, store="Yahoo"
+        )
+
+        with (
+            patch("price_watch.store.yahoo.generate_item_key", return_value="yahoo_key"),
+            patch("price_watch.store.yahoo.check", side_effect=Exception("API Error")),
+            patch.object(processor, "_process_data"),
+        ):
+            result = processor._process_yahoo_item(item, "Yahoo")
+
+        assert result is False
+        assert processor.error_count["yahoo_key"] == 1
+
+    def test_driver_recreate_failure(self) -> None:
+        """ドライバー再作成失敗"""
+        mock_app = MagicMock()
+        mock_app.browser_manager.driver = MagicMock()
+        mock_app.browser_manager.recreate_driver.return_value = False  # 再作成失敗
+        mock_app.debug_mode = False
+        mock_config = MagicMock()
+        mock_app.config = mock_config
+        processor = price_watch.processor.ItemProcessor(app=mock_app)
+
+        item = _create_resolved_item(name="Test", url="https://example.com")
+
+        with patch(
+            "price_watch.store.scrape.check",
+            side_effect=selenium.common.exceptions.InvalidSessionIdException(),
+        ):
+            result = processor._process_scrape_item(item, "store")
+
+        assert result is False
+        mock_app.browser_manager.recreate_driver.assert_called_once()

@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import flask
 import pytest
 
+import price_watch.managers.history
 import price_watch.models
 import price_watch.target
 import price_watch.webapi.page
@@ -292,6 +293,30 @@ class TestGetTargetItemKeys:
             result = price_watch.webapi.page._get_target_item_keys(mock_config)
 
         assert "mercari_key" in result
+
+    def test_returns_empty_set_on_exception(self) -> None:
+        """resolve_items が例外を投げた場合は空セット"""
+        mock_config = MagicMock()
+        mock_config.resolve_items.side_effect = Exception("Error")
+
+        result = price_watch.webapi.page._get_target_item_keys(mock_config)
+
+        assert result == set()
+
+
+class TestGetTargetConfig:
+    """_get_target_config 関数のテスト"""
+
+    def test_returns_none_on_exception(self) -> None:
+        """例外時は None を返す"""
+        with patch.object(
+            price_watch.webapi.page._target_config_cache,
+            "get",
+            side_effect=Exception("File not found"),
+        ):
+            result = price_watch.webapi.page._get_target_config()
+
+        assert result is None
 
 
 class TestGetStoreDefinitions:
@@ -1014,3 +1039,857 @@ class TestBuildResultItem:
         assert result.name == "Test Item"
         assert result.best_store == "Store1"
         assert result.thumb_url == "http://example.com/thumb.png"
+
+
+class TestRenderOgpHtmlWithHistory:
+    """_render_ogp_html 関数の履歴データ関連テスト"""
+
+    def test_render_ogp_html_with_history_and_index(self, tmp_path: pathlib.Path) -> None:
+        """履歴データと index.html がある場合"""
+        # index.html を作成
+        index_file = tmp_path / "index.html"
+        index_file.write_text(
+            """<!DOCTYPE html>
+<html>
+<head>
+<title>Price Watch</title>
+</head>
+<body>
+<div id="root"></div>
+</body>
+</html>"""
+        )
+
+        mock_store = MagicMock()
+        mock_store.effective_price = 1500
+        mock_store.store = "Store1"
+
+        result = price_watch.webapi.page._render_ogp_html(
+            item_key="test_key",
+            item_name="テスト商品",
+            best_store=mock_store,
+            ogp_image_url="http://example.com/ogp.png",
+            ogp_image_square_url="http://example.com/ogp_square.png",
+            page_url="http://example.com/items/test_key",
+            static_dir=tmp_path,
+            is_facebook=False,
+        )
+
+        # OGP タグが挿入されている
+        assert "og:title" in result
+        assert "テスト商品" in result
+        # 価格情報が含まれる
+        assert "¥1,500" in result
+        # item_key スクリプトが挿入されている
+        assert "window.__ITEM_KEY__" in result
+        assert "test_key" in result
+
+    def test_render_ogp_html_facebook_crawler(self, tmp_path: pathlib.Path) -> None:
+        """Facebook クローラーの場合は横長画像を使用"""
+        index_file = tmp_path / "index.html"
+        html_content = (
+            "<!DOCTYPE html><html><head><title>Price Watch</title></head>"
+            '<body><div id="root"></div></body></html>'
+        )
+        index_file.write_text(html_content)
+
+        mock_store = MagicMock()
+        mock_store.effective_price = 2000
+        mock_store.store = "Store1"
+
+        result = price_watch.webapi.page._render_ogp_html(
+            item_key="key1",
+            item_name="Item",
+            best_store=mock_store,
+            ogp_image_url="http://example.com/ogp.png",
+            ogp_image_square_url="http://example.com/ogp_square.png",
+            page_url="http://example.com/items/key1",
+            static_dir=tmp_path,
+            is_facebook=True,
+        )
+
+        # Facebook用に横長画像が og:image に設定される
+        assert 'og:image" content="http://example.com/ogp.png"' in result
+
+    def test_render_ogp_html_without_price(self) -> None:
+        """価格がない場合"""
+        mock_store = MagicMock()
+        mock_store.effective_price = None
+        mock_store.store = "Store1"
+
+        result = price_watch.webapi.page._render_ogp_html(
+            item_key="key1",
+            item_name="Item",
+            best_store=mock_store,
+            ogp_image_url="http://example.com/ogp.png",
+            ogp_image_square_url="http://example.com/ogp_square.png",
+            page_url="http://example.com/items/key1",
+            static_dir=None,
+            is_facebook=False,
+        )
+
+        assert "価格未取得" in result
+
+
+class TestRenderOgpHtmlFallback:
+    """_render_ogp_html 関数のフォールバックテスト"""
+
+    def test_render_ogp_html_index_read_failure(self, tmp_path: pathlib.Path) -> None:
+        """index.html の読み込み失敗時はフォールバック HTML"""
+        # 存在するが読み込み不可なディレクトリを設定
+        mock_store = MagicMock()
+        mock_store.effective_price = 1000
+        mock_store.store = "Store1"
+
+        with patch.object(pathlib.Path, "read_text", side_effect=PermissionError("Permission denied")):
+            result = price_watch.webapi.page._render_ogp_html(
+                item_key="key1",
+                item_name="Item",
+                best_store=mock_store,
+                ogp_image_url="http://example.com/ogp.png",
+                ogp_image_square_url="http://example.com/ogp_square.png",
+                page_url="http://example.com/items/key1",
+                static_dir=tmp_path,
+                is_facebook=False,
+            )
+
+        # フォールバック HTML が生成される
+        assert "<!DOCTYPE html>" in result
+        assert "フロントエンド未ビルド" in result
+
+
+class TestGenerateHeatmapSvgAdvanced:
+    """_generate_heatmap_svg 関数の詳細テスト"""
+
+    def test_generate_heatmap_svg_label_alignment(self) -> None:
+        """ラベルの配置が正しいことを確認"""
+        # 複数日のデータを作成
+        mock_cells = []
+        dates = ["2024-01-15", "2024-01-16", "2024-01-17"]
+        for date in dates:
+            for hour in range(24):
+                cell = MagicMock()
+                cell.date = date
+                cell.hour = hour
+                cell.uptime_rate = 0.9
+                mock_cells.append(cell)
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = dates
+        mock_heatmap.hours = list(range(24))
+        mock_heatmap.cells = mock_cells
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        # SVG 構造を確認
+        assert b"<svg" in result
+        assert b"</svg>" in result
+        # 時間ラベル（0, 6, 12, 18, 24）が含まれる
+        assert b">0<" in result
+        assert b">6<" in result
+        assert b">12<" in result
+        assert b">18<" in result
+        assert b">24<" in result
+        # 日付ラベルが含まれる
+        assert "月".encode() in result  # "1月15日(月)" のような形式
+
+    def test_generate_heatmap_svg_color_mapping(self) -> None:
+        """稼働率に応じた色分けを確認"""
+        dates = ["2024-01-15"]
+        hours = list(range(24))
+
+        # 異なる稼働率のセルを作成
+        mock_cells = []
+        rates = [0.1, 0.3, 0.5, 0.7, 0.95]  # 各色に対応
+        for i, rate in enumerate(rates):
+            cell = MagicMock()
+            cell.date = "2024-01-15"
+            cell.hour = i
+            cell.uptime_rate = rate
+            mock_cells.append(cell)
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = dates
+        mock_heatmap.hours = hours
+        mock_heatmap.cells = mock_cells
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        # 各色が SVG に含まれる
+        assert b"#e0e0e0" in result  # 低稼働率
+        assert b"#4caf50" in result  # 高稼働率
+
+    def test_generate_heatmap_svg_weekend_colors(self) -> None:
+        """土日のラベルに異なる色が適用されることを確認"""
+        # 土曜と日曜を含むデータ
+        dates = ["2024-01-20", "2024-01-21"]  # 土曜、日曜
+
+        mock_cells = []
+        for date in dates:
+            cell = MagicMock()
+            cell.date = date
+            cell.hour = 0
+            cell.uptime_rate = 0.8
+            mock_cells.append(cell)
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = dates
+        mock_heatmap.hours = [0]
+        mock_heatmap.cells = mock_cells
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        # 土曜・日曜用の CSS クラスが含まれる
+        assert b"label-sat" in result
+        assert b"label-sun" in result
+
+    def test_generate_heatmap_svg_none_ratio(self) -> None:
+        """稼働率が None のセルを処理"""
+        cell = MagicMock()
+        cell.date = "2024-01-15"
+        cell.hour = 10
+        cell.uptime_rate = None  # データなし
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = ["2024-01-15"]
+        mock_heatmap.hours = [10]
+        mock_heatmap.cells = [cell]
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        # データなしの色が適用される
+        assert b"#ebedf0" in result
+        assert "データなし".encode() in result
+
+
+class TestGetHistoryManager:
+    """_get_history_manager 関数のテスト"""
+
+    def test_get_history_manager_without_config(self) -> None:
+        """設定がない場合は RuntimeError"""
+        # グローバル変数をリセット
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = None
+        try:
+            with (
+                patch.object(price_watch.webapi.page._config_cache, "get", return_value=None),
+                pytest.raises(RuntimeError, match="App config not available"),
+            ):
+                price_watch.webapi.page._get_history_manager()
+        finally:
+            price_watch.webapi.page._history_manager = original
+
+    def test_get_history_manager_cached(self) -> None:
+        """キャッシュされた HistoryManager を返す"""
+        mock_manager = MagicMock()
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = mock_manager
+        try:
+            result = price_watch.webapi.page._get_history_manager()
+            assert result is mock_manager
+        finally:
+            price_watch.webapi.page._history_manager = original
+
+
+class TestGroupItemsByName:
+    """_group_items_by_name 関数のテスト"""
+
+    def test_group_items_skips_non_target_items(self) -> None:
+        """target.yaml にないアイテムはスキップ"""
+        items = [
+            price_watch.models.ItemRecord(
+                id=1,
+                item_key="key1",
+                name="Item1",
+                store="Store1",
+                url="http://example.com",
+                thumb_url=None,
+                search_keyword=None,
+            )
+        ]
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_latest.return_value = None
+
+        # target_item_keys に key1 が含まれない
+        target_keys = {"key2", "key3"}
+
+        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+            result = price_watch.webapi.page._group_items_by_name(
+                items, target_keys, days=30, target_config=None
+            )
+
+        # key1 は含まれない
+        assert "Item1" not in result
+
+    def test_group_items_handles_resolve_exception(self) -> None:
+        """resolve_items の例外を処理"""
+        items: list[price_watch.models.ItemRecord] = []
+
+        mock_config = MagicMock()
+        mock_config.resolve_items.side_effect = Exception("Resolve error")
+
+        mock_history_manager = MagicMock()
+
+        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+            result = price_watch.webapi.page._group_items_by_name(
+                items, set(), days=30, target_config=mock_config
+            )
+
+        # 例外が発生してもクラッシュしない
+        assert result == {}
+
+
+class TestBuildOgpData:
+    """_build_ogp_data 関数のテスト"""
+
+    def test_build_ogp_data_with_thumb(self, tmp_path: pathlib.Path) -> None:
+        """サムネイルがある場合"""
+        # サムネイルファイルを作成
+        thumb_filename = price_watch.thumbnail.get_thumb_filename("Test Item")
+        thumb_file = tmp_path / thumb_filename
+        thumb_file.write_bytes(b"\x89PNG")
+
+        mock_store = MagicMock()
+        mock_store.store = "Store1"
+        mock_store.effective_price = 1000
+        mock_store.lowest_price = 900
+        mock_store.history = []
+        mock_store.stock = 1  # 在庫あり
+
+        stores = [mock_store]
+
+        result = price_watch.webapi.page._build_ogp_data("Test Item", stores, None, tmp_path)
+
+        assert result.item_name == "Test Item"
+        assert result.thumb_path == thumb_file
+
+    def test_build_ogp_data_without_thumb(self, tmp_path: pathlib.Path) -> None:
+        """サムネイルがない場合"""
+        mock_store = MagicMock()
+        mock_store.store = "Store1"
+        mock_store.effective_price = 1000
+        mock_store.lowest_price = 900
+        mock_store.history = []
+        mock_store.stock = 1  # 在庫あり
+
+        stores = [mock_store]
+
+        result = price_watch.webapi.page._build_ogp_data("Test Item", stores, None, tmp_path)
+
+        assert result.thumb_path is None
+
+    def test_build_ogp_data_with_store_color(self, tmp_path: pathlib.Path) -> None:
+        """ストアに色が設定されている場合"""
+        mock_store = MagicMock()
+        mock_store.store = "Store1"
+        mock_store.effective_price = 1000
+        mock_store.lowest_price = 900
+        mock_store.history = []
+        mock_store.stock = 1  # 在庫あり
+
+        mock_store_def = MagicMock()
+        mock_store_def.color = "#ff0000"
+
+        mock_config = MagicMock()
+        mock_config.get_store.return_value = mock_store_def
+
+        stores = [mock_store]
+
+        result = price_watch.webapi.page._build_ogp_data("Test Item", stores, mock_config, tmp_path)
+
+        assert result.store_histories[0].color == "#ff0000"
+
+
+class TestOgpImageSquare:
+    """ogp_image_square エンドポイントのテスト"""
+
+    def test_returns_404_for_missing_item(self, client: flask.testing.FlaskClient) -> None:
+        """アイテムがない場合は 404"""
+        mock_config = MagicMock()
+        mock_config.data.cache = pathlib.Path("/tmp/cache")
+        mock_config.data.thumb = pathlib.Path("/tmp/thumb")
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = []
+
+        with (
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+        ):
+            response = client.get("/price/ogp/missing_square.png")
+
+        assert response.status_code == 404
+
+    def test_returns_500_without_config(self, client: flask.testing.FlaskClient) -> None:
+        """設定がない場合は 500"""
+        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+            response = client.get("/price/ogp/key1_square.png")
+
+        assert response.status_code == 500
+
+
+class TestGetItemDataForOgp:
+    """_get_item_data_for_ogp 関数のテスト"""
+
+    def test_returns_none_for_missing_item(self) -> None:
+        """アイテムが見つからない場合は (None, []) を返す"""
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = []
+
+        with (
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+        ):
+            name, stores = price_watch.webapi.page._get_item_data_for_ogp("nonexistent")
+
+        assert name is None
+        assert stores == []
+
+    def test_returns_item_data(self) -> None:
+        """アイテムデータを返す"""
+        mock_item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            name="Test Item",
+            store="Store1",
+            url="http://example.com",
+            thumb_url=None,
+            search_keyword=None,
+        )
+
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (mock_item, [])
+
+        with (
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+        ):
+            name, stores = price_watch.webapi.page._get_item_data_for_ogp("key1")
+
+        assert name == "Test Item"
+        assert len(stores) == 1
+        assert stores[0].store == "Store1"
+
+
+class TestOgpImageSuccess:
+    """OGP 画像生成の成功パスのテスト"""
+
+    def test_returns_png_image(self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path) -> None:
+        """OGP 画像を正常に返す"""
+        # キャッシュディレクトリを作成
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        thumb_dir = tmp_path / "thumb"
+        thumb_dir.mkdir()
+
+        # OGP 画像ファイルを作成
+        image_path = cache_dir / "test_key_ogp.png"
+        image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+
+        mock_config = MagicMock()
+        mock_config.data.cache = cache_dir
+        mock_config.data.thumb = thumb_dir
+        mock_config.font = None
+
+        mock_item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="test_key",
+            name="Test Item",
+            store="Store1",
+            url="http://example.com",
+            thumb_url=None,
+            search_keyword=None,
+        )
+
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (mock_item, [])
+
+        with (
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch("price_watch.webapi.ogp.get_or_generate_ogp_image", return_value=image_path),
+        ):
+            response = client.get("/price/ogp/test_key.png")
+
+        assert response.status_code == 200
+        assert response.content_type == "image/png"
+
+    def test_returns_square_png_image(
+        self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path
+    ) -> None:
+        """正方形 OGP 画像を正常に返す"""
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        thumb_dir = tmp_path / "thumb"
+        thumb_dir.mkdir()
+
+        image_path = cache_dir / "test_key_ogp_square.png"
+        image_path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+
+        mock_config = MagicMock()
+        mock_config.data.cache = cache_dir
+        mock_config.data.thumb = thumb_dir
+        mock_config.font = None
+
+        mock_item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="test_key",
+            name="Test Item",
+            store="Store1",
+            url="http://example.com",
+            thumb_url=None,
+            search_keyword=None,
+        )
+
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (mock_item, [])
+
+        with (
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch("price_watch.webapi.ogp.get_or_generate_ogp_image_square", return_value=image_path),
+        ):
+            response = client.get("/price/ogp/test_key_square.png")
+
+        assert response.status_code == 200
+        assert response.content_type == "image/png"
+
+
+class TestOgpImageException:
+    """OGP 画像生成の例外処理テスト"""
+
+    def test_returns_500_on_exception(
+        self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path
+    ) -> None:
+        """例外発生時は 500 を返す"""
+        mock_config = MagicMock()
+        mock_config.data.cache = tmp_path
+        mock_config.data.thumb = tmp_path
+        mock_config.font = None
+
+        mock_item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            name="Item",
+            store="Store",
+            url="http://example.com",
+            thumb_url=None,
+            search_keyword=None,
+        )
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (mock_item, [])
+
+        with (
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch("price_watch.webapi.ogp.get_or_generate_ogp_image", side_effect=Exception("OGP error")),
+        ):
+            response = client.get("/price/ogp/key1.png")
+
+        assert response.status_code == 500
+
+    def test_square_returns_500_on_exception(
+        self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path
+    ) -> None:
+        """正方形画像の例外発生時は 500 を返す"""
+        mock_config = MagicMock()
+        mock_config.data.cache = tmp_path
+        mock_config.data.thumb = tmp_path
+        mock_config.font = None
+
+        mock_item = price_watch.models.ItemRecord(
+            id=1,
+            item_key="key1",
+            name="Item",
+            store="Store",
+            url="http://example.com",
+            thumb_url=None,
+            search_keyword=None,
+        )
+        mock_latest = price_watch.models.LatestPriceRecord(
+            price=1000, stock=1, crawl_status=1, time="2024-01-15"
+        )
+        mock_stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
+
+        mock_history_manager = MagicMock()
+        mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_latest.return_value = mock_latest
+        mock_history_manager.get_stats.return_value = mock_stats
+        mock_history_manager.get_history.return_value = (mock_item, [])
+
+        with (
+            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch("price_watch.webapi.ogp.get_or_generate_ogp_image_square", side_effect=Exception("Error")),
+        ):
+            response = client.get("/price/ogp/key1_square.png")
+
+        assert response.status_code == 500
+
+
+class TestGetMetricsDb:
+    """_get_metrics_db 関数のテスト"""
+
+    def test_returns_none_without_config(self) -> None:
+        """設定がない場合は None を返す"""
+        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+            result = price_watch.webapi.page._get_metrics_db()
+        assert result is None
+
+    def test_returns_none_if_db_not_exists(self, tmp_path: pathlib.Path) -> None:
+        """DB ファイルが存在しない場合は None を返す"""
+        mock_config = MagicMock()
+        mock_config.data.metrics = tmp_path  # metrics.db は存在しない
+
+        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config):
+            result = price_watch.webapi.page._get_metrics_db()
+
+        assert result is None
+
+    def test_returns_none_on_exception(self) -> None:
+        """例外発生時は None を返す"""
+        with patch.object(
+            price_watch.webapi.page._config_cache, "get", side_effect=Exception("Config error")
+        ):
+            result = price_watch.webapi.page._get_metrics_db()
+
+        assert result is None
+
+
+class TestPageExceptionHandling:
+    """ページの例外処理テスト"""
+
+    def test_top_page_exception_returns_500(self, client: flask.testing.FlaskClient) -> None:
+        """トップページの例外発生時は 500"""
+        with patch.object(
+            price_watch.webapi.page, "_render_top_page_html", side_effect=Exception("Render error")
+        ):
+            response = client.get("/price/")
+
+        assert response.status_code == 500
+
+    def test_metrics_page_exception_returns_500(self, client: flask.testing.FlaskClient) -> None:
+        """メトリクスページの例外発生時は 500"""
+        with patch.object(
+            price_watch.webapi.page, "_render_top_page_html", side_effect=Exception("Render error")
+        ):
+            response = client.get("/price/metrics")
+
+        assert response.status_code == 500
+
+
+class TestHeatmapSvgException:
+    """ヒートマップ SVG の例外処理テスト"""
+
+    def test_returns_503_without_db(self, client: flask.testing.FlaskClient) -> None:
+        """DB がない場合は 503"""
+        with patch.object(price_watch.webapi.page, "_get_metrics_db", return_value=None):
+            response = client.get("/price/api/metrics/heatmap.svg")
+
+        assert response.status_code == 503
+
+    def test_returns_500_on_exception(self, client: flask.testing.FlaskClient) -> None:
+        """例外発生時は 500"""
+        mock_db = MagicMock()
+        mock_db.get_uptime_heatmap.side_effect = Exception("DB error")
+
+        with patch.object(price_watch.webapi.page, "_get_metrics_db", return_value=mock_db):
+            response = client.get("/price/api/metrics/heatmap.svg")
+
+        assert response.status_code == 500
+
+
+class TestProcessItemWithoutDb:
+    """_process_item_without_db 関数のテスト"""
+
+    def test_builds_store_data(self) -> None:
+        """DB にないアイテムのストアデータを構築"""
+        item = price_watch.models.ItemRecord(
+            id=0,
+            item_key="key1",
+            name="Item1",
+            store="Store1",
+            url="http://example.com",
+            thumb_url="http://example.com/thumb.png",
+            search_keyword=None,
+        )
+
+        result = price_watch.webapi.page._process_item_without_db(item, None)
+
+        assert result is not None
+        assert result["store_entry"].item_key == "key1"
+        assert result["store_entry"].store == "Store1"
+        assert result["thumb_url"] == "http://example.com/thumb.png"
+
+
+class TestGroupItemsWithMercariSearch:
+    """Mercari 検索アイテムを含むグループ化テスト"""
+
+    def test_processes_mercari_search_items(self) -> None:
+        """target.yaml の Mercari 検索アイテムを処理"""
+        # DB から取得したアイテム（空）
+        items: list[price_watch.models.ItemRecord] = []
+
+        # target.yaml の Mercari 検索アイテム
+        mock_mercari_item = MagicMock()
+        mock_mercari_item.name = "Mercari Item"
+        mock_mercari_item.store = "メルカリ"
+        mock_mercari_item.url = None
+        mock_mercari_item.search_keyword = "keyword"
+        mock_mercari_item.check_method = price_watch.target.CheckMethod.MERCARI_SEARCH
+
+        mock_config = MagicMock()
+        mock_config.resolve_items.return_value = [mock_mercari_item]
+
+        mock_history_manager = MagicMock()
+
+        with (
+            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.managers.history, "generate_item_key", return_value="mercari_key"),
+        ):
+            result = price_watch.webapi.page._group_items_by_name(
+                items, set(), days=30, target_config=mock_config
+            )
+
+        # Mercari アイテムが追加される
+        assert "Mercari Item" in result
+
+
+class TestHeatmapSvgLabelAlignment:
+    """ヒートマップ SVG のラベル配置テスト"""
+
+    def test_first_label_left_aligned_when_cutoff(self) -> None:
+        """最初のラベルが見切れる場合は左寄せ"""
+        # 1日だけのデータで最初のラベルが見切れやすい状況を作る
+        dates = ["2024-01-15"]
+        hours = list(range(24))
+
+        mock_cells = []
+        for hour in hours:
+            cell = MagicMock()
+            cell.date = "2024-01-15"
+            cell.hour = hour
+            cell.uptime_rate = 0.8
+            mock_cells.append(cell)
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = dates
+        mock_heatmap.hours = hours
+        mock_heatmap.cells = mock_cells
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        # SVG が正常に生成される
+        assert b"<svg" in result
+        assert b"</svg>" in result
+
+    def test_last_label_right_aligned_when_cutoff(self) -> None:
+        """最後のラベルが見切れる場合は右寄せ（多数の日付で確認）"""
+        # 多数の日付でラベルが端に来る状況
+        dates = [f"2024-01-{i:02d}" for i in range(15, 22)]  # 7日間
+        hours = list(range(24))
+
+        mock_cells = []
+        for date in dates:
+            for hour in hours:
+                cell = MagicMock()
+                cell.date = date
+                cell.hour = hour
+                cell.uptime_rate = 0.8
+                mock_cells.append(cell)
+
+        mock_heatmap = MagicMock()
+        mock_heatmap.dates = dates
+        mock_heatmap.hours = hours
+        mock_heatmap.cells = mock_cells
+
+        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+
+        # SVG が正常に生成される
+        assert b"<svg" in result
+        # text-anchor 属性が使用されている
+        assert b'text-anchor="' in result
+
+
+class TestRenderTopPageHtmlException:
+    """_render_top_page_html の例外処理テスト"""
+
+    def test_handles_index_read_exception(self, tmp_path: pathlib.Path) -> None:
+        """index.html の読み込み失敗時はフォールバック"""
+        # ディレクトリは存在するがファイルを読めない状況をシミュレート
+        static_dir = tmp_path / "static"
+        static_dir.mkdir()
+        index_file = static_dir / "index.html"
+        index_file.write_text("valid html")
+
+        with patch.object(pathlib.Path, "read_text", side_effect=PermissionError("Permission denied")):
+            result = price_watch.webapi.page._render_top_page_html(static_dir)
+
+        # フォールバック HTML が返される
+        assert "フロントエンド未ビルド" in result
+
+
+class TestGetHistoryManagerCreate:
+    """_get_history_manager の HistoryManager 作成テスト"""
+
+    def test_creates_history_manager(self, tmp_path: pathlib.Path) -> None:
+        """設定から HistoryManager を作成"""
+        mock_config = MagicMock()
+        mock_config.data.price = tmp_path
+
+        # グローバル変数をリセット
+        original = price_watch.webapi.page._history_manager
+        price_watch.webapi.page._history_manager = None
+
+        mock_manager = MagicMock()
+        mock_manager_class = MagicMock(return_value=mock_manager)
+
+        try:
+            with (
+                patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+                patch.object(price_watch.managers.history.HistoryManager, "create", mock_manager_class),
+            ):
+                result = price_watch.webapi.page._get_history_manager()
+
+            assert result is mock_manager
+            mock_manager.initialize.assert_called_once()
+        finally:
+            price_watch.webapi.page._history_manager = original

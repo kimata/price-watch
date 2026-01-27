@@ -146,6 +146,60 @@ class TestProcessAction:
 
         mock_captcha.assert_called_once_with(mock_driver, mock_wait)
 
+    def test_click_action_xpath_none(self):
+        """click アクションで xpath が None の場合はスキップ"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        mock_wait = MagicMock()
+        item = _create_resolved_item(
+            actions=[
+                ActionStep(type=ActionType.CLICK, xpath=None),
+                ActionStep(type=ActionType.CLICK, xpath="//button"),
+            ]
+        )
+
+        with patch("my_lib.selenium_util.xpath_exists", return_value=True):
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
+
+        # 2番目のアクションは実行される
+        mock_driver.find_element.assert_called()
+
+    def test_input_action_xpath_none(self):
+        """input アクションで xpath が None の場合はスキップ"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        mock_wait = MagicMock()
+        item = _create_resolved_item(
+            actions=[
+                ActionStep(type=ActionType.INPUT, xpath=None, value="test"),
+                ActionStep(type=ActionType.INPUT, xpath="//input", value="test_value"),
+            ]
+        )
+
+        with patch("my_lib.selenium_util.xpath_exists", return_value=True):
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
+
+        # 2番目のアクションは実行される
+        mock_driver.find_element.assert_called()
+
+    def test_input_action_element_not_found(self):
+        """input アクションで要素が見つからない場合は中断"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        mock_wait = MagicMock()
+        item = _create_resolved_item(
+            actions=[
+                ActionStep(type=ActionType.INPUT, xpath="//input", value="test"),
+                ActionStep(type=ActionType.INPUT, xpath="//other", value="test2"),
+            ]
+        )
+
+        with patch("my_lib.selenium_util.xpath_exists", return_value=False):
+            price_watch.store.scrape._process_action(mock_config, mock_driver, mock_wait, item)
+
+        # 最初の要素が見つからないので中断
+        mock_driver.find_element.assert_not_called()
+
 
 class TestProcessPreload:
     """_process_preload 関数のテスト"""
@@ -200,6 +254,21 @@ class TestProcessPreload:
 
 class TestCheckImpl:
     """_check_impl 関数のテスト"""
+
+    def test_price_xpath_none(self):
+        """price_xpath が None の場合"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        mock_driver.current_url = "https://example.com/item"
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath=None,
+        )
+
+        result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
+
+        assert result.crawl_status == price_watch.models.CrawlStatus.FAILURE
+        assert result.price is None
 
     def test_price_element_not_found(self):
         """価格要素が見つからない場合"""
