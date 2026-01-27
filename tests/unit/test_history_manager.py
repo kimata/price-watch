@@ -74,6 +74,26 @@ class TestGenerateItemKey:
         key2 = generate_item_key(search_keyword="テスト", search_cond='{"price_min": 200}')
         assert key1 == key2
 
+    def test_store_name_differentiates_key(self) -> None:
+        """store_name が異なれば異なるキーが生成される"""
+        key_mercari = generate_item_key(search_keyword="テスト", store_name="メルカリ")
+        key_rakuma = generate_item_key(search_keyword="テスト", store_name="ラクマ")
+        assert key_mercari != key_rakuma
+        assert len(key_mercari) == 12
+        assert len(key_rakuma) == 12
+
+    def test_store_name_none_backward_compatible(self) -> None:
+        """store_name=None の場合はキーワードのみからキーを生成（後方互換性）"""
+        key_without_store = generate_item_key(search_keyword="テスト")
+        key_with_none = generate_item_key(search_keyword="テスト", store_name=None)
+        assert key_without_store == key_with_none
+
+    def test_store_name_ignored_for_url(self) -> None:
+        """URL ベースのキー生成では store_name は影響しない"""
+        key1 = generate_item_key(url="https://example.com/item/1")
+        key2 = generate_item_key(url="https://example.com/item/1", store_name="Amazon")
+        assert key1 == key2
+
     def test_raises_without_url_or_keyword(self) -> None:
         """URL もキーワードもない場合は ValueError"""
         with pytest.raises(ValueError, match="Either url or search_keyword must be provided"):
@@ -1074,6 +1094,13 @@ class TestHistoryManagerTypeConversions:
 
         key_keyword = HistoryManager.generate_item_key(search_keyword="テスト")
         assert len(key_keyword) == 12
+
+    def test_generate_item_key_static_method_with_store_name(self) -> None:
+        """静的メソッド generate_item_key に store_name を渡す"""
+        key1 = HistoryManager.generate_item_key(search_keyword="テスト", store_name="メルカリ")
+        key2 = HistoryManager.generate_item_key(search_keyword="テスト", store_name="ラクマ")
+        assert key1 != key2
+        assert len(key1) == 12
 
 
 # === PriceRepository 追加テスト（ブランチカバレッジ） ===

@@ -189,4 +189,5 @@ def generate_item_key(item: price_watch.models.CheckedItem) -> str:
     return price_watch.history.generate_item_key(
         search_keyword=item.search_keyword,
         search_cond=item.search_cond,
+        store_name=item.store,
     )

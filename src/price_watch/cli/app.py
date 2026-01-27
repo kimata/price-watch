@@ -150,6 +150,7 @@ class AppRunner:
                 item_key = price_watch.managers.history.generate_item_key(
                     search_keyword=search_keyword,
                     search_cond="",
+                    store_name=item.store,
                 )
                 if item_key not in self.processor.error_count:
                     self.processor.error_count[item_key] = 0

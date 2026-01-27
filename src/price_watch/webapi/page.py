@@ -85,7 +85,11 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         # 検索系ストアの場合は keyword から item_key を生成
         if item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
             keyword = item.search_keyword or item.name
-            keys.add(price_watch.managers.history.generate_item_key(search_keyword=keyword, search_cond=""))
+            keys.add(
+                price_watch.managers.history.generate_item_key(
+                    search_keyword=keyword, search_cond="", store_name=item.store
+                )
+            )
         else:
             keys.add(price_watch.managers.history.url_hash(item.url))
     return keys
@@ -398,7 +402,7 @@ def _group_items_by_name(
             if resolved_item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
                 keyword = resolved_item.search_keyword or resolved_item.name
                 item_key = price_watch.managers.history.generate_item_key(
-                    search_keyword=keyword, search_cond=""
+                    search_keyword=keyword, search_cond="", store_name=resolved_item.store
                 )
             else:
                 item_key = price_watch.managers.history.url_hash(resolved_item.url)

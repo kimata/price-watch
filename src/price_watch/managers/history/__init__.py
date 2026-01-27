@@ -417,15 +417,19 @@ class HistoryManager:
         *,
         search_keyword: str | None = None,
         search_cond: str | None = None,
+        store_name: str | None = None,
     ) -> str:
         """アイテムキーを生成.
 
         Args:
             url: URL（通常ストア用）
-            search_keyword: 検索キーワード（メルカリ用）
+            search_keyword: 検索キーワード（検索系ストア用）
             search_cond: 検索条件（未使用）
+            store_name: ストア名（検索系ストア用、ハッシュに含める）
 
         Returns:
             12文字のハッシュ
         """
-        return generate_item_key(url, search_keyword=search_keyword, search_cond=search_cond)
+        return generate_item_key(
+            url, search_keyword=search_keyword, search_cond=search_cond, store_name=store_name
+        )

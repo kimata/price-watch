@@ -52,7 +52,9 @@ class ItemRepository:
         Returns:
             アイテム ID
         """
-        item_key = generate_item_key(url, search_keyword=search_keyword, search_cond=search_cond)
+        item_key = generate_item_key(
+            url, search_keyword=search_keyword, search_cond=search_cond, store_name=store
+        )
 
         cur.execute("SELECT id, name, thumb_url, url FROM items WHERE item_key = ?", (item_key,))
         row = cur.fetchone()
