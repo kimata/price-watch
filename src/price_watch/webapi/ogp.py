@@ -896,7 +896,7 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
     info_height = box_padding + price_height + text_gap + store_height + box_padding
 
     info_x = size - margin - info_width
-    info_y = title_box_y + title_box_height + 10
+    info_y = title_box_y + title_box_height + 10 + price_height // 2
 
     img = _draw_rounded_rect_overlay(
         img,
