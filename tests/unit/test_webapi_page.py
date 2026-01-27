@@ -659,6 +659,7 @@ class TestApiMetricsSessions:
         mock_session.id = 1
         mock_session.started_at.isoformat.return_value = "2024-01-15T10:00:00"
         mock_session.ended_at = None
+        mock_session.work_ended_at = None
         mock_session.duration_sec = 100
         mock_session.total_items = 10
         mock_session.success_items = 8

@@ -317,6 +317,7 @@ class TestDataclasses:
             started_at=datetime.now(),
             last_heartbeat_at=None,
             ended_at=None,
+            work_ended_at=None,
             duration_sec=None,
             total_items=0,
             success_items=0,
@@ -487,17 +488,24 @@ class TestEndSessionUptime:
         metrics_db.end_session(session_id, 10, 8, 2, "normal", work_ended_at=work_ended)
         after_end = my_lib.time.now()
 
-        # DB から ended_at を直接取得
+        # DB から ended_at, work_ended_at を直接取得
         with sqlite3.connect(metrics_db.db_path) as conn:
-            cursor = conn.execute("SELECT ended_at FROM crawl_sessions WHERE id = ?", (session_id,))
+            cursor = conn.execute(
+                "SELECT ended_at, work_ended_at FROM crawl_sessions WHERE id = ?", (session_id,)
+            )
             row = cursor.fetchone()
             ended_at = datetime.fromisoformat(row[0])
+            db_work_ended_at = datetime.fromisoformat(row[1])
 
         # ended_at は現在時刻付近（work_ended_at ではない）
         if before_end.tzinfo:
             ended_at = ended_at.replace(tzinfo=before_end.tzinfo)
+            db_work_ended_at = db_work_ended_at.replace(tzinfo=before_end.tzinfo)
         assert ended_at >= before_end - timedelta(seconds=1)
         assert ended_at <= after_end + timedelta(seconds=1)
+
+        # work_ended_at は指定した値と一致
+        assert abs((db_work_ended_at - work_ended).total_seconds()) < 1
 
     def test_duration_based_on_work_ended_at(self, metrics_db):
         """duration_sec が work_ended_at 基準になること"""
@@ -531,3 +539,5 @@ class TestEndSessionUptime:
         assert len(sessions) == 1
         assert sessions[0].duration_sec is not None
         assert sessions[0].duration_sec >= 0.05
+        # work_ended_at も設定される（ended_at と同じ値）
+        assert sessions[0].work_ended_at is not None

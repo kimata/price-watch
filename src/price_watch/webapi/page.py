@@ -1220,6 +1220,7 @@ def api_metrics_sessions() -> flask.Response:
                     "id": s.id,
                     "started_at": s.started_at.isoformat(),
                     "ended_at": s.ended_at.isoformat() if s.ended_at else None,
+                    "work_ended_at": s.work_ended_at.isoformat() if s.work_ended_at else None,
                     "duration_sec": s.duration_sec,
                     "total_items": s.total_items,
                     "success_items": s.success_items,

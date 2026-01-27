@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 import my_lib.time
 
 # スキーマバージョン（マイグレーション用）
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # テーブル作成SQL
 _CREATE_TABLES_SQL = """
@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS crawl_sessions (
     started_at TEXT NOT NULL,
     last_heartbeat_at TEXT,
     ended_at TEXT,
+    work_ended_at TEXT,
     duration_sec REAL,
     total_items INTEGER DEFAULT 0,
     success_items INTEGER DEFAULT 0,
@@ -70,6 +71,7 @@ class SessionInfo:
     started_at: datetime
     last_heartbeat_at: datetime | None
     ended_at: datetime | None
+    work_ended_at: datetime | None
     duration_sec: float | None
     total_items: int
     success_items: int
@@ -165,12 +167,29 @@ class MetricsDB:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
             conn.executescript(_CREATE_TABLES_SQL)
-            # スキーマバージョンを記録
+            # スキーマバージョンを確認・マイグレーション
             cursor = conn.execute("SELECT version FROM schema_version LIMIT 1")
             row = cursor.fetchone()
             if row is None:
                 conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+            else:
+                current_version = row[0]
+                if current_version < 2:
+                    self._migrate_v1_to_v2(conn)
             conn.commit()
+
+    @staticmethod
+    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
+        """v1 → v2: work_ended_at カラムを追加"""
+        # カラムが存在しない場合のみ追加
+        cursor = conn.execute("PRAGMA table_info(crawl_sessions)")
+        columns = {row[1] for row in cursor.fetchall()}
+        if "work_ended_at" not in columns:
+            conn.execute("ALTER TABLE crawl_sessions ADD COLUMN work_ended_at TEXT")
+            # 既存データ: work_ended_at を ended_at で埋める
+            conn.execute("UPDATE crawl_sessions SET work_ended_at = ended_at WHERE ended_at IS NOT NULL")
+            logging.info("Migrated metrics DB from v1 to v2: added work_ended_at column")
+        conn.execute("UPDATE schema_version SET version = 2")
 
     def _get_conn(self) -> sqlite3.Connection:
         """データベース接続を取得"""
@@ -219,10 +238,10 @@ class MetricsDB:
                 conn.execute(
                     """
                     UPDATE crawl_sessions
-                    SET ended_at = ?, duration_sec = ?, exit_reason = ?
+                    SET ended_at = ?, work_ended_at = ?, duration_sec = ?, exit_reason = ?
                     WHERE id = ?
                     """,
-                    (now.isoformat(), duration, "superseded", session_id),
+                    (now.isoformat(), now.isoformat(), duration, "superseded", session_id),
                 )
                 logging.warning("Closed orphan session %d (superseded)", session_id)
             conn.commit()
@@ -286,12 +305,7 @@ class MetricsDB:
                            None の場合は現在時刻を使用
         """
         now = my_lib.time.now()
-        # ended_at は常に現在時刻（稼働率トラッキング用、sleep 期間も稼働中として扱う）
-        ended_at = now
-        ended_at_str = ended_at.isoformat()
-
-        # duration は作業終了時刻基準（巡回時間、sleep 除外）
-        duration_end = work_ended_at if work_ended_at is not None else now
+        work_ended = work_ended_at if work_ended_at is not None else now
 
         with self._get_conn() as conn:
             # 開始時刻を取得して duration を計算
@@ -300,23 +314,22 @@ class MetricsDB:
                 (session_id,),
             )
             row = cursor.fetchone()
-            if row:
-                started_at = datetime.fromisoformat(row[0])
-                duration = (duration_end - started_at).total_seconds()
-            else:
-                duration = 0
+            started_at = datetime.fromisoformat(row[0]) if row else now
+            duration = (work_ended - started_at).total_seconds()
 
             conn.execute(
                 """
                 UPDATE crawl_sessions
-                SET ended_at = ?, last_heartbeat_at = ?, duration_sec = ?,
+                SET ended_at = ?, work_ended_at = ?, last_heartbeat_at = ?,
+                    duration_sec = ?,
                     total_items = ?, success_items = ?, failed_items = ?,
                     exit_reason = ?
                 WHERE id = ?
                 """,
                 (
-                    ended_at_str,
-                    now.isoformat(),  # ハートビートは常に現在時刻
+                    now.isoformat(),
+                    work_ended.isoformat(),
+                    now.isoformat(),
                     duration,
                     total_items,
                     success_items,
@@ -458,17 +471,20 @@ class MetricsDB:
 
         with self._get_conn() as conn:
             cursor = conn.execute(query, params)
+            # カラム順: id, started_at, last_heartbeat_at, ended_at, work_ended_at,
+            #           duration_sec, total_items, success_items, failed_items, exit_reason
             return [
                 SessionInfo(
                     id=row[0],
                     started_at=datetime.fromisoformat(row[1]),
                     last_heartbeat_at=datetime.fromisoformat(row[2]) if row[2] else None,
                     ended_at=datetime.fromisoformat(row[3]) if row[3] else None,
-                    duration_sec=row[4],
-                    total_items=row[5] or 0,
-                    success_items=row[6] or 0,
-                    failed_items=row[7] or 0,
-                    exit_reason=row[8],
+                    work_ended_at=datetime.fromisoformat(row[4]) if row[4] else None,
+                    duration_sec=row[5],
+                    total_items=row[6] or 0,
+                    success_items=row[7] or 0,
+                    failed_items=row[8] or 0,
+                    exit_reason=row[9],
                 )
                 for row in cursor.fetchall()
             ]
