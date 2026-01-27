@@ -157,6 +157,9 @@ def check_lowest_price(
     item_id: int,
     current_price: int,
     ignore_hours: int,
+    *,
+    lowest_config: price_watch.config.LowestConfig | None = None,
+    currency_rate: float = 1.0,
 ) -> EventResult | None:
     """過去最安値更新イベントを判定.
 
@@ -165,6 +168,8 @@ def check_lowest_price(
         item_id: アイテム ID
         current_price: 現在の価格
         ignore_hours: 無視する時間数
+        lowest_config: 最安値更新の閾値設定（None の場合は従来通り即発火）
+        currency_rate: 通貨換算レート（value 判定用、デフォルト 1.0）
 
     Returns:
         イベント結果。該当しない場合は None。
@@ -178,6 +183,43 @@ def check_lowest_price(
 
     if current_price >= lowest_price:
         return None
+
+    # 閾値判定
+    if lowest_config is not None and (lowest_config.rate is not None or lowest_config.value is not None):
+        # ベースラインの決定: 直近の LOWEST_PRICE イベントの price、なければ全期間最安値
+        last_event = history.get_last_event(item_id, EventType.LOWEST_PRICE.value)
+        baseline = (
+            last_event.price if last_event is not None and last_event.price is not None else lowest_price
+        )
+
+        drop_amount = baseline - current_price
+        if drop_amount <= 0:
+            return None
+
+        effective_drop = drop_amount * currency_rate
+        threshold_met = False
+
+        if lowest_config.rate is not None:
+            drop_rate = (drop_amount / baseline) * 100
+            if drop_rate >= lowest_config.rate:
+                threshold_met = True
+                logging.info(
+                    "Lowest price threshold met: %.1f%% drop (threshold: %.1f%%)",
+                    drop_rate,
+                    lowest_config.rate,
+                )
+
+        if lowest_config.value is not None and effective_drop >= lowest_config.value:
+            threshold_met = True
+            logging.info(
+                "Lowest price threshold met: %.0f drop (threshold: %d, currency_rate: %.1f)",
+                effective_drop,
+                lowest_config.value,
+                currency_rate,
+            )
+
+        if not threshold_met:
+            return None
 
     # 無視区間内に同じイベントがあるかチェック
     if history.has_event_in_hours(item_id, EventType.LOWEST_PRICE.value, ignore_hours):
@@ -202,6 +244,8 @@ def check_price_drop(
     item_id: int,
     current_price: int,
     windows: list[price_watch.config.PriceDropWindow],
+    *,
+    currency_rate: float = 1.0,
 ) -> EventResult | None:
     """価格下落イベントを判定.
 
@@ -210,6 +254,7 @@ def check_price_drop(
         item_id: アイテム ID
         current_price: 現在の価格
         windows: 価格下落判定ウィンドウのリスト
+        currency_rate: 通貨換算レート（value 判定用、デフォルト 1.0）
 
     Returns:
         イベント結果。該当しない場合は None。
@@ -227,6 +272,8 @@ def check_price_drop(
         if drop_amount <= 0:
             continue
 
+        effective_drop = drop_amount * currency_rate
+
         # 条件判定
         should_notify = False
 
@@ -242,13 +289,14 @@ def check_price_drop(
                     window.days,
                 )
 
-        # 絶対値での判定
-        if window.value is not None and drop_amount >= window.value:
+        # 絶対値での判定（通貨換算後の値で比較）
+        if window.value is not None and effective_drop >= window.value:
             should_notify = True
             logging.info(
-                "Price drop detected: %d yen drop (threshold: %d yen) in %d days",
-                drop_amount,
+                "Price drop detected: %.0f drop (threshold: %d, currency_rate: %.1f) in %d days",
+                effective_drop,
                 window.value,
+                currency_rate,
                 window.days,
             )
 

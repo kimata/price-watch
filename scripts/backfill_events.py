@@ -6,16 +6,20 @@
 events テーブルに挿入します。
 
 イベント判定ロジックは本番 (event.py) と同等です:
-- LOWEST_PRICE: 過去全期間の最安値を更新した場合
+- LOWEST_PRICE: 過去全期間の最安値を更新した場合（lowest_config の閾値判定対応）
 - PRICE_DROP: 指定期間内の最安値から一定以上下落した場合
 
 Usage:
-  backfill_events.py [-c CONFIG] [--dry-run] [-D]
+  backfill_events.py [-c CONFIG] [-t TARGET] [--dry-run] [--rebuild] [-D]
 
 Options:
   -c CONFIG         : CONFIG を設定ファイルとして読み込んで実行します。
                       [default: config.yaml]
+  -t TARGET         : TARGET をターゲット設定ファイルとして読み込みます。
+                      [default: target.yaml]
   --dry-run         : DB に書き込まず、検出結果のみ表示します。
+  --rebuild         : 価格変動イベント（lowest_price, price_drop）を全削除してから
+                      再生成します。再構築できないイベントは削除しません。
   -D                : デバッグモードで動作します。
 """
 
@@ -29,7 +33,11 @@ from datetime import datetime, timedelta
 
 import price_watch.config
 import price_watch.const
+import price_watch.target
 from price_watch.event import EventType
+
+# 再構築対象のイベントタイプ（価格履歴から再生成可能なもの）
+REBUILDABLE_EVENT_TYPES = (EventType.LOWEST_PRICE.value, EventType.PRICE_DROP.value)
 
 
 def dict_factory(cursor: sqlite3.Cursor, row: tuple) -> dict:
@@ -63,6 +71,7 @@ class BackfillStats:
     price_drop_found: int = 0
     already_recorded: int = 0
     inserted: int = 0
+    cleared: int = 0
 
 
 @dataclass
@@ -72,8 +81,20 @@ class BackfillContext:
     conn: sqlite3.Connection
     ignore_hours: int
     windows: list[price_watch.config.PriceDropWindow] = field(default_factory=list)
+    lowest_config: price_watch.config.LowestConfig | None = None
+    currency_rates: list[price_watch.config.CurrencyRate] = field(default_factory=list)
+    store_price_units: dict[str, str] = field(default_factory=dict)
     dry_run: bool = False
+    rebuild: bool = False
     stats: BackfillStats = field(default_factory=BackfillStats)
+
+    def get_currency_rate(self, store: str) -> float:
+        """ストアの通貨レートを取得."""
+        price_unit = self.store_price_units.get(store, "円")
+        for cr in self.currency_rates:
+            if cr.label == price_unit:
+                return cr.rate
+        return 1.0
 
 
 def get_all_items(conn: sqlite3.Connection) -> list[dict]:
@@ -181,13 +202,23 @@ def get_lowest_in_period_before(
 
 def check_lowest_price_backfill(
     ctx: BackfillContext,
-    item_id: int,
     current_price: int,
     running_min: int,
+    last_lowest_event_price: int | None,
     record_time: str,
     existing_events: list[dict],
+    currency_rate: float,
 ) -> bool:
     """最安値更新イベントを判定（本番 event.check_lowest_price と同等ロジック）.
+
+    Args:
+        ctx: 補完処理コンテキスト
+        current_price: 現在の価格
+        running_min: これまでの全期間最安値
+        last_lowest_event_price: 直近の LOWEST_PRICE イベントの price（ベースライン算出用）
+        record_time: レコードの時刻
+        existing_events: 既存イベントのリスト
+        currency_rate: 通貨換算レート
 
     Returns:
         イベントを検出した場合 True
@@ -195,6 +226,30 @@ def check_lowest_price_backfill(
     # 本番ロジック: current_price >= lowest_price → スキップ
     if current_price >= running_min:
         return False
+
+    # 閾値判定（lowest_config がある場合）
+    lowest_config = ctx.lowest_config
+    if lowest_config is not None and (lowest_config.rate is not None or lowest_config.value is not None):
+        # ベースラインの決定: 直近の LOWEST_PRICE イベントの price、なければ全期間最安値
+        baseline = last_lowest_event_price if last_lowest_event_price is not None else running_min
+
+        drop_amount = baseline - current_price
+        if drop_amount <= 0:
+            return False
+
+        effective_drop = drop_amount * currency_rate
+        threshold_met = False
+
+        if lowest_config.rate is not None:
+            drop_rate = (drop_amount / baseline) * 100
+            if drop_rate >= lowest_config.rate:
+                threshold_met = True
+
+        if lowest_config.value is not None and effective_drop >= lowest_config.value:
+            threshold_met = True
+
+        if not threshold_met:
+            return False
 
     # 近辺に既存イベントがあるかチェック
     if has_event_near(existing_events, EventType.LOWEST_PRICE.value, record_time, ctx.ignore_hours):
@@ -210,6 +265,7 @@ def check_price_drop_backfill(
     current_price: int,
     record_time: str,
     existing_events: list[dict],
+    currency_rate: float,
 ) -> BackfillEvent | None:
     """価格下落イベントを判定（本番 event.check_price_drop と同等ロジック）.
 
@@ -219,6 +275,7 @@ def check_price_drop_backfill(
         current_price: 現在の価格
         record_time: レコードの時刻
         existing_events: 既存イベントのリスト
+        currency_rate: 通貨換算レート
 
     Returns:
         検出したイベント、または None
@@ -233,6 +290,8 @@ def check_price_drop_backfill(
         if drop_amount <= 0:
             continue
 
+        effective_drop = drop_amount * currency_rate
+
         should_fire = False
 
         if window.rate is not None:
@@ -240,7 +299,7 @@ def check_price_drop_backfill(
             if drop_rate >= window.rate:
                 should_fire = True
 
-        if window.value is not None and drop_amount >= window.value:
+        if window.value is not None and effective_drop >= window.value:
             should_fire = True
 
         if not should_fire:
@@ -282,7 +341,11 @@ def process_item(
     existing_events = get_existing_events(ctx.conn, item_id)
     events_to_insert: list[BackfillEvent] = []
 
+    currency_rate = ctx.get_currency_rate(store)
+
     running_min: int | None = None
+    # 直近の LOWEST_PRICE イベントの price をトラッキング（閾値判定用）
+    last_lowest_event_price: int | None = _find_last_lowest_event_price(existing_events)
 
     for record in records:
         current_price = record["price"]
@@ -295,7 +358,13 @@ def process_item(
 
         # LOWEST_PRICE チェック
         if check_lowest_price_backfill(
-            ctx, item_id, current_price, running_min, record_time, existing_events
+            ctx,
+            current_price,
+            running_min,
+            last_lowest_event_price,
+            record_time,
+            existing_events,
+            currency_rate,
         ):
             ev = BackfillEvent(
                 item_id=item_id,
@@ -318,11 +387,15 @@ def process_item(
                     "created_at": record_time,
                 }
             )
+            # ベースラインを更新
+            last_lowest_event_price = current_price
             ctx.stats.lowest_price_found += 1
 
         # PRICE_DROP チェック
         if ctx.windows:
-            drop_event = check_price_drop_backfill(ctx, item_id, current_price, record_time, existing_events)
+            drop_event = check_price_drop_backfill(
+                ctx, item_id, current_price, record_time, existing_events, currency_rate
+            )
             if drop_event is not None:
                 drop_event = BackfillEvent(
                     item_id=drop_event.item_id,
@@ -351,6 +424,35 @@ def process_item(
             running_min = current_price
 
     return events_to_insert
+
+
+def _find_last_lowest_event_price(existing_events: list[dict]) -> int | None:
+    """既存イベントから直近の LOWEST_PRICE イベントの price を取得."""
+    last_price = None
+    for ev in existing_events:
+        if ev["event_type"] == EventType.LOWEST_PRICE.value and ev["price"] is not None:
+            last_price = ev["price"]
+    return last_price
+
+
+def clear_rebuildable_events(conn: sqlite3.Connection) -> int:
+    """再構築可能なイベント（lowest_price, price_drop）を全削除.
+
+    再構築できないイベント（back_in_stock, crawl_failure, data_retrieval_failure）は
+    削除しない。
+
+    Returns:
+        削除した件数
+    """
+    cur = conn.cursor()
+    placeholders = ", ".join("?" for _ in REBUILDABLE_EVENT_TYPES)
+    cur.execute(
+        f"DELETE FROM events WHERE event_type IN ({placeholders})",  # noqa: S608
+        REBUILDABLE_EVENT_TYPES,
+    )
+    deleted = cur.rowcount
+    conn.commit()
+    return deleted
 
 
 def insert_events(conn: sqlite3.Connection, events: list[BackfillEvent]) -> int:
@@ -385,7 +487,21 @@ def print_events(events: list[BackfillEvent]) -> None:
         )
 
 
-def main(config_file: pathlib.Path, dry_run: bool) -> None:
+def _build_store_price_units(target_config: price_watch.target.TargetConfig) -> dict[str, str]:
+    """ターゲット設定からストア名 → price_unit のマッピングを構築."""
+    result: dict[str, str] = {}
+    for store in target_config.stores:
+        result[store.name] = store.price_unit
+    return result
+
+
+def main(
+    config_file: pathlib.Path,
+    target_file: pathlib.Path,
+    *,
+    dry_run: bool,
+    rebuild: bool,
+) -> None:
     """メイン処理."""
     config = price_watch.config.load(config_file)
     db_path = config.data.price / price_watch.const.DB_FILE
@@ -394,10 +510,21 @@ def main(config_file: pathlib.Path, dry_run: bool) -> None:
         logging.error("データベースファイルが見つかりません: %s", db_path)
         raise SystemExit(1)
 
+    # ターゲット設定を読み込み（通貨レート解決用）
+    try:
+        target_config = price_watch.target.load(target_file)
+        store_price_units = _build_store_price_units(target_config)
+    except Exception:
+        logging.warning("ターゲット設定の読み込みに失敗しました。通貨レートはデフォルト(1.0)を使用します")
+        store_price_units = {}
+
     # イベント判定設定を取得
-    judge_config = config.check.judge
-    ignore_hours = judge_config.ignore.hour if judge_config else 24
-    windows = judge_config.windows if judge_config else []
+    drop_config = config.check.drop
+    ignore_hours = drop_config.ignore.hour if drop_config else 24
+    windows = drop_config.windows if drop_config else []
+
+    lowest_config = config.check.lowest
+    currency_rates = list(config.check.currency)
 
     logging.info("データベース: %s", db_path)
     logging.info("ignore_hours: %d", ignore_hours)
@@ -407,10 +534,27 @@ def main(config_file: pathlib.Path, dry_run: bool) -> None:
         if w.rate is not None:
             parts.append(f"rate={w.rate}%")
         if w.value is not None:
-            parts.append(f"value={w.value}円")
+            parts.append(f"value={w.value}")
         logging.info("  - %d日間: %s", w.days, ", ".join(parts))
+
+    if lowest_config is not None:
+        parts = []
+        if lowest_config.rate is not None:
+            parts.append(f"rate={lowest_config.rate}%")
+        if lowest_config.value is not None:
+            parts.append(f"value={lowest_config.value}")
+        logging.info("lowest_config: %s", ", ".join(parts))
+    else:
+        logging.info("lowest_config: なし（即発火）")
+
+    if currency_rates:
+        for cr in currency_rates:
+            logging.info("currency: %s = %.1f", cr.label, cr.rate)
+
     if dry_run:
         logging.info("ドライランモード: DB への書き込みは行いません")
+    if rebuild:
+        logging.info("再構築モード: 価格変動イベントを全削除してから再生成します")
 
     all_events: list[BackfillEvent] = []
 
@@ -421,8 +565,18 @@ def main(config_file: pathlib.Path, dry_run: bool) -> None:
             conn=conn,
             ignore_hours=ignore_hours,
             windows=windows,
+            lowest_config=lowest_config,
+            currency_rates=currency_rates,
+            store_price_units=store_price_units,
             dry_run=dry_run,
+            rebuild=rebuild,
         )
+
+        # rebuild モード: 価格変動イベントをクリア
+        if rebuild and not dry_run:
+            cleared = clear_rebuildable_events(conn)
+            ctx.stats.cleared = cleared
+            logging.info("価格変動イベントを %d 件削除しました", cleared)
 
         items = get_all_items(conn)
         logging.info("対象アイテム数: %d", len(items))
@@ -434,22 +588,40 @@ def main(config_file: pathlib.Path, dry_run: bool) -> None:
 
         # 結果表示
         print(f"\n{'=' * 70}")
-        print("イベント補完結果")
+        title = "イベント再構築結果" if rebuild else "イベント補完結果"
+        print(title)
         print(f"{'=' * 70}")
         print(f"スキャンしたアイテム数: {ctx.stats.items_scanned}")
+        if rebuild:
+            print(f"削除した価格変動イベント: {ctx.stats.cleared}")
         print(f"検出した最安値更新イベント: {ctx.stats.lowest_price_found}")
         print(f"検出した価格下落イベント: {ctx.stats.price_drop_found}")
-        print(f"既に記録済み（スキップ）: {ctx.stats.already_recorded}")
-        print(f"補完対象イベント合計: {len(all_events)}")
+        if not rebuild:
+            print(f"既に記録済み（スキップ）: {ctx.stats.already_recorded}")
+        print(f"挿入対象イベント合計: {len(all_events)}")
 
         if all_events:
             print(f"\n{'─' * 70}")
-            print("補完対象イベント一覧:")
+            print("挿入対象イベント一覧:")
             print(f"{'─' * 70}")
             print_events(all_events)
 
             if dry_run:
-                print(f"\n[ドライラン] {len(all_events)} 件のイベントが補完対象です（DB 未変更）")
+                if rebuild:
+                    # rebuild + dry-run: クリア対象件数を表示
+                    cur = conn.cursor()
+                    placeholders = ", ".join("?" for _ in REBUILDABLE_EVENT_TYPES)
+                    cur.execute(
+                        f"SELECT COUNT(*) FROM events WHERE event_type IN ({placeholders})",  # noqa: S608
+                        REBUILDABLE_EVENT_TYPES,
+                    )
+                    row = cur.fetchone()
+                    count = next(iter(row.values())) if row else 0
+                    print(
+                        f"\n[ドライラン] 削除対象: {count} 件 / 挿入対象: {len(all_events)} 件（DB 未変更）"
+                    )
+                else:
+                    print(f"\n[ドライラン] {len(all_events)} 件のイベントが補完対象です（DB 未変更）")
             else:
                 inserted = insert_events(conn, all_events)
                 ctx.stats.inserted = inserted
@@ -467,9 +639,11 @@ if __name__ == "__main__":
     args = docopt.docopt(__doc__)
 
     config_file = pathlib.Path(args["-c"])
+    target_file = pathlib.Path(args["-t"])
     dry_run = args["--dry-run"]
+    rebuild = args["--rebuild"]
     debug_mode = args["-D"]
 
     my_lib.logger.init("backfill-events", level=logging.DEBUG if debug_mode else logging.INFO)
 
-    main(config_file, dry_run)
+    main(config_file, target_file, dry_run=dry_run, rebuild=rebuild)

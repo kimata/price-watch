@@ -434,6 +434,20 @@ class ItemProcessor:
 
         return True
 
+    def _resolve_currency_rate(self, price_unit: str) -> float:
+        """アイテムの price_unit に一致する通貨レートを返す.
+
+        Args:
+            price_unit: アイテムの通貨単位
+
+        Returns:
+            通貨レート（一致するものがなければ 1.0）
+        """
+        for cr in self.config.check.currency:
+            if cr.label == price_unit:
+                return cr.rate
+        return 1.0
+
     def _check_and_notify_events(
         self,
         item: price_watch.models.CheckedItem,
@@ -443,13 +457,16 @@ class ItemProcessor:
     ) -> None:
         """イベントを判定して通知."""
         history = self.app.history_manager
-        judge_config = self.config.check.judge
-        ignore_hours = judge_config.ignore.hour if judge_config else 24
-        windows = judge_config.windows if judge_config else []
+        drop_config = self.config.check.drop
+        lowest_config = self.config.check.lowest
+        ignore_hours = drop_config.ignore.hour if drop_config else 24
+        windows = drop_config.windows if drop_config else []
 
         current_price = item.price
         current_stock = item.stock_as_int()
         last_stock = last.stock
+
+        currency_rate = self._resolve_currency_rate(item.price_unit)
 
         if crawl_status == 1:
             # 在庫復活判定
@@ -462,12 +479,21 @@ class ItemProcessor:
 
             # 価格関連イベント
             if current_price is not None and current_stock == 1:
-                result = price_watch.event.check_lowest_price(history, item_id, current_price, ignore_hours)
+                result = price_watch.event.check_lowest_price(
+                    history,
+                    item_id,
+                    current_price,
+                    ignore_hours,
+                    lowest_config=lowest_config,
+                    currency_rate=currency_rate,
+                )
                 if result is not None and result.should_notify:
                     self._notify_and_record_event(result, item, item_id)
 
                 if windows:
-                    result = price_watch.event.check_price_drop(history, item_id, current_price, windows)
+                    result = price_watch.event.check_price_drop(
+                        history, item_id, current_price, windows, currency_rate=currency_rate
+                    )
                     if result is not None and result.should_notify:
                         self._notify_and_record_event(result, item, item_id)
         else:

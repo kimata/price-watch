@@ -367,6 +367,114 @@ class TestCheckLowestPrice:
         assert result.price == 800
         assert result.old_price == 1000
 
+    def test_with_lowest_config_rate_met(self, mock_history: mock.MagicMock) -> None:
+        """LowestConfig の rate 閾値を満たす場合にイベントを返す"""
+        from price_watch.config import LowestConfig
+
+        mock_history.get_lowest_in_period.return_value = 1000
+        mock_history.get_last_event.return_value = None  # 前回イベントなし → baseline = lowest_price
+        mock_history.has_event_in_hours.return_value = False
+
+        lowest_config = LowestConfig(rate=5.0, value=None)
+        # drop_amount = 1000 - 800 = 200, rate = 200/1000*100 = 20% >= 5%
+        result = check_lowest_price(
+            mock_history, item_id=1, current_price=800, ignore_hours=24, lowest_config=lowest_config
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
+    def test_with_lowest_config_rate_not_met(self, mock_history: mock.MagicMock) -> None:
+        """LowestConfig の rate 閾値を満たさない場合は None"""
+        from price_watch.config import LowestConfig
+
+        mock_history.get_lowest_in_period.return_value = 1000
+        mock_history.get_last_event.return_value = None
+        mock_history.has_event_in_hours.return_value = False
+
+        lowest_config = LowestConfig(rate=50.0, value=None)
+        # drop_amount = 1000 - 800 = 200, rate = 20% < 50%
+        result = check_lowest_price(
+            mock_history, item_id=1, current_price=800, ignore_hours=24, lowest_config=lowest_config
+        )
+
+        assert result is None
+
+    def test_with_lowest_config_value_with_currency(self, mock_history: mock.MagicMock) -> None:
+        """LowestConfig の value 閾値を通貨換算で判定"""
+        from price_watch.config import LowestConfig
+
+        mock_history.get_lowest_in_period.return_value = 100  # $100
+        mock_history.get_last_event.return_value = None
+        mock_history.has_event_in_hours.return_value = False
+
+        lowest_config = LowestConfig(rate=None, value=1000)
+        # drop_amount = 100 - 90 = 10, effective_drop = 10 * 150 = 1500 >= 1000
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=90,
+            ignore_hours=24,
+            lowest_config=lowest_config,
+            currency_rate=150.0,
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
+    def test_with_lowest_config_value_not_met_without_currency(self, mock_history: mock.MagicMock) -> None:
+        """通貨換算なしでは value 閾値を満たさない"""
+        from price_watch.config import LowestConfig
+
+        mock_history.get_lowest_in_period.return_value = 100
+        mock_history.get_last_event.return_value = None
+
+        lowest_config = LowestConfig(rate=None, value=1000)
+        # drop_amount = 100 - 90 = 10, effective_drop = 10 * 1.0 = 10 < 1000
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=90,
+            ignore_hours=24,
+            lowest_config=lowest_config,
+            currency_rate=1.0,
+        )
+
+        assert result is None
+
+    def test_with_lowest_config_uses_last_event_as_baseline(self, mock_history: mock.MagicMock) -> None:
+        """直近の LOWEST_PRICE イベントをベースラインに使用"""
+        from price_watch.config import LowestConfig
+
+        mock_history.get_lowest_in_period.return_value = 1000
+
+        # 前回イベントの price をベースラインとする
+        mock_last_event = mock.MagicMock()
+        mock_last_event.price = 900  # baseline = 900
+        mock_history.get_last_event.return_value = mock_last_event
+        mock_history.has_event_in_hours.return_value = False
+
+        lowest_config = LowestConfig(rate=5.0, value=None)
+        # drop_amount = 900 - 800 = 100, rate = 100/900*100 = 11.1% >= 5%
+        result = check_lowest_price(
+            mock_history, item_id=1, current_price=800, ignore_hours=24, lowest_config=lowest_config
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
+    def test_without_lowest_config_fires_immediately(self, mock_history: mock.MagicMock) -> None:
+        """LowestConfig なしの場合は従来通り即発火"""
+        mock_history.get_lowest_in_period.return_value = 1000
+        mock_history.has_event_in_hours.return_value = False
+
+        result = check_lowest_price(
+            mock_history, item_id=1, current_price=999, ignore_hours=24, lowest_config=None
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
 
 # === check_price_drop テスト ===
 class TestCheckPriceDrop:
@@ -432,3 +540,36 @@ class TestCheckPriceDrop:
 
         assert result is not None
         assert result.should_notify is True
+
+    def test_value_threshold_with_currency_rate(self, mock_history: mock.MagicMock) -> None:
+        """通貨換算後の値で value 閾値を判定"""
+        window = mock.MagicMock()
+        window.days = 7
+        window.rate = None
+        window.value = 1000  # 1000円以上の下落
+
+        # drop_amount = 100 - 90 = 10, effective_drop = 10 * 150 = 1500 >= 1000
+        mock_history.get_lowest_in_period.return_value = 100
+
+        result = check_price_drop(
+            mock_history, item_id=1, current_price=90, windows=[window], currency_rate=150.0
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
+    def test_value_threshold_not_met_without_currency(self, mock_history: mock.MagicMock) -> None:
+        """通貨換算なしでは value 閾値を満たさない"""
+        window = mock.MagicMock()
+        window.days = 7
+        window.rate = None
+        window.value = 1000
+
+        # drop_amount = 100 - 90 = 10, effective_drop = 10 * 1.0 = 10 < 1000
+        mock_history.get_lowest_in_period.return_value = 100
+
+        result = check_price_drop(
+            mock_history, item_id=1, current_price=90, windows=[window], currency_rate=1.0
+        )
+
+        assert result is None

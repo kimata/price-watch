@@ -243,7 +243,7 @@ class TestProcessAmazonItems:
         mock_app = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.history_manager.insert_checked_item.return_value = 1
         mock_app.history_manager.get_last.return_value = None
@@ -424,7 +424,7 @@ class TestProcessData:
         """履歴を挿入"""
         mock_app = MagicMock()
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.history_manager.insert_checked_item.return_value = 1
         mock_app.history_manager.get_last.return_value = None
@@ -445,7 +445,7 @@ class TestProcessData:
         """既存アイテムの更新"""
         mock_app = MagicMock()
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.history_manager.insert_checked_item.return_value = 1
         # PriceHistoryRecord を返すようにする
@@ -476,9 +476,11 @@ class TestCheckAndNotifyEvents:
         """在庫復活を判定"""
         mock_app = MagicMock()
         mock_config = MagicMock()
-        mock_config.check.judge = MagicMock()
-        mock_config.check.judge.ignore.hour = 24
-        mock_config.check.judge.windows = []
+        mock_config.check.drop = MagicMock()
+        mock_config.check.drop.ignore.hour = 24
+        mock_config.check.drop.windows = []
+        mock_config.check.lowest = None
+        mock_config.check.currency = []
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
@@ -686,7 +688,7 @@ class TestProcessYahooItems:
         mock_app.debug_mode = False
         mock_app.should_terminate = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.history_manager.insert_checked_item.return_value = 1
         mock_app.history_manager.get_last.return_value = None
@@ -761,7 +763,7 @@ class TestProcessYahooItems:
         mock_app.debug_mode = False
         mock_app.should_terminate = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.wait_for_terminate.return_value = False
         # history_manager のモックを適切に設定
@@ -799,7 +801,7 @@ class TestProcessYahooItem:
         mock_app = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.history_manager.insert_checked_item.return_value = 1
         mock_app.history_manager.get_last.return_value = None
@@ -825,7 +827,7 @@ class TestProcessYahooItem:
         mock_app = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         mock_app.history_manager.insert_checked_item.return_value = 1
         mock_app.history_manager.get_last.return_value = None
@@ -878,7 +880,7 @@ class TestExceptionHandling:
         mock_app.browser_manager.driver = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
@@ -902,7 +904,7 @@ class TestExceptionHandling:
         mock_app.browser_manager.driver = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
@@ -925,7 +927,7 @@ class TestExceptionHandling:
         mock_app = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
-        mock_config.check.judge = None
+        mock_config.check.drop = None
         mock_app.config = mock_config
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 

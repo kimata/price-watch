@@ -14,13 +14,16 @@ from unittest.mock import patch
 from price_watch.config import (
     AppConfig,
     CheckConfig,
+    CurrencyRate,
     DataConfig,
+    DropConfig,
     FontConfig,
     FontMapConfig,
     IgnoreConfig,
     JudgeConfig,
     LivenessConfig,
     LivenessFileConfig,
+    LowestConfig,
     PriceDropWindow,
     StoreConfig,
     TargetConfig,
@@ -55,6 +58,22 @@ class TestPriceDropWindow:
         assert result.rate is None
         assert result.value is None
 
+    def test_parse_nested_price_format(self) -> None:
+        """ネスト形式: price: {rate, value}"""
+        data = {"days": 7, "price": {"rate": 10.0, "value": 1000}}
+        result = PriceDropWindow.parse(data)
+        assert result.days == 7
+        assert result.rate == 10.0
+        assert result.value == 1000
+
+    def test_parse_nested_price_partial(self) -> None:
+        """ネスト形式: price に rate のみ"""
+        data = {"days": 7, "price": {"rate": 5.0}}
+        result = PriceDropWindow.parse(data)
+        assert result.days == 7
+        assert result.rate == 5.0
+        assert result.value is None
+
 
 class TestIgnoreConfig:
     """IgnoreConfig のテスト"""
@@ -72,8 +91,8 @@ class TestIgnoreConfig:
         assert result.hour == 24
 
 
-class TestJudgeConfig:
-    """JudgeConfig のテスト"""
+class TestDropConfig:
+    """DropConfig のテスト"""
 
     def test_parse_with_windows(self) -> None:
         """windows 配列を解析"""
@@ -84,7 +103,7 @@ class TestJudgeConfig:
                 {"days": 7, "rate": 5.0},  # 順番がバラバラ
             ],
         }
-        result = JudgeConfig.parse(data)
+        result = DropConfig.parse(data)
         assert result.ignore.hour == 12
         # days で昇順ソートされる
         assert len(result.windows) == 2
@@ -94,28 +113,93 @@ class TestJudgeConfig:
     def test_parse_empty(self) -> None:
         """空の設定"""
         data: dict[str, list[dict[str, int]]] = {}
-        result = JudgeConfig.parse(data)
+        result = DropConfig.parse(data)
         assert result.ignore.hour == 24
         assert result.windows == []
+
+    def test_judge_config_alias(self) -> None:
+        """JudgeConfig は DropConfig のエイリアス"""
+        assert JudgeConfig is DropConfig
+
+
+class TestLowestConfig:
+    """LowestConfig のテスト"""
+
+    def test_parse_with_all_fields(self) -> None:
+        """全フィールド指定"""
+        data = {"rate": 1.0, "value": 100}
+        result = LowestConfig.parse(data)
+        assert result.rate == 1.0
+        assert result.value == 100
+
+    def test_parse_with_defaults(self) -> None:
+        """デフォルト値"""
+        data: dict[str, float] = {}
+        result = LowestConfig.parse(data)
+        assert result.rate is None
+        assert result.value is None
+
+    def test_parse_rate_only(self) -> None:
+        """rate のみ指定"""
+        data = {"rate": 5.0}
+        result = LowestConfig.parse(data)
+        assert result.rate == 5.0
+        assert result.value is None
+
+
+class TestCurrencyRate:
+    """CurrencyRate のテスト"""
+
+    def test_parse(self) -> None:
+        """基本的なパース"""
+        data = {"label": "ドル", "rate": 150.0}
+        result = CurrencyRate.parse(data)
+        assert result.label == "ドル"
+        assert result.rate == 150.0
 
 
 class TestCheckConfig:
     """CheckConfig のテスト"""
 
-    def test_parse_with_all_fields(self) -> None:
-        """全フィールド指定"""
-        data = {"interval_sec": 3600, "judge": {"ignore": {"hour": 6}, "windows": []}}
+    def test_parse_with_drop(self) -> None:
+        """新形式: drop 指定"""
+        data = {"interval_sec": 3600, "drop": {"ignore": {"hour": 6}, "windows": []}}
         result = CheckConfig.parse(data)
         assert result.interval_sec == 3600
-        assert result.judge is not None
-        assert result.judge.ignore.hour == 6
+        assert result.drop is not None
+        assert result.drop.ignore.hour == 6
+
+    def test_parse_with_judge_backward_compat(self) -> None:
+        """旧形式: judge は drop にマッピングされる"""
+        data = {"interval_sec": 3600, "judge": {"ignore": {"hour": 6}, "windows": []}}
+        result = CheckConfig.parse(data)
+        assert result.drop is not None
+        assert result.drop.ignore.hour == 6
+
+    def test_parse_with_lowest(self) -> None:
+        """lowest 設定"""
+        data = {"lowest": {"rate": 1.0, "value": 100}}
+        result = CheckConfig.parse(data)
+        assert result.lowest is not None
+        assert result.lowest.rate == 1.0
+        assert result.lowest.value == 100
+
+    def test_parse_with_currency(self) -> None:
+        """currency 設定"""
+        data = {"currency": [{"label": "ドル", "rate": 150.0}]}
+        result = CheckConfig.parse(data)
+        assert len(result.currency) == 1
+        assert result.currency[0].label == "ドル"
+        assert result.currency[0].rate == 150.0
 
     def test_parse_with_defaults(self) -> None:
         """デフォルト値"""
         data: dict[str, int] = {}
         result = CheckConfig.parse(data)
         assert result.interval_sec == 1800
-        assert result.judge is None
+        assert result.drop is None
+        assert result.lowest is None
+        assert len(result.currency) == 0
 
 
 class TestStoreConfig:

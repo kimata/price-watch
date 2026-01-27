@@ -31,9 +31,22 @@ class PriceDropWindow:
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> PriceDropWindow:
-        """dict から PriceDropWindow を生成"""
+        """dict から PriceDropWindow を生成.
+
+        以下の2形式に対応:
+        - ネスト形式: {days: 7, price: {rate: 10, value: 1000}}
+        - フラット形式（後方互換）: {days: 7, rate: 10, value: 1000}
+        """
+        days = data.get("days", 30)
+        price = data.get("price")
+        if isinstance(price, dict):
+            return cls(
+                days=days,
+                rate=price.get("rate"),
+                value=price.get("value"),
+            )
         return cls(
-            days=data.get("days", 30),
+            days=days,
             rate=data.get("rate"),
             value=data.get("value"),
         )
@@ -52,15 +65,15 @@ class IgnoreConfig:
 
 
 @dataclass(frozen=True)
-class JudgeConfig:
-    """イベント判定設定"""
+class DropConfig:
+    """価格下落イベント判定設定"""
 
     ignore: IgnoreConfig
     windows: list[PriceDropWindow]
 
     @classmethod
-    def parse(cls, data: dict[str, Any]) -> JudgeConfig:
-        """dict から JudgeConfig を生成"""
+    def parse(cls, data: dict[str, Any]) -> DropConfig:
+        """dict から DropConfig を生成"""
         ignore = IgnoreConfig.parse(data.get("ignore", {}))
         windows_data = data.get("windows", [])
         windows = [PriceDropWindow.parse(w) for w in windows_data]
@@ -69,22 +82,77 @@ class JudgeConfig:
         return cls(ignore=ignore, windows=windows)
 
 
+# 後方互換エイリアス
+JudgeConfig = DropConfig
+
+
+@dataclass(frozen=True)
+class LowestConfig:
+    """最安値更新イベント判定設定"""
+
+    rate: float | None = None  # パーセント（例: 1.0 = 1%）
+    value: int | None = None  # 絶対値（例: 100 = 100円）
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> LowestConfig:
+        """dict から LowestConfig を生成"""
+        return cls(
+            rate=data.get("rate"),
+            value=data.get("value"),
+        )
+
+
+@dataclass(frozen=True)
+class CurrencyRate:
+    """通貨レート設定"""
+
+    label: str
+    rate: float
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> CurrencyRate:
+        """dict から CurrencyRate を生成"""
+        return cls(
+            label=data["label"],
+            rate=data["rate"],
+        )
+
+
 @dataclass(frozen=True)
 class CheckConfig:
     """チェック間隔設定"""
 
     interval_sec: int = 1800
-    judge: JudgeConfig | None = None
+    drop: DropConfig | None = None
+    lowest: LowestConfig | None = None
+    currency: list[CurrencyRate] = ()  # type: ignore[assignment]
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> CheckConfig:
-        """dict から CheckConfig を生成"""
-        judge = None
-        if "judge" in data:
-            judge = JudgeConfig.parse(data["judge"])
+        """dict から CheckConfig を生成.
+
+        以下の2形式に対応:
+        - 新形式: {drop: {...}, lowest: {...}, currency: [...]}
+        - 旧形式（後方互換）: {judge: {...}}
+        """
+        drop = None
+        if "drop" in data:
+            drop = DropConfig.parse(data["drop"])
+        elif "judge" in data:
+            drop = DropConfig.parse(data["judge"])
+
+        lowest = None
+        if "lowest" in data:
+            lowest = LowestConfig.parse(data["lowest"])
+
+        currency_data = data.get("currency", [])
+        currency = [CurrencyRate.parse(c) for c in currency_data]
+
         return cls(
             interval_sec=data.get("interval_sec", 1800),
-            judge=judge,
+            drop=drop,
+            lowest=lowest,
+            currency=currency,
         )
 
 
