@@ -10,7 +10,8 @@ from __future__ import annotations
 import logging
 import pathlib
 import sqlite3
-from dataclasses import dataclass
+import statistics
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import my_lib.time
@@ -121,6 +122,35 @@ class CurrentSessionStatus:
     total_items: int
     success_items: int
     failed_items: int
+
+
+@dataclass(frozen=True)
+class BoxPlotStats:
+    """箱ひげ図統計"""
+
+    min: float
+    q1: float
+    median: float
+    q3: float
+    max: float
+    count: int
+    outliers: list[float] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CrawlTimeBoxPlotData:
+    """巡回時間箱ひげ図データ"""
+
+    stores: dict[str, BoxPlotStats]
+    total: BoxPlotStats | None
+
+
+@dataclass(frozen=True)
+class FailureTimeseriesData:
+    """失敗数時系列データ"""
+
+    labels: list[str]
+    data: list[int]
 
 
 class MetricsDB:
@@ -256,9 +286,12 @@ class MetricsDB:
                            None の場合は現在時刻を使用
         """
         now = my_lib.time.now()
-        # 作業終了時刻が指定されていればそれを使用（スリープ時間を除外）
-        ended_at = work_ended_at if work_ended_at is not None else now
+        # ended_at は常に現在時刻（稼働率トラッキング用、sleep 期間も稼働中として扱う）
+        ended_at = now
         ended_at_str = ended_at.isoformat()
+
+        # duration は作業終了時刻基準（巡回時間、sleep 除外）
+        duration_end = work_ended_at if work_ended_at is not None else now
 
         with self._get_conn() as conn:
             # 開始時刻を取得して duration を計算
@@ -269,7 +302,7 @@ class MetricsDB:
             row = cursor.fetchone()
             if row:
                 started_at = datetime.fromisoformat(row[0])
-                duration = (ended_at - started_at).total_seconds()
+                duration = (duration_end - started_at).total_seconds()
             else:
                 duration = 0
 
@@ -592,6 +625,143 @@ class MetricsDB:
         # 最大でスロット長を超えない
         slot_duration = (slot_end - slot_start).total_seconds()
         return min(total_uptime, slot_duration)
+
+    @staticmethod
+    def _compute_boxplot_stats(values: list[float]) -> BoxPlotStats | None:
+        """箱ひげ図統計を計算"""
+        if not values:
+            return None
+
+        sorted_values = sorted(values)
+        count = len(sorted_values)
+        min_val = sorted_values[0]
+        max_val = sorted_values[-1]
+
+        if count == 1:
+            return BoxPlotStats(min=min_val, q1=min_val, median=min_val, q3=min_val, max=max_val, count=count)
+
+        median_val = statistics.median(sorted_values)
+
+        if count == 2:
+            q1 = min_val
+            q3 = max_val
+        else:
+            quantiles = statistics.quantiles(sorted_values, n=4)
+            q1 = quantiles[0]
+            q3 = quantiles[2]
+
+        # IQR法で外れ値検出
+        iqr = q3 - q1
+        lower_fence = q1 - 1.5 * iqr
+        upper_fence = q3 + 1.5 * iqr
+        outliers = [v for v in sorted_values if v < lower_fence or v > upper_fence]
+
+        # ひげの範囲（外れ値を除いた min/max）
+        whisker_min = min((v for v in sorted_values if v >= lower_fence), default=min_val)
+        whisker_max = max((v for v in sorted_values if v <= upper_fence), default=max_val)
+
+        return BoxPlotStats(
+            min=whisker_min,
+            q1=q1,
+            median=median_val,
+            q3=q3,
+            max=whisker_max,
+            count=count,
+            outliers=outliers,
+        )
+
+    def get_crawl_time_boxplot(self, days: int = 7) -> CrawlTimeBoxPlotData:
+        """巡回時間の箱ひげ図データを取得
+
+        Args:
+            days: 集計期間（日数）
+
+        Returns:
+            CrawlTimeBoxPlotData
+        """
+        now = my_lib.time.now()
+        since = (now - timedelta(days=days)).isoformat()
+
+        with self._get_conn() as conn:
+            # ストア別巡回時間
+            cursor = conn.execute(
+                """
+                SELECT store_name, duration_sec
+                FROM store_crawl_stats
+                WHERE started_at >= ? AND duration_sec IS NOT NULL
+                ORDER BY store_name
+                """,
+                (since,),
+            )
+
+            store_values: dict[str, list[float]] = {}
+            for row in cursor.fetchall():
+                store_name, duration = row
+                if store_name not in store_values:
+                    store_values[store_name] = []
+                store_values[store_name].append(float(duration))
+
+            stores: dict[str, BoxPlotStats] = {}
+            for store_name, values in store_values.items():
+                stats = self._compute_boxplot_stats(values)
+                if stats:
+                    stores[store_name] = stats
+
+            # セッション全体の巡回時間（sleep 除外 = duration_sec）
+            cursor = conn.execute(
+                """
+                SELECT duration_sec
+                FROM crawl_sessions
+                WHERE started_at >= ? AND duration_sec IS NOT NULL AND ended_at IS NOT NULL
+                """,
+                (since,),
+            )
+            total_values = [float(row[0]) for row in cursor.fetchall()]
+            total = self._compute_boxplot_stats(total_values)
+
+        return CrawlTimeBoxPlotData(stores=stores, total=total)
+
+    def get_failure_timeseries(self, days: int = 7) -> FailureTimeseriesData:
+        """失敗数時系列データを取得（1時間単位）
+
+        Args:
+            days: 集計期間（日数）
+
+        Returns:
+            FailureTimeseriesData
+        """
+        now = my_lib.time.now()
+        since = now - timedelta(days=days)
+
+        with self._get_conn() as conn:
+            cursor = conn.execute(
+                """
+                SELECT started_at, failed_count
+                FROM store_crawl_stats
+                WHERE started_at >= ? AND failed_count > 0
+                """,
+                (since.isoformat(),),
+            )
+
+            # 1時間バケットに集計
+            hourly_failures: dict[str, int] = {}
+            for row in cursor.fetchall():
+                started_at_str, failed_count = row
+                dt = datetime.fromisoformat(started_at_str)
+                bucket = dt.strftime("%Y-%m-%d %H:00")
+                hourly_failures[bucket] = hourly_failures.get(bucket, 0) + int(failed_count)
+
+        # 全時間スロットを生成
+        labels: list[str] = []
+        data: list[int] = []
+        current = since.replace(minute=0, second=0, microsecond=0)
+        while current <= now:
+            bucket = current.strftime("%Y-%m-%d %H:00")
+            labels.append(bucket)
+            data.append(hourly_failures.get(bucket, 0))
+            current += timedelta(hours=1)
+
+        return FailureTimeseriesData(labels=labels, data=data)
 
     def is_crawler_healthy(self, max_age_sec: int = 600) -> bool:
         """クローラが健全に動作しているかチェック

@@ -11,6 +11,7 @@
     },
     "dependencies": {
         "@heroicons/react": "^2.2.0",
+        "@sgratzl/chartjs-chart-boxplot": "^4.4.5",
         "@types/react-window": "^1.8.8",
         "axios": "^1.6.0",
         "chart.js": "^4.4.0",

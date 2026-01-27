@@ -13,7 +13,10 @@ import my_lib.time
 import pytest
 
 from price_watch.metrics import (
+    BoxPlotStats,
+    CrawlTimeBoxPlotData,
     CurrentSessionStatus,
+    FailureTimeseriesData,
     HeatmapCell,
     HeatmapData,
     MetricsDB,
@@ -359,3 +362,172 @@ class TestDataclasses:
         )
         with pytest.raises(AttributeError):
             status.is_running = False  # type: ignore
+
+    def test_boxplot_stats_frozen(self):
+        """BoxPlotStats は不変"""
+        stats = BoxPlotStats(min=1.0, q1=2.0, median=3.0, q3=4.0, max=5.0, count=10)
+        with pytest.raises(AttributeError):
+            stats.min = 0.0  # type: ignore
+
+
+class TestCrawlTimeBoxPlot:
+    """箱ひげ図統計のテスト"""
+
+    def test_compute_boxplot_stats_empty(self):
+        """空リストの場合は None"""
+        result = MetricsDB._compute_boxplot_stats([])
+        assert result is None
+
+    def test_compute_boxplot_stats_single(self):
+        """要素1つの場合"""
+        result = MetricsDB._compute_boxplot_stats([5.0])
+        assert result is not None
+        assert result.min == 5.0
+        assert result.median == 5.0
+        assert result.max == 5.0
+        assert result.count == 1
+
+    def test_compute_boxplot_stats_multiple(self):
+        """複数要素の場合"""
+        values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+        result = MetricsDB._compute_boxplot_stats(values)
+        assert result is not None
+        assert result.count == 10
+        assert result.median == 5.5
+        assert result.min <= result.q1 <= result.median <= result.q3 <= result.max
+
+    def test_compute_boxplot_stats_outliers(self):
+        """外れ値の検出"""
+        # 正常範囲: 1-10, 外れ値: 100
+        values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 100.0]
+        result = MetricsDB._compute_boxplot_stats(values)
+        assert result is not None
+        assert 100.0 in result.outliers
+
+    def test_compute_boxplot_stats_two_elements(self):
+        """要素2つの場合"""
+        result = MetricsDB._compute_boxplot_stats([3.0, 7.0])
+        assert result is not None
+        assert result.count == 2
+        assert result.q1 == 3.0
+        assert result.q3 == 7.0
+        assert result.median == 5.0
+
+    def test_get_crawl_time_boxplot(self, metrics_db):
+        """箱ひげ図データの取得"""
+        session_id = metrics_db.start_session()
+
+        # ストア巡回を記録
+        for _ in range(3):
+            stats_id = metrics_db.start_store_crawl(session_id, "store-a.com")
+            metrics_db.end_store_crawl(stats_id, 5, 4, 1)
+
+        metrics_db.end_session(session_id, 15, 12, 3)
+
+        data = metrics_db.get_crawl_time_boxplot(days=7)
+        assert isinstance(data, CrawlTimeBoxPlotData)
+        assert "store-a.com" in data.stores
+        assert data.stores["store-a.com"].count == 3
+        assert data.total is not None
+        assert data.total.count == 1
+
+    def test_get_crawl_time_boxplot_empty(self, metrics_db):
+        """データがない場合"""
+        data = metrics_db.get_crawl_time_boxplot(days=7)
+        assert isinstance(data, CrawlTimeBoxPlotData)
+        assert data.stores == {}
+        assert data.total is None
+
+
+class TestFailureTimeseries:
+    """失敗数時系列のテスト"""
+
+    def test_get_failure_timeseries_empty(self, metrics_db):
+        """データがない場合"""
+        data = metrics_db.get_failure_timeseries(days=1)
+        assert isinstance(data, FailureTimeseriesData)
+        assert len(data.labels) > 0
+        assert all(v == 0 for v in data.data)
+
+    def test_get_failure_timeseries_with_data(self, metrics_db):
+        """失敗データがある場合"""
+        session_id = metrics_db.start_session()
+
+        stats_id = metrics_db.start_store_crawl(session_id, "store-a.com")
+        metrics_db.end_store_crawl(stats_id, 5, 3, 2)
+
+        stats_id2 = metrics_db.start_store_crawl(session_id, "store-b.com")
+        metrics_db.end_store_crawl(stats_id2, 3, 1, 2)
+
+        data = metrics_db.get_failure_timeseries(days=1)
+        assert isinstance(data, FailureTimeseriesData)
+        # 失敗データが含まれている
+        assert sum(data.data) == 4  # 2 + 2
+
+    def test_get_failure_timeseries_labels_hourly(self, metrics_db):
+        """ラベルが1時間単位で生成される"""
+        data = metrics_db.get_failure_timeseries(days=1)
+        # 24時間 + 現在の時間 = 少なくとも24個のラベル
+        assert len(data.labels) >= 24
+        assert len(data.labels) == len(data.data)
+
+
+class TestEndSessionUptime:
+    """end_session の稼働率修正テスト"""
+
+    def test_ended_at_is_current_time(self, metrics_db):
+        """ended_at が現在時刻になること"""
+        import sqlite3
+
+        session_id = metrics_db.start_session()
+
+        # 作業終了時刻を過去に設定
+        work_ended = my_lib.time.now() - timedelta(minutes=30)
+        before_end = my_lib.time.now()
+        metrics_db.end_session(session_id, 10, 8, 2, "normal", work_ended_at=work_ended)
+        after_end = my_lib.time.now()
+
+        # DB から ended_at を直接取得
+        with sqlite3.connect(metrics_db.db_path) as conn:
+            cursor = conn.execute("SELECT ended_at FROM crawl_sessions WHERE id = ?", (session_id,))
+            row = cursor.fetchone()
+            ended_at = datetime.fromisoformat(row[0])
+
+        # ended_at は現在時刻付近（work_ended_at ではない）
+        if before_end.tzinfo:
+            ended_at = ended_at.replace(tzinfo=before_end.tzinfo)
+        assert ended_at >= before_end - timedelta(seconds=1)
+        assert ended_at <= after_end + timedelta(seconds=1)
+
+    def test_duration_based_on_work_ended_at(self, metrics_db):
+        """duration_sec が work_ended_at 基準になること"""
+        session_id = metrics_db.start_session()
+
+        # セッション開始から少し待つ
+        time.sleep(0.1)
+
+        # 作業終了時刻を設定（開始から約0.1秒後）
+        work_ended = my_lib.time.now()
+
+        # さらに待つ（sleep 模擬）
+        time.sleep(0.1)
+
+        metrics_db.end_session(session_id, 10, 8, 2, "normal", work_ended_at=work_ended)
+
+        sessions = metrics_db.get_sessions(limit=1)
+        assert len(sessions) == 1
+        # duration は work_ended_at 基準（短い方）
+        assert sessions[0].duration_sec is not None
+        # duration は 0.5秒未満のはず（sleep 期間を含まない）
+        assert sessions[0].duration_sec < 0.5
+
+    def test_duration_without_work_ended_at(self, metrics_db):
+        """work_ended_at なしの場合は現在時刻基準"""
+        session_id = metrics_db.start_session()
+        time.sleep(0.1)
+        metrics_db.end_session(session_id, 10, 8, 2, "normal")
+
+        sessions = metrics_db.get_sessions(limit=1)
+        assert len(sessions) == 1
+        assert sessions[0].duration_sec is not None
+        assert sessions[0].duration_sec >= 0.05

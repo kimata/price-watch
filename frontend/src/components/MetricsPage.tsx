@@ -4,6 +4,9 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import "dayjs/locale/ja";
 import UptimeHeatmap from "./UptimeHeatmap";
+import CrawlTimeBoxPlotChart from "./CrawlTimeBoxPlotChart";
+import TotalCrawlTimeBoxPlotChart from "./TotalCrawlTimeBoxPlotChart";
+import FailureTimeseriesChart from "./FailureTimeseriesChart";
 import MetricsFooter from "./MetricsFooter";
 
 dayjs.extend(relativeTime);
@@ -245,6 +248,36 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
                                         style={{ backgroundColor: "#4caf50" }}
                                     ></span>
                                     <span>80-100%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 巡回統計 */}
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h2 className="text-lg font-semibold text-gray-800 mb-4">巡回統計</h2>
+                            <div className="space-y-6">
+                                {/* ストア別巡回時間 箱ひげ図 */}
+                                <div>
+                                    <h3 className="text-sm font-medium text-gray-600 mb-2">
+                                        ストア別巡回時間
+                                    </h3>
+                                    <CrawlTimeBoxPlotChart days={days} refreshKey={refreshKey} />
+                                </div>
+
+                                {/* 全体巡回時間 箱ひげ図 */}
+                                <div>
+                                    <h3 className="text-sm font-medium text-gray-600 mb-2">
+                                        全体巡回時間（sleep除外）
+                                    </h3>
+                                    <TotalCrawlTimeBoxPlotChart days={days} refreshKey={refreshKey} />
+                                </div>
+
+                                {/* 失敗数時系列 */}
+                                <div>
+                                    <h3 className="text-sm font-medium text-gray-600 mb-2">
+                                        巡回失敗数（1時間あたり）
+                                    </h3>
+                                    <FailureTimeseriesChart days={days} refreshKey={refreshKey} />
                                 </div>
                             </div>
                         </div>

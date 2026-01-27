@@ -1475,6 +1475,53 @@ def api_metrics_heatmap_svg() -> flask.Response:
         return flask.Response("Internal server error", status=500)
 
 
+@blueprint.route("/api/metrics/crawl-time/boxplot")
+def api_metrics_crawl_time_boxplot() -> flask.Response:
+    """巡回時間の箱ひげ図データを取得."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    days = int(flask.request.args.get("days", "7"))
+    try:
+        boxplot_data = metrics_db.get_crawl_time_boxplot(days)
+
+        def _stats_to_dict(stats: price_watch.metrics.BoxPlotStats) -> dict[str, object]:
+            return {
+                "min": stats.min,
+                "q1": stats.q1,
+                "median": stats.median,
+                "q3": stats.q3,
+                "max": stats.max,
+                "count": stats.count,
+                "outliers": stats.outliers,
+            }
+
+        stores = {name: _stats_to_dict(s) for name, s in boxplot_data.stores.items()}
+        total = _stats_to_dict(boxplot_data.total) if boxplot_data.total else None
+
+        return flask.jsonify({"stores": stores, "total": total})
+    except Exception:
+        logging.exception("Failed to get crawl time boxplot data")
+        return flask.make_response(flask.jsonify({"error": "Internal server error"}), 500)
+
+
+@blueprint.route("/api/metrics/failures/timeseries")
+def api_metrics_failures_timeseries() -> flask.Response:
+    """失敗数時系列データを取得."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    days = int(flask.request.args.get("days", "7"))
+    try:
+        ts_data = metrics_db.get_failure_timeseries(days)
+        return flask.jsonify({"labels": ts_data.labels, "data": ts_data.data})
+    except Exception:
+        logging.exception("Failed to get failure timeseries data")
+        return flask.make_response(flask.jsonify({"error": "Internal server error"}), 500)
+
+
 @blueprint.route("/api/sysinfo")
 def api_sysinfo() -> flask.Response:
     """システム情報を取得."""
