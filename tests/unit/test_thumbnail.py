@@ -179,8 +179,8 @@ class TestSaveThumb:
         saved_img = PIL.Image.open(saved_path)
         assert saved_img.mode == "RGBA"
 
-    def test_resizes_large_image(self, tmp_path: Path) -> None:
-        """大きな画像をリサイズ"""
+    def test_saves_large_image_without_resize(self, tmp_path: Path) -> None:
+        """大きな画像もリサイズせずそのまま保存"""
         price_watch.thumbnail.init(tmp_path)
 
         # 大きな画像を作成
@@ -200,12 +200,11 @@ class TestSaveThumb:
         ):
             price_watch.thumbnail.save_thumb("大きい商品", "https://example.com/img.png")
 
-        # 保存された画像を確認
+        # 保存された画像を確認（リサイズなしで元のサイズのまま）
         saved_path = price_watch.thumbnail.get_thumb_path("大きい商品")
         saved_img = PIL.Image.open(saved_path)
-        # THUMB_SIZE (200, 200) 以下になっている
-        assert saved_img.width <= 200
-        assert saved_img.height <= 200
+        assert saved_img.width == 1000
+        assert saved_img.height == 1000
 
     def test_handles_request_error(self, tmp_path: Path) -> None:
         """リクエストエラーをハンドル"""
