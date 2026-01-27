@@ -110,7 +110,7 @@ export default function Footer({ storeDefinitions, onMetricsClick }: FooterProps
                         {onMetricsClick && (
                             <button
                                 onClick={onMetricsClick}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
                                 title="巡回メトリクス"
                             >
                                 <ChartBarIcon className="w-6 h-6" />

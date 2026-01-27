@@ -19,7 +19,7 @@ export default function PeriodSelector({ selected, onChange }: PeriodSelectorPro
                         key={option.value}
                         onClick={() => onChange(option.value)}
                         className={clsx(
-                            "px-3 py-1.5 text-sm rounded-md transition-colors",
+                            "px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer",
                             selected === option.value
                                 ? "bg-blue-600 text-white"
                                 : "bg-gray-100 text-gray-700 hover:bg-gray-200"

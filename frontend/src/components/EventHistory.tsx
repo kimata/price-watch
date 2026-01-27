@@ -70,7 +70,7 @@ export default function EventHistory({ events }: EventHistoryProps) {
                             type="checkbox"
                             checked={showAll}
                             onChange={(e) => setShowAll(e.target.checked)}
-                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                         />
                         全て
                     </label>
@@ -91,7 +91,7 @@ export default function EventHistory({ events }: EventHistoryProps) {
                         type="checkbox"
                         checked={showAll}
                         onChange={(e) => setShowAll(e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
                     全て
                 </label>
