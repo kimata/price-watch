@@ -226,6 +226,7 @@ class ItemDefinition:
     price_range: list[int] | None = None  # [min] or [min, max]
     cond: str | None = None  # フリマ: "NEW|LIKE_NEW" 形式、Yahoo: "new" or "used"
     jan_code: str | None = None  # JANコード（Yahoo検索用）
+    category: str | None = None  # カテゴリー名（未指定時は「その他」）
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> ItemDefinition:
@@ -258,6 +259,7 @@ class ItemDefinition:
             price_range=price_range,
             cond=data.get("cond"),
             jan_code=data.get("jan_code"),
+            category=data.get("category"),
         )
 
     @classmethod
@@ -275,7 +277,7 @@ class ItemDefinition:
 
         # 新書式: store がリスト
         # アイテムレベルで指定可能なキー（ストアエントリで未指定時のフォールバック）
-        _ITEM_LEVEL_KEYS = ["price", "cond"]
+        _ITEM_LEVEL_KEYS = ["price", "cond", "category"]
 
         result: list[ItemDefinition] = []
         for store_entry in store_data:
@@ -335,6 +337,7 @@ class ResolvedItem:
     price_range: list[int] | None = None
     cond: str | None = None
     jan_code: str | None = None  # Yahoo検索用
+    category: str | None = None  # カテゴリー名
 
     @classmethod
     def from_item_and_store(cls, item: ItemDefinition, store: StoreDefinition | None) -> ResolvedItem:
@@ -390,6 +393,7 @@ class ResolvedItem:
             price_range=item.price_range,
             cond=item.cond,
             jan_code=item.jan_code,
+            category=item.category,
         )
 
 
@@ -399,6 +403,7 @@ class TargetConfig:
 
     stores: list[StoreDefinition]
     items: list[ItemDefinition]
+    categories: list[str] = field(default_factory=list)  # カテゴリー表示順
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> TargetConfig:
@@ -412,7 +417,11 @@ class TargetConfig:
             for i in data["item_list"]:
                 items.extend(ItemDefinition.parse_list(i))
 
-        return cls(stores=stores, items=items)
+        categories: list[str] = []
+        if "category_list" in data:
+            categories = list(data["category_list"])
+
+        return cls(stores=stores, items=items, categories=categories)
 
     def get_store(self, name: str) -> StoreDefinition | None:
         """名前でストア定義を取得"""

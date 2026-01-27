@@ -219,7 +219,9 @@ def _find_first_thumb_url(store_data_list: list[dict[str, Any]]) -> str | None:
 
 
 def _build_result_item(
-    name: str, store_data_list: list[dict[str, Any]]
+    name: str,
+    store_data_list: list[dict[str, Any]],
+    category: str = "その他",
 ) -> price_watch.webapi.schemas.ResultItem:
     """グルーピングされたアイテムから結果アイテムを構築."""
     stores = [sd["store_entry"] for sd in store_data_list]
@@ -232,7 +234,74 @@ def _build_result_item(
         stores=stores,
         best_store=best_store_entry.store,
         best_effective_price=best_store_entry.effective_price,
+        category=category,
     )
+
+
+def _build_category_map(
+    target_config: price_watch.target.TargetConfig | None,
+) -> dict[str, str]:
+    """target.yaml の resolved_items からアイテム名→カテゴリーのマッピングを構築."""
+    if target_config is None:
+        return {}
+
+    category_map: dict[str, str] = {}
+    try:
+        resolved_items = target_config.resolve_items()
+    except Exception:
+        logging.warning("Failed to resolve target items for category map")
+        return {}
+
+    for item in resolved_items:
+        if item.category and item.name not in category_map:
+            category_map[item.name] = item.category
+    return category_map
+
+
+def _build_category_order(
+    target_config: price_watch.target.TargetConfig | None,
+    category_map: dict[str, str],
+    item_names: set[str],
+) -> list[str]:
+    """カテゴリーの表示順を構築.
+
+    順序:
+    1. category_list に指定されたカテゴリー（指定順）
+    2. category_list にないカテゴリー（アルファベット順）
+    3. 「その他」は category_list に含まれていればその位置、含まれていなければ末尾
+    """
+    # 実際に使用されているカテゴリーを収集
+    used_categories: set[str] = set()
+    for name in item_names:
+        used_categories.add(category_map.get(name, "その他"))
+
+    if not used_categories:
+        return []
+
+    configured_categories = target_config.categories if target_config else []
+
+    # category_list に「その他」が含まれているか確認
+    has_other_in_list = "その他" in configured_categories
+
+    # 1. category_list に指定されたカテゴリー（使用されているもののみ）
+    ordered: list[str] = []
+    listed_set: set[str] = set()
+    for cat in configured_categories:
+        if cat in used_categories:
+            ordered.append(cat)
+            listed_set.add(cat)
+
+    # 2. category_list にないカテゴリー（「その他」を除く）をアルファベット順で追加
+    unlisted = sorted(used_categories - listed_set - {"その他"})
+
+    # 「その他」が category_list に含まれている場合: unlisted を ordered の末尾に追加
+    # 「その他」が category_list に含まれていない場合: unlisted を追加した後に「その他」を末尾に追加
+    ordered.extend(unlisted)
+
+    if not has_other_in_list and "その他" in used_categories:
+        ordered.append("その他")
+
+    return ordered
 
 
 def _get_store_definitions(
@@ -478,14 +547,22 @@ def get_items(
             all_items, target_item_keys, days, target_config, include_history=False
         )
 
+        # カテゴリーマッピングを構築（アイテム名 → カテゴリー名）
+        category_map = _build_category_map(target_config)
+
+        # カテゴリー表示順を構築
+        categories = _build_category_order(target_config, category_map, set(items_by_name.keys()))
+
         # グルーピングされたアイテムを構築
         result_items = [
-            _build_result_item(name, store_data_list) for name, store_data_list in items_by_name.items()
+            _build_result_item(name, store_data_list, category=category_map.get(name, "その他"))
+            for name, store_data_list in items_by_name.items()
         ]
 
         response = price_watch.webapi.schemas.ItemsResponse(
             items=result_items,
             store_definitions=_get_store_definitions(target_config),
+            categories=categories,
         )
 
         return flask.jsonify(response.model_dump())

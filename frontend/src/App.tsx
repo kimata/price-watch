@@ -43,6 +43,7 @@ function getPageFromUrl(): "list" | "item" | "metrics" {
 export default function App() {
     const [items, setItems] = useState<Item[]>([]);
     const [storeDefinitions, setStoreDefinitions] = useState<StoreDefinition[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState<Period>("30");
@@ -59,6 +60,7 @@ export default function App() {
             const response = await fetchItems(period);
             setItems(response.items);
             setStoreDefinitions(response.store_definitions || []);
+            setCategories(response.categories || []);
         } catch (err) {
             setError("データの取得に失敗しました");
             console.error(err);
@@ -215,6 +217,7 @@ export default function App() {
                         storeDefinitions={storeDefinitions}
                         onItemClick={handleItemClick}
                         period={period}
+                        categories={categories}
                     />
                 )}
 

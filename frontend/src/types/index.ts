@@ -28,6 +28,7 @@ export interface Item {
     stores: StoreEntry[];
     best_store: string;
     best_effective_price: number | null; // null = 全ストア価格なし
+    category: string; // カテゴリー名（デフォルト: "その他"）
 }
 
 export interface StoreDefinition {
@@ -40,6 +41,7 @@ export interface StoreDefinition {
 export interface ItemsResponse {
     items: Item[];
     store_definitions: StoreDefinition[];
+    categories: string[]; // カテゴリー表示順
 }
 
 export interface HistoryResponse {

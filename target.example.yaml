@@ -1,3 +1,11 @@
+# カテゴリー表示順（省略可。指定しない場合はカテゴリーなし表示）
+# 「その他」をリストに含めるとその位置に表示。含めない場合は末尾に表示。
+category_list:
+    - PC パーツ
+    - IoT デバイス
+    - フリマ
+    - その他
+
 store_list:
     - name: amazon.co.jp
       check_method: my_lib.store.amazon.api
@@ -70,6 +78,7 @@ store_list:
 
 item_list:
     - name: Connect Display 13
+      category: IoT デバイス
       store:
           - name: store.ui.com
             url: https://store.ui.com/collections/early-access/products/unifi-connect-display-13-ea
@@ -90,6 +99,7 @@ item_list:
 
     # 1つの商品を複数ストアで監視する例
     - name: Fractal Design North Charcoal Black TG Dark
+      category: PC パーツ
       store:
           - name: amazon.co.jp
             asin: B0BPBXPCT5
@@ -97,12 +107,14 @@ item_list:
             url: https://www.yodobashi.com/product/100000001007535004/
 
     - name: Raspberry Pi Zero 2 W
+      category: IoT デバイス
       store:
           - name: switch-science.com
             url: https://www.switch-science.com/products/7600
 
     # メルカリ検索の例
     - name: マキタ 充電式高圧洗浄機 40Vmax MHW001GZ
+      category: フリマ
       store:
           - name: mercari.com
             search_keyword: マキタ MHW001GZ # 省略時は name で検索
@@ -112,6 +124,7 @@ item_list:
             cond: NEW|LIKE_NEW # 商品状態: NEW, LIKE_NEW, GOOD, FAIR, POOR, BAD
 
     - name: Raspberry Pi 5
+      category: フリマ
       store:
           - name: mercari.com
             # search_keyword 省略時は name で検索

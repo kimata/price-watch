@@ -11,6 +11,7 @@ Frontend types are defined in: frontend/src/types/index.ts
 from typing import Literal
 
 from my_lib.pydantic.base import BaseSchema
+from pydantic import Field
 
 # Period type matching frontend's Period type
 Period = Literal["30", "90", "180", "365", "all"]
@@ -82,6 +83,7 @@ class ResultItem(BaseSchema):
     stores: list[StoreEntry]
     best_store: str
     best_effective_price: int | None
+    category: str = "その他"
 
 
 class StoreDefinition(BaseSchema):
@@ -104,6 +106,7 @@ class ItemsResponse(BaseSchema):
 
     items: list[ResultItem]
     store_definitions: list[StoreDefinition]
+    categories: list[str] = Field(default_factory=list)  # カテゴリー表示順
 
 
 class HistoryResponse(BaseSchema):

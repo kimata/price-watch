@@ -299,9 +299,9 @@ WatchItem  # 監視対象アイテムの Protocol
 ActionStep       # アクションステップ（type, xpath, value）
 PreloadConfig    # プリロード設定（url, every）
 StoreDefinition  # ストア定義（name, check_method, price_xpath 等）
-ItemDefinition   # アイテム定義（name, store, url, asin 等）
+ItemDefinition   # アイテム定義（name, store, url, asin, category 等）
 ResolvedItem     # ストア定義とマージ済みのアイテム
-TargetConfig     # ターゲット設定（stores, items）
+TargetConfig     # ターゲット設定（stores, items, categories）
 ```
 
 ### 設定ファイル
@@ -369,6 +369,16 @@ liveness:
 #### target.yaml
 
 ```yaml
+# カテゴリー表示順（省略可）
+# フロントエンドのトップページでアイテムをカテゴリー別にグルーピング表示する。
+# 「その他」をリストに含めるとその位置に表示。含めない場合は末尾に表示。
+# リストにないカテゴリーは、リスト記載カテゴリーの後にアルファベット順で表示。
+category_list:
+    - PC パーツ
+    - IoT デバイス
+    - フリマ
+    - その他
+
 store_list:
     - name: ヨドバシ
       price_xpath: '//span[@id="js_scl_salesPrice"]/span[1]'
@@ -391,8 +401,9 @@ store_list:
       check_method: my_lib.store.yahoo.api
 
 item_list:
-    # 1アイテム=複数ストアの例
+    # 1アイテム=複数ストアの例（category でカテゴリーを指定）
     - name: 商品名
+      category: PC パーツ # カテゴリー名（省略時は「その他」）
       store:
           - name: ヨドバシ
             url: https://www.yodobashi.com/product/...
@@ -401,6 +412,7 @@ item_list:
 
     # フリマ検索（メルカリ・ラクマ・PayPayフリマ）
     - name: フリマ商品
+      category: フリマ
       cond: NEW|LIKE_NEW # アイテムレベルで商品状態を指定（省略時デフォルト: NEW|LIKE_NEW）
       price:
           - 10000 # price_min
