@@ -345,7 +345,7 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     min: Math.max(0, minPrice - padding),
                     max: maxPrice + padding,
                     ticks: {
-                        callback: (value) => formatPriceForYAxis(Number(value), priceUnit, largeLabels),
+                        callback: (value) => formatPriceForYAxis(Number(value), priceUnit),
                         precision: 0,
                         font: { size: largeLabels ? 13 : 10 },
                         color: largeLabels ? "#374151" : undefined,
