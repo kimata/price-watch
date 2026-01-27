@@ -1507,6 +1507,28 @@ def api_metrics_crawl_time_boxplot() -> flask.Response:
         return flask.make_response(flask.jsonify({"error": "Internal server error"}), 500)
 
 
+@blueprint.route("/api/metrics/crawl-time/timeseries-boxplot")
+def api_metrics_crawl_time_timeseries_boxplot() -> flask.Response:
+    """巡回時間の時系列箱ひげ図データを取得（日単位）."""
+    metrics_db = _get_metrics_db()
+    if metrics_db is None:
+        return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
+
+    days = int(flask.request.args.get("days", "7"))
+    try:
+        ts_data = metrics_db.get_crawl_time_timeseries_boxplot(days)
+        return flask.jsonify(
+            {
+                "periods": ts_data.periods,
+                "total": dict(ts_data.total),
+                "stores": {store: dict(day_data) for store, day_data in ts_data.stores.items()},
+            }
+        )
+    except Exception:
+        logging.exception("Failed to get crawl time timeseries boxplot data")
+        return flask.make_response(flask.jsonify({"error": "Internal server error"}), 500)
+
+
 @blueprint.route("/api/metrics/failures/timeseries")
 def api_metrics_failures_timeseries() -> flask.Response:
     """失敗数時系列データを取得."""

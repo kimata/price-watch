@@ -104,6 +104,15 @@ class CrawlTimeBoxPlotData:
 
 
 @dataclass(frozen=True)
+class CrawlTimeTimeseriesBoxPlotData:
+    """巡回時間の時系列箱ひげ図データ（日単位）"""
+
+    periods: list[str]  # YYYY-MM-DD
+    total: dict[str, list[float]]  # period -> duration_sec のリスト
+    stores: dict[str, dict[str, list[float]]]  # store_name -> period -> duration_sec のリスト
+
+
+@dataclass(frozen=True)
 class FailureTimeseriesData:
     """失敗数時系列データ"""
 
@@ -671,6 +680,70 @@ class MetricsDB:
             total = self._compute_boxplot_stats(total_values)
 
         return CrawlTimeBoxPlotData(stores=stores, total=total)
+
+    def get_crawl_time_timeseries_boxplot(self, days: int = 7) -> CrawlTimeTimeseriesBoxPlotData:
+        """巡回時間の時系列箱ひげ図データを取得（日単位）
+
+        Args:
+            days: 集計期間（日数）
+
+        Returns:
+            CrawlTimeTimeseriesBoxPlotData
+        """
+        now = my_lib.time.now()
+        since = now - timedelta(days=days)
+        since_str = since.isoformat()
+
+        # 日付リストを生成
+        periods: list[str] = []
+        current = since.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        while current <= end:
+            periods.append(current.strftime("%Y-%m-%d"))
+            current += timedelta(days=1)
+
+        with self._get_conn() as conn:
+            # セッション全体の巡回時間（日別）
+            cursor = conn.execute(
+                """
+                SELECT started_at, duration_sec
+                FROM crawl_sessions
+                WHERE started_at >= ? AND duration_sec IS NOT NULL AND ended_at IS NOT NULL
+                """,
+                (since_str,),
+            )
+            total_by_day: dict[str, list[float]] = {p: [] for p in periods}
+            for row in cursor.fetchall():
+                dt = datetime.fromisoformat(row[0])
+                day_key = dt.strftime("%Y-%m-%d")
+                if day_key in total_by_day:
+                    total_by_day[day_key].append(float(row[1]))
+
+            # ストア別巡回時間（日別）
+            cursor = conn.execute(
+                """
+                SELECT store_name, started_at, duration_sec
+                FROM store_crawl_stats
+                WHERE started_at >= ? AND duration_sec IS NOT NULL
+                ORDER BY store_name
+                """,
+                (since_str,),
+            )
+            stores_by_day: dict[str, dict[str, list[float]]] = {}
+            for row in cursor.fetchall():
+                store_name, started_at_str, duration = row
+                dt = datetime.fromisoformat(started_at_str)
+                day_key = dt.strftime("%Y-%m-%d")
+                if store_name not in stores_by_day:
+                    stores_by_day[store_name] = {p: [] for p in periods}
+                if day_key in stores_by_day[store_name]:
+                    stores_by_day[store_name][day_key].append(float(duration))
+
+        return CrawlTimeTimeseriesBoxPlotData(
+            periods=periods,
+            total=total_by_day,
+            stores=stores_by_day,
+        )
 
     def get_failure_timeseries(self, days: int = 7) -> FailureTimeseriesData:
         """失敗数時系列データを取得（1時間単位）

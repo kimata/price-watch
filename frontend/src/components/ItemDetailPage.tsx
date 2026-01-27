@@ -165,7 +165,7 @@ export default function ItemDetailPage({
                 <div className="max-w-4xl mx-auto px-4 py-3">
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors"
+                        className="cursor-pointer flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors"
                     >
                         <ArrowLeftIcon className="h-5 w-5" />
                         <span className="text-sm font-medium">一覧に戻る</span>

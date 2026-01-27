@@ -106,7 +106,7 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
                 <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-4">
                     <button
                         onClick={onBack}
-                        className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
+                        className="cursor-pointer p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-full transition-colors"
                         title="戻る"
                     >
                         <ArrowLeftIcon className="h-5 w-5" />
@@ -256,21 +256,16 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
                         <div className="bg-white rounded-lg shadow p-6">
                             <h2 className="text-lg font-semibold text-gray-800 mb-4">巡回統計</h2>
                             <div className="space-y-6">
-                                {/* ストア別巡回時間 箱ひげ図 */}
+                                {/* 全体巡回時間 時系列箱ひげ図 */}
                                 <div>
                                     <h3 className="text-sm font-medium text-gray-600 mb-2">
-                                        ストア別巡回時間
-                                    </h3>
-                                    <CrawlTimeBoxPlotChart days={days} refreshKey={refreshKey} />
-                                </div>
-
-                                {/* 全体巡回時間 箱ひげ図 */}
-                                <div>
-                                    <h3 className="text-sm font-medium text-gray-600 mb-2">
-                                        全体巡回時間（sleep除外）
+                                        全体巡回時間
                                     </h3>
                                     <TotalCrawlTimeBoxPlotChart days={days} refreshKey={refreshKey} />
                                 </div>
+
+                                {/* ストア別巡回時間 時系列箱ひげ図 */}
+                                <CrawlTimeBoxPlotChart days={days} refreshKey={refreshKey} />
 
                                 {/* 失敗数時系列 */}
                                 <div>

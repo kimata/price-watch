@@ -1,23 +1,42 @@
 import { useState, useEffect, useRef } from "react";
+import { formatDateToJapanese } from "../utils/dateFormat";
 
-interface BoxPlotStats {
+interface TimeseriesBoxPlotResponse {
+    periods: string[];
+    total: Record<string, number[]>;
+    stores: Record<string, Record<string, number[]>>;
+}
+
+interface BoxplotStats {
     min: number;
     q1: number;
     median: number;
     q3: number;
     max: number;
     count: number;
-    outliers: number[];
-}
-
-interface CrawlTimeBoxPlotResponse {
-    stores: Record<string, BoxPlotStats>;
-    total: BoxPlotStats | null;
 }
 
 interface TotalCrawlTimeBoxPlotChartProps {
     days: number;
     refreshKey: number;
+}
+
+function calculateBoxplotStats(values: number[]): BoxplotStats | null {
+    if (!values || values.length === 0) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const n = sorted.length;
+    const min = sorted[0];
+    const max = sorted[n - 1];
+    const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
+    const q1Index = (n - 1) * 0.25;
+    const q3Index = (n - 1) * 0.75;
+    const q1 =
+        sorted[Math.floor(q1Index)] +
+        (q1Index % 1) * (sorted[Math.ceil(q1Index)] - sorted[Math.floor(q1Index)]);
+    const q3 =
+        sorted[Math.floor(q3Index)] +
+        (q3Index % 1) * (sorted[Math.ceil(q3Index)] - sorted[Math.floor(q3Index)]);
+    return { min, q1, median, q3, max, count: n };
 }
 
 function formatTime(sec: number): string {
@@ -33,7 +52,7 @@ export default function TotalCrawlTimeBoxPlotChart({
     days,
     refreshKey,
 }: TotalCrawlTimeBoxPlotChartProps) {
-    const [chartData, setChartData] = useState<CrawlTimeBoxPlotResponse | null>(null);
+    const [chartData, setChartData] = useState<TimeseriesBoxPlotResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,12 +62,14 @@ export default function TotalCrawlTimeBoxPlotChart({
         const fetchData = async () => {
             setLoading(true);
             try {
-                const response = await fetch(`/price/api/metrics/crawl-time/boxplot?days=${days}`);
+                const response = await fetch(
+                    `/price/api/metrics/crawl-time/timeseries-boxplot?days=${days}`,
+                );
                 if (!response.ok) throw new Error("Failed to fetch");
                 const data = await response.json();
                 setChartData(data);
             } catch (error) {
-                console.error("Failed to fetch total crawl time boxplot data:", error);
+                console.error("Failed to fetch total crawl time timeseries data:", error);
             } finally {
                 setLoading(false);
             }
@@ -57,12 +78,18 @@ export default function TotalCrawlTimeBoxPlotChart({
     }, [days, refreshKey]);
 
     useEffect(() => {
-        if (!chartData?.total || !canvasRef.current) return;
+        if (!chartData?.periods || !canvasRef.current) return;
 
         const loadBoxplot = async () => {
             try {
-                const { Chart, CategoryScale, LinearScale, LineController, LineElement, PointElement } =
-                    await import("chart.js");
+                const {
+                    Chart,
+                    CategoryScale,
+                    LinearScale,
+                    LineController,
+                    LineElement,
+                    PointElement,
+                } = await import("chart.js");
                 const { BoxPlotController, BoxAndWiskers } = await import(
                     "@sgratzl/chartjs-chart-boxplot"
                 );
@@ -84,29 +111,28 @@ export default function TotalCrawlTimeBoxPlotChart({
                 const ctx = canvasRef.current?.getContext("2d");
                 if (!ctx) return;
 
-                const stats = chartData.total;
-                if (!stats) return;
+                // データがある日のみフィルタ
+                const periodsWithData = chartData.periods.filter(
+                    (p) => chartData.total[p] && chartData.total[p].length > 0,
+                );
 
-                const boxplotData = [
-                    {
-                        min: stats.min,
-                        q1: stats.q1,
-                        median: stats.median,
-                        q3: stats.q3,
-                        max: stats.max,
-                        outliers: stats.outliers,
-                    },
-                ];
+                if (periodsWithData.length === 0) return;
+
+                const boxplotData = periodsWithData.map((p) => chartData.total[p] || []);
+                const originalStats = periodsWithData.map((p) =>
+                    calculateBoxplotStats(chartData.total[p] || []),
+                );
+                const formattedLabels = periodsWithData.map(formatDateToJapanese);
 
                 chartRef.current = new Chart(ctx, {
                     type: "boxplot",
                     data: {
-                        labels: ["全体"],
+                        labels: formattedLabels,
                         datasets: [
                             {
-                                label: "全体巡回時間分布",
+                                label: "全体巡回時間",
                                 data: boxplotData,
-                                backgroundColor: "rgba(59, 130, 246, 0.7)",
+                                backgroundColor: "rgba(59, 130, 246, 0.6)",
                                 borderColor: "rgb(59, 130, 246)",
                                 borderWidth: 2,
                                 outlierColor: "rgb(239, 68, 68)",
@@ -118,7 +144,6 @@ export default function TotalCrawlTimeBoxPlotChart({
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        indexAxis: "y",
                         plugins: {
                             legend: { display: false },
                             tooltip: {
@@ -130,8 +155,9 @@ export default function TotalCrawlTimeBoxPlotChart({
                                 padding: 10,
                                 displayColors: true,
                                 callbacks: {
-                                    title: () => "全体巡回時間",
-                                    label: () => {
+                                    title: (context: { label: string }[]) => context[0].label,
+                                    label: (context: { dataIndex: number }) => {
+                                        const stats = originalStats[context.dataIndex];
                                         if (!stats) return "データなし";
                                         return [
                                             `最小値: ${formatTime(stats.min)}`,
@@ -146,11 +172,11 @@ export default function TotalCrawlTimeBoxPlotChart({
                             },
                         },
                         scales: {
-                            x: {
+                            y: {
                                 beginAtZero: true,
                                 title: {
                                     display: true,
-                                    text: "巡回時間（秒）",
+                                    text: "巡回時間",
                                     font: { size: 12, weight: "bold" },
                                 },
                                 ticks: {
@@ -182,22 +208,22 @@ export default function TotalCrawlTimeBoxPlotChart({
 
     if (loading) {
         return (
-            <div className="h-[120px] flex items-center justify-center">
+            <div className="h-[350px] flex items-center justify-center">
                 <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
             </div>
         );
     }
 
-    if (!chartData?.total) {
+    if (!chartData?.periods?.length) {
         return (
-            <div className="h-[120px] flex items-center justify-center text-gray-500">
+            <div className="h-[350px] flex items-center justify-center text-gray-500">
                 データがありません
             </div>
         );
     }
 
     return (
-        <div className="h-[120px]">
+        <div className="h-[350px]">
             <canvas ref={canvasRef} />
         </div>
     );
