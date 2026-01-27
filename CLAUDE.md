@@ -382,27 +382,29 @@ store_list:
       check_method: my_lib.store.yahoo.api
 
 item_list:
+    # 1アイテム=複数ストアの例
     - name: 商品名
-      store: ヨドバシ
-      url: https://www.yodobashi.com/product/...
-
-    - name: Amazon 商品
-      store: Amazon
-      asin: B0XXXXXXXX
+      store:
+          - name: ヨドバシ
+            url: https://www.yodobashi.com/product/...
+          - name: Amazon
+            asin: B0XXXXXXXX
 
     # Yahoo検索（キーワード検索）
     - name: Yahoo商品
-      store: Yahoo
-      search_keyword: 検索キーワード # 省略時は name で検索
-      price:
-          - 10000 # price_min
-          - 50000 # price_max
-      cond: new # new（デフォルト）or used
+      store:
+          - name: Yahoo
+            search_keyword: 検索キーワード # 省略時は name で検索
+            price:
+                - 10000 # price_min
+                - 50000 # price_max
+            cond: new # new（デフォルト）or used
 
     # Yahoo検索（JANコード検索）
     - name: Yahoo商品（JAN）
-      store: Yahoo
-      jan_code: "4901234567890"
+      store:
+          - name: Yahoo
+            jan_code: "4901234567890"
 ```
 
 ## デプロイ

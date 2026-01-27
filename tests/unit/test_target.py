@@ -287,6 +287,90 @@ class TestItemDefinition:
         assert item.unavailable_xpath == "//custom[@class='soldout']"
         assert item.price_unit == "ユーロ"
 
+    def test_parse_list_new_format_multiple_stores(self):
+        """新書式: 複数ストアの展開"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {"name": "amazon.co.jp", "asin": "B01MFGU3ZP"},
+                {"name": "yodobashi.com", "url": "https://www.yodobashi.com/product/123"},
+            ],
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert len(items) == 2
+        assert items[0].name == "商品名"
+        assert items[0].store == "amazon.co.jp"
+        assert items[0].asin == "B01MFGU3ZP"
+        assert items[0].url is None
+        assert items[1].name == "商品名"
+        assert items[1].store == "yodobashi.com"
+        assert items[1].url == "https://www.yodobashi.com/product/123"
+        assert items[1].asin is None
+
+    def test_parse_list_new_format_single_store(self):
+        """新書式: 単一ストア"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {"name": "mercari.com", "search_keyword": "キーワード", "price": [1000, 5000], "cond": "NEW"},
+            ],
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert len(items) == 1
+        assert items[0].name == "商品名"
+        assert items[0].store == "mercari.com"
+        assert items[0].search_keyword == "キーワード"
+        assert items[0].price_range == [1000, 5000]
+        assert items[0].cond == "NEW"
+
+    def test_parse_list_new_format_store_entry_attributes(self):
+        """新書式: ストアエントリの全属性"""
+        data = {
+            "name": "商品名",
+            "store": [
+                {
+                    "name": "store.com",
+                    "url": "https://store.com/item",
+                    "price_xpath": "//span[@class='price']",
+                    "thumb_img_xpath": "//img[@id='main']",
+                    "unavailable_xpath": "//div[text()='売切']",
+                    "price_unit": "ドル",
+                    "preload": {"url": "https://store.com/login", "every": 3},
+                    "jan_code": "4901234567890",
+                    "exclude_keyword": "ジャンク",
+                },
+            ],
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.url == "https://store.com/item"
+        assert item.price_xpath == "//span[@class='price']"
+        assert item.thumb_img_xpath == "//img[@id='main']"
+        assert item.unavailable_xpath == "//div[text()='売切']"
+        assert item.price_unit == "ドル"
+        assert item.preload is not None
+        assert item.preload.url == "https://store.com/login"
+        assert item.preload.every == 3
+        assert item.jan_code == "4901234567890"
+        assert item.exclude_keyword == "ジャンク"
+
+    def test_parse_list_old_format(self):
+        """旧書式: store が文字列の場合は後方互換"""
+        data = {
+            "name": "Test Item",
+            "store": "store.com",
+            "url": "https://store.com/item",
+        }
+        items = ItemDefinition.parse_list(data)
+
+        assert len(items) == 1
+        assert items[0].name == "Test Item"
+        assert items[0].store == "store.com"
+
 
 class TestResolvedItem:
     """ResolvedItem のテスト"""
@@ -397,7 +481,7 @@ class TestTargetConfig:
     """TargetConfig のテスト"""
 
     def test_parse_full(self):
-        """完全なパース"""
+        """完全なパース（旧書式）"""
         data = {
             "store_list": [
                 {"name": "store1.com", "point_rate": 5.0},
@@ -415,6 +499,31 @@ class TestTargetConfig:
         assert len(config.items) == 2
         assert config.stores[0].point_rate == 5.0
         assert config.stores[1].point_rate == 10.0
+
+    def test_parse_full_new_format(self):
+        """完全なパース（新書式）"""
+        data = {
+            "store_list": [
+                {"name": "store1.com", "point_rate": 5.0},
+                {"name": "store2.com", "point_rate": 10.0},
+            ],
+            "item_list": [
+                {
+                    "name": "Item 1",
+                    "store": [
+                        {"name": "store1.com", "url": "https://store1.com/1"},
+                        {"name": "store2.com", "url": "https://store2.com/2"},
+                    ],
+                },
+            ],
+        }
+
+        config = TargetConfig.parse(data)
+
+        assert len(config.stores) == 2
+        assert len(config.items) == 2
+        assert config.items[0].store == "store1.com"
+        assert config.items[1].store == "store2.com"
 
     def test_get_store(self):
         """ストア取得"""
@@ -453,6 +562,36 @@ class TestTargetConfig:
         assert resolved[0].name == "Item 1"
         assert resolved[0].point_rate == 10.0
 
+    def test_resolve_items_new_format(self):
+        """新書式でのアイテム解決"""
+        data = {
+            "store_list": [
+                {"name": "amazon.co.jp", "check_method": "my_lib.store.amazon.api"},
+                {"name": "yodobashi.com", "point_rate": 10.0},
+            ],
+            "item_list": [
+                {
+                    "name": "商品A",
+                    "store": [
+                        {"name": "amazon.co.jp", "asin": "B0123456789"},
+                        {"name": "yodobashi.com", "url": "https://yodobashi.com/1"},
+                    ],
+                },
+            ],
+        }
+
+        config = TargetConfig.parse(data)
+        resolved = config.resolve_items()
+
+        assert len(resolved) == 2
+        assert resolved[0].name == "商品A"
+        assert resolved[0].store == "amazon.co.jp"
+        assert resolved[0].check_method == CheckMethod.AMAZON_PAAPI
+        assert resolved[0].asin == "B0123456789"
+        assert resolved[1].name == "商品A"
+        assert resolved[1].store == "yodobashi.com"
+        assert resolved[1].point_rate == 10.0
+
     def test_parse_empty(self):
         """空の設定をパース"""
         data: dict[str, list[dict[str, str]]] = {}
@@ -467,7 +606,7 @@ class TestLoad:
     """load 関数のテスト"""
 
     def test_load_with_path(self, tmp_path: pathlib.Path):
-        """ファイルパス指定で読み込み"""
+        """ファイルパス指定で読み込み（旧書式）"""
         target_file = tmp_path / "target.yaml"
         target_file.write_text(
             """
@@ -487,6 +626,37 @@ item_list:
         assert config.stores[0].name == "test-store.com"
         assert len(config.items) == 1
         assert config.items[0].name == "Test Item"
+
+    def test_load_new_format(self, tmp_path: pathlib.Path):
+        """新書式で読み込み"""
+        target_file = tmp_path / "target.yaml"
+        target_file.write_text(
+            """
+store_list:
+    - name: amazon.co.jp
+      check_method: my_lib.store.amazon.api
+    - name: yodobashi.com
+      point_rate: 10.0
+item_list:
+    - name: 商品名
+      store:
+        - name: amazon.co.jp
+          asin: B0123456789
+        - name: yodobashi.com
+          url: https://yodobashi.com/product/123
+"""
+        )
+
+        config = load(target_file)
+
+        assert len(config.stores) == 2
+        assert len(config.items) == 2
+        assert config.items[0].name == "商品名"
+        assert config.items[0].store == "amazon.co.jp"
+        assert config.items[0].asin == "B0123456789"
+        assert config.items[1].name == "商品名"
+        assert config.items[1].store == "yodobashi.com"
+        assert config.items[1].url == "https://yodobashi.com/product/123"
 
     def test_load_with_none_uses_default(self):
         """None の場合はデフォルトパスを使用"""

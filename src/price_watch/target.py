@@ -207,7 +207,7 @@ class ItemDefinition:
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> ItemDefinition:
-        """dict から ItemDefinition を生成"""
+        """dict から ItemDefinition を生成（旧書式: store が文字列）"""
         preload = None
         if "preload" in data:
             preload = PreloadConfig.parse(data["preload"])
@@ -237,6 +237,49 @@ class ItemDefinition:
             cond=data.get("cond"),
             jan_code=data.get("jan_code"),
         )
+
+    @classmethod
+    def parse_list(cls, data: dict[str, Any]) -> list[ItemDefinition]:
+        """dict から ItemDefinition のリストを生成.
+
+        新書式（store がリスト）の場合は各ストアエントリに対して1つの ItemDefinition を生成。
+        旧書式（store が文字列）の場合は従来通り1つの ItemDefinition を生成。
+        """
+        store_data = data["store"]
+
+        # 旧書式: store が文字列
+        if isinstance(store_data, str):
+            return [cls.parse(data)]
+
+        # 新書式: store がリスト
+        result: list[ItemDefinition] = []
+        for store_entry in store_data:
+            # ストアエントリの属性をアイテムデータにマージ
+            item_data: dict[str, Any] = {"name": data["name"]}
+            item_data["store"] = store_entry["name"]
+
+            # ストアエントリからストア固有属性を取得
+            _STORE_ENTRY_KEYS = [
+                "url",
+                "asin",
+                "price",
+                "cond",
+                "search_keyword",
+                "exclude_keyword",
+                "jan_code",
+                "preload",
+                "price_xpath",
+                "thumb_img_xpath",
+                "unavailable_xpath",
+                "price_unit",
+            ]
+            for key in _STORE_ENTRY_KEYS:
+                if key in store_entry:
+                    item_data[key] = store_entry[key]
+
+            result.append(cls.parse(item_data))
+
+        return result
 
 
 @dataclass(frozen=True)
@@ -334,9 +377,10 @@ class TargetConfig:
         if "store_list" in data:
             stores = [StoreDefinition.parse(s) for s in data["store_list"]]
 
-        items = []
+        items: list[ItemDefinition] = []
         if "item_list" in data:
-            items = [ItemDefinition.parse(i) for i in data["item_list"]]
+            for i in data["item_list"]:
+                items.extend(ItemDefinition.parse_list(i))
 
         return cls(stores=stores, items=items)
 

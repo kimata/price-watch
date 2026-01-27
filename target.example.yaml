@@ -70,47 +70,51 @@ store_list:
 
 item_list:
     - name: Connect Display 13
-      store: store.ui.com
-      url: https://store.ui.com/collections/early-access/products/unifi-connect-display-13-ea
+      store:
+          - name: store.ui.com
+            url: https://store.ui.com/collections/early-access/products/unifi-connect-display-13-ea
 
     - name: BOOX Mira Pro
-      store: shopping.yahoo.co.jp
-      url: https://store.shopping.yahoo.co.jp/skt/boox-mirapro.html
-
-    - name: ThinkPad X1 Carbon (学生モデル)
-      store: lenovo.com/jp
-      price_xpath: '//p[@class="present"]'
-      url: https://www.lenovo.com/jp/edu/ja/configurator/cto/index.html?mainCode=21CBCTO1WWJP1&groupId=jpeducation
+      store:
+          - name: shopping.yahoo.co.jp
+            url: https://store.shopping.yahoo.co.jp/skt/boox-mirapro.html
 
     - name: ThinkPad X1 Carbon
-      store: lenovo.com/jp
-      # yamllint disable-line rule:line-length
-      url: https://www.lenovo.com/jp/ja/p/laptops/thinkpad/thinkpadx1/thinkpad-x1-carbon-gen-10-(14-inch-intel)/21cccto1wwjp4
+      store:
+          - name: lenovo.com/jp
+            price_xpath: '//p[@class="present"]'
+            url: https://www.lenovo.com/jp/edu/ja/configurator/cto/index.html?mainCode=21CBCTO1WWJP1&groupId=jpeducation
+          - name: lenovo.com/jp
+            # yamllint disable-line rule:line-length
+            url: https://www.lenovo.com/jp/ja/p/laptops/thinkpad/thinkpadx1/thinkpad-x1-carbon-gen-10-(14-inch-intel)/21cccto1wwjp4
 
+    # 1つの商品を複数ストアで監視する例
     - name: Fractal Design North Charcoal Black TG Dark
-      store: amazon.co.jp
-      asin: B0BPBXPCT5
-
-    - name: Fractal Design North Charcoal Black TG Dark (ヨドバシ)
-      store: yodobashi.com
-      url: https://www.yodobashi.com/product/100000001007535004/
+      store:
+          - name: amazon.co.jp
+            asin: B0BPBXPCT5
+          - name: yodobashi.com
+            url: https://www.yodobashi.com/product/100000001007535004/
 
     - name: Raspberry Pi Zero 2 W
-      store: switch-science.com
-      url: https://www.switch-science.com/products/7600
+      store:
+          - name: switch-science.com
+            url: https://www.switch-science.com/products/7600
 
     # メルカリ検索の例
     - name: マキタ 充電式高圧洗浄機 40Vmax MHW001GZ
-      store: mercari.com
-      search_keyword: マキタ MHW001GZ # 省略時は name で検索
-      price:
-          - 60000 # price_min
-          - 100000 # price_max（省略可）
-      cond: NEW|LIKE_NEW # 商品状態: NEW, LIKE_NEW, GOOD, FAIR, POOR, BAD
+      store:
+          - name: mercari.com
+            search_keyword: マキタ MHW001GZ # 省略時は name で検索
+            price:
+                - 60000 # price_min
+                - 100000 # price_max（省略可）
+            cond: NEW|LIKE_NEW # 商品状態: NEW, LIKE_NEW, GOOD, FAIR, POOR, BAD
 
     - name: Raspberry Pi 5
-      store: mercari.com
-      # search_keyword 省略時は name で検索
-      price:
-          - 8000
-      cond: NEW|LIKE_NEW|GOOD
+      store:
+          - name: mercari.com
+            # search_keyword 省略時は name で検索
+            price:
+                - 8000
+            cond: NEW|LIKE_NEW|GOOD
