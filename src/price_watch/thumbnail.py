@@ -13,7 +13,6 @@ import requests
 
 import price_watch.const
 
-THUMB_SIZE = (200, 200)
 REQUEST_TIMEOUT = 10
 MIN_FILE_SIZE_BYTES = 3 * 1024  # 3KB未満はエラー画像とみなす
 
@@ -112,6 +111,7 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
         _thumb_path.mkdir(parents=True, exist_ok=True)
 
         # 画像ダウンロード
+        logging.info("Downloading thumbnail for %s: %s", item_name, source_url)
         response = requests.get(source_url, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
 
@@ -121,9 +121,6 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
         # RGBA に変換（透過対応）
         if image.mode != "RGBA":
             image = image.convert("RGBA")
-
-        # リサイズ（アスペクト比維持）
-        image.thumbnail(THUMB_SIZE, PIL.Image.Resampling.LANCZOS)
 
         # 保存
         thumb_path = get_thumb_path(item_name)
