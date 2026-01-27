@@ -321,6 +321,28 @@ def _process_item(
     }
 
 
+def _collect_stores_for_name(
+    item_name: str,
+    all_items: list[price_watch.models.ItemRecord],
+    target_item_keys: set[str],
+    days: int | None,
+    target_config: price_watch.target.TargetConfig | None,
+    *,
+    include_history: bool = True,
+) -> list[dict[str, Any]]:
+    """指定されたアイテム名に対応する全ストアのデータを収集."""
+    store_data_list: list[dict[str, Any]] = []
+    for item in all_items:
+        if item.name != item_name:
+            continue
+        if target_item_keys and item.item_key not in target_item_keys:
+            continue
+        store_data = _process_item(item, days, target_config, include_history=include_history)
+        if store_data:
+            store_data_list.append(store_data)
+    return store_data_list
+
+
 def _group_items_by_name(
     all_items: list[price_watch.models.ItemRecord],
     target_item_keys: set[str],
@@ -341,21 +363,27 @@ def _group_items_by_name(
     items_by_name: dict[str, list[dict[str, Any]]] = {}
     processed_keys: set[str] = set()
 
-    # DBにあるアイテムを処理
+    # DBにあるアイテムを名前でグルーピングして処理
+    seen_names: set[str] = set()
     for item in all_items:
-        # target.yaml に含まれないアイテムはスキップ
         if target_item_keys and item.item_key not in target_item_keys:
             continue
-
-        store_data = _process_item(item, days, target_config, include_history=include_history)
-        if not store_data:
+        if item.name in seen_names:
             continue
+        seen_names.add(item.name)
 
-        item_name = item.name
-        if item_name not in items_by_name:
-            items_by_name[item_name] = []
-        items_by_name[item_name].append(store_data)
-        processed_keys.add(item.item_key)
+        store_data_list = _collect_stores_for_name(
+            item.name,
+            all_items,
+            target_item_keys,
+            days,
+            target_config,
+            include_history=include_history,
+        )
+        if store_data_list:
+            items_by_name[item.name] = store_data_list
+            for sd in store_data_list:
+                processed_keys.add(sd["store_entry"].item_key)
 
     # target.yaml にあるがDBにないアイテムを追加
     if target_config:
@@ -675,29 +703,33 @@ def _get_item_data_for_ogp(
 ) -> tuple[str | None, list[price_watch.webapi.schemas.StoreEntry]]:
     """OGP 用のアイテムデータを取得.
 
+    item_key からアイテム名を特定し、同名の全ストアのデータを返す。
+
     Returns:
         (アイテム名, ストアエントリリスト) のタプル。アイテムが見つからない場合は (None, [])
     """
     target_config = _get_target_config()
-
-    # DB から全アイテムを取得
     all_items = _get_history_manager().get_all_items()
 
-    # item_key に一致するアイテムを検索
-    matching_items = [item for item in all_items if item.item_key == item_key]
-
-    if not matching_items:
+    # item_key からアイテム名を特定
+    primary = next((item for item in all_items if item.item_key == item_key), None)
+    if primary is None:
         return None, []
 
-    item_name = matching_items[0].name
-    stores: list[price_watch.webapi.schemas.StoreEntry] = []
+    item_name = primary.name
+    target_item_keys = _get_target_item_keys(target_config)
 
-    for item in matching_items:
-        # OGP 画像生成には履歴が必要
-        store_data = _process_item(item, days, target_config, include_history=True)
-        if store_data:
-            stores.append(store_data["store_entry"])
+    # 同名の全ストアのデータを収集
+    store_data_list = _collect_stores_for_name(
+        item_name,
+        all_items,
+        target_item_keys,
+        days,
+        target_config,
+        include_history=True,
+    )
 
+    stores = [sd["store_entry"] for sd in store_data_list]
     return item_name, stores
 
 
