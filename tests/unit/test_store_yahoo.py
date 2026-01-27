@@ -287,12 +287,14 @@ class TestCheck:
 
         mock_results = [
             MockSearchResult(
-                name="商品A",
+                name="テスト商品 A",
                 price=2000,
                 url="https://store.yahoo.co.jp/a",
                 thumb_url="https://example.com/a.jpg",
             ),
-            MockSearchResult(name="商品B", price=3000, url="https://store.yahoo.co.jp/b", thumb_url=None),
+            MockSearchResult(
+                name="テスト商品 B", price=3000, url="https://store.yahoo.co.jp/b", thumb_url=None
+            ),
         ]
 
         with patch("my_lib.store.yahoo.api.search", return_value=mock_results):
@@ -334,6 +336,66 @@ class TestCheck:
             result = price_watch.store.yahoo.check(mock_config, item)
 
         assert result.search_keyword == "4901234567890"
+
+
+class TestCheckKeywordFilter:
+    """check 関数のキーワードフィルタリングテスト"""
+
+    def test_filters_by_keyword(self):
+        """キーワード不一致の商品が除外される"""
+        mock_config = _create_mock_config()
+        item = _create_resolved_item(name="テスト商品", search_keyword="MacBook Pro M4")
+
+        mock_results = [
+            MockSearchResult(name="MacBook Pro M4 14インチ", price=200000, url="https://store.yahoo.co.jp/a"),
+            MockSearchResult(name="MacBook Air M4", price=150000, url="https://store.yahoo.co.jp/b"),
+            MockSearchResult(name="MacBook Pro M4 16インチ", price=250000, url="https://store.yahoo.co.jp/c"),
+        ]
+
+        with patch("my_lib.store.yahoo.api.search", return_value=mock_results):
+            result = price_watch.store.yahoo.check(mock_config, item)
+
+        # Air は除外、Pro M4 の先頭（最安）が選択される
+        assert result.url == "https://store.yahoo.co.jp/a"
+        assert result.price == 200000
+        assert result.stock == price_watch.models.StockStatus.IN_STOCK
+
+    def test_all_filtered_out_by_keyword(self):
+        """全商品がキーワードフィルタで除外された場合は OUT_OF_STOCK"""
+        mock_config = _create_mock_config()
+        item = _create_resolved_item(name="テスト商品", search_keyword="MacBook Pro M4")
+
+        mock_results = [
+            MockSearchResult(name="MacBook Air M4", price=150000, url="https://store.yahoo.co.jp/a"),
+            MockSearchResult(name="iPad Pro M4", price=120000, url="https://store.yahoo.co.jp/b"),
+        ]
+
+        with patch("my_lib.store.yahoo.api.search", return_value=mock_results):
+            result = price_watch.store.yahoo.check(mock_config, item)
+
+        assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
+
+    def test_jan_search_skips_keyword_filter(self):
+        """JANコード検索時はキーワードフィルタをスキップ"""
+        mock_config = _create_mock_config()
+        item = _create_resolved_item(
+            name="テスト商品",
+            jan_code="4901234567890",
+            search_keyword="特定キーワード",
+        )
+
+        mock_results = [
+            MockSearchResult(name="全く違う商品名", price=5000, url="https://store.yahoo.co.jp/a"),
+        ]
+
+        with patch("my_lib.store.yahoo.api.search", return_value=mock_results):
+            result = price_watch.store.yahoo.check(mock_config, item)
+
+        # JAN 検索なのでフィルタされず、結果が返る
+        assert result.url == "https://store.yahoo.co.jp/a"
+        assert result.price == 5000
+        assert result.stock == price_watch.models.StockStatus.IN_STOCK
 
 
 class TestGenerateItemKey:

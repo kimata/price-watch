@@ -15,6 +15,7 @@ import selenium.webdriver.support.wait
 
 import price_watch.history
 import price_watch.models
+import price_watch.store.search_filter
 import price_watch.target
 
 if TYPE_CHECKING:
@@ -219,8 +220,24 @@ def check(
                 len(filtered_results),
             )
 
+    # キーワード全断片一致フィルタ
+    before_keyword_filter = len(filtered_results)
+    filtered_results = [
+        r
+        for r in filtered_results
+        if price_watch.store.search_filter.matches_all_keywords(r.title, condition.keyword)
+    ]
+    if len(filtered_results) < before_keyword_filter:
+        logging.info(
+            "[%s] %s: キーワード不一致の商品を除外 (%d件 -> %d件)",
+            label,
+            item.name,
+            before_keyword_filter,
+            len(filtered_results),
+        )
+
     if not filtered_results:
-        logging.info("[%s] %s: 価格範囲内の商品なし", label, item.name)
+        logging.info("[%s] %s: 条件に一致する商品なし", label, item.name)
         result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
         result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
         return result

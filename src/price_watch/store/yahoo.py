@@ -11,6 +11,7 @@ import my_lib.store.yahoo.api
 
 import price_watch.history
 import price_watch.models
+import price_watch.store.search_filter
 
 if TYPE_CHECKING:
     from price_watch.config import AppConfig
@@ -155,6 +156,27 @@ def check(
         result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
         result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
         return result
+
+    # キーワード全断片一致フィルタ（JANコード検索時はスキップ）
+    if not condition.jan:
+        before_keyword_filter = len(results)
+        results = [
+            r
+            for r in results
+            if price_watch.store.search_filter.matches_all_keywords(r.name, condition.keyword)
+        ]
+        if len(results) < before_keyword_filter:
+            logging.info(
+                "[Yahoo検索] %s: キーワード不一致の商品を除外 (%d件 -> %d件)",
+                item.name,
+                before_keyword_filter,
+                len(results),
+            )
+        if not results:
+            logging.info("[Yahoo検索] %s: キーワード一致する商品なし", item.name)
+            result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
+            result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+            return result
 
     # 最安値を探す（API は価格の安い順でソートされているので先頭が最安値）
     cheapest = results[0]

@@ -268,9 +268,9 @@ class TestCheck:
         item = _create_resolved_item(name="テスト商品")
 
         mock_results = [
-            MockSearchResult(title="商品A", price=3000, url="https://mercari.com/a"),
-            MockSearchResult(title="商品B", price=2000, url="https://mercari.com/b"),  # 最安
-            MockSearchResult(title="商品C", price=4000, url="https://mercari.com/c"),
+            MockSearchResult(title="テスト商品 A", price=3000, url="https://mercari.com/a"),
+            MockSearchResult(title="テスト商品 B", price=2000, url="https://mercari.com/b"),  # 最安
+            MockSearchResult(title="テスト商品 C", price=4000, url="https://mercari.com/c"),
         ]
 
         mock_search = MagicMock(return_value=mock_results)
@@ -290,9 +290,9 @@ class TestCheck:
         item = _create_resolved_item(name="テスト商品", price_range=[2000, 3500])
 
         mock_results = [
-            MockSearchResult(title="商品A", price=1000, url="https://mercari.com/a"),  # 範囲外
-            MockSearchResult(title="商品B", price=2500, url="https://mercari.com/b"),  # 範囲内
-            MockSearchResult(title="商品C", price=5000, url="https://mercari.com/c"),  # 範囲外
+            MockSearchResult(title="テスト商品 A", price=1000, url="https://mercari.com/a"),  # 範囲外
+            MockSearchResult(title="テスト商品 B", price=2500, url="https://mercari.com/b"),  # 範囲内
+            MockSearchResult(title="テスト商品 C", price=5000, url="https://mercari.com/c"),  # 範囲外
         ]
 
         mock_search = MagicMock(return_value=mock_results)
@@ -320,6 +320,49 @@ class TestCheck:
         assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
 
 
+class TestCheckKeywordFilter:
+    """check 関数のキーワードフィルタリングテスト"""
+
+    def test_filters_by_keyword(self):
+        """キーワード不一致の商品が除外される"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        item = _create_resolved_item(name="テスト商品", search_keyword="MacBook Pro M4")
+
+        mock_results = [
+            MockSearchResult(title="MacBook Pro M4 14インチ", price=200000, url="https://mercari.com/a"),
+            MockSearchResult(title="MacBook Air M4", price=150000, url="https://mercari.com/b"),  # Pro不一致
+            MockSearchResult(title="MacBook Pro M4 16インチ", price=250000, url="https://mercari.com/c"),
+        ]
+
+        mock_search = MagicMock(return_value=mock_results)
+        with _patch_store_search(CheckMethod.MERCARI_SEARCH, mock_search):
+            result = price_watch.store.flea_market.check(mock_config, mock_driver, item)
+
+        # MacBook Air は除外され、Pro M4 の最安値が選択される
+        assert result.url == "https://mercari.com/a"
+        assert result.price == 200000
+        assert result.stock == price_watch.models.StockStatus.IN_STOCK
+
+    def test_all_filtered_out_by_keyword(self):
+        """全商品がキーワードフィルタで除外された場合は OUT_OF_STOCK"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        item = _create_resolved_item(name="テスト商品", search_keyword="MacBook Pro M4")
+
+        mock_results = [
+            MockSearchResult(title="MacBook Air M4", price=150000, url="https://mercari.com/a"),
+            MockSearchResult(title="iPad Pro M4", price=120000, url="https://mercari.com/b"),
+        ]
+
+        mock_search = MagicMock(return_value=mock_results)
+        with _patch_store_search(CheckMethod.MERCARI_SEARCH, mock_search):
+            result = price_watch.store.flea_market.check(mock_config, mock_driver, item)
+
+        assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
+
+
 class TestCheckRakuma:
     """check 関数のラクマ検索テスト"""
 
@@ -335,7 +378,7 @@ class TestCheckRakuma:
         )
 
         mock_results = [
-            MockSearchResult(title="商品A", price=1500, url="https://fril.jp/item/a"),
+            MockSearchResult(title="テスト商品 A", price=1500, url="https://fril.jp/item/a"),
         ]
 
         mock_search = MagicMock(return_value=mock_results)
@@ -363,7 +406,9 @@ class TestCheckPayPay:
         )
 
         mock_results = [
-            MockSearchResult(title="商品A", price=2500, url="https://paypayfleamarket.yahoo.co.jp/item/a"),
+            MockSearchResult(
+                title="テスト商品 A", price=2500, url="https://paypayfleamarket.yahoo.co.jp/item/a"
+            ),
         ]
 
         mock_search = MagicMock(return_value=mock_results)
