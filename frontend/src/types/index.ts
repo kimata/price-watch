@@ -19,6 +19,7 @@ export interface StoreEntry {
     history: PriceHistoryPoint[];
     product_url?: string | null; // メルカリ: 最安商品への直接リンク
     search_keyword?: string | null; // メルカリ: 検索キーワード（表示用）
+    price_unit: string; // 価格の通貨単位（例: "円", "ドル"）
 }
 
 export interface Item {
@@ -33,6 +34,7 @@ export interface StoreDefinition {
     name: string;
     point_rate: number;
     color: string | null;
+    price_unit: string; // 価格の通貨単位（例: "円", "ドル"）
 }
 
 export interface ItemsResponse {

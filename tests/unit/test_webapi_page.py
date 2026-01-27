@@ -328,6 +328,7 @@ class TestGetStoreDefinitions:
         mock_store.name = "Store1"
         mock_store.point_rate = 5.0
         mock_store.color = "#ff0000"
+        mock_store.price_unit = "円"
 
         mock_config = MagicMock()
         mock_config.stores = [mock_store]
@@ -338,6 +339,7 @@ class TestGetStoreDefinitions:
         assert result[0].name == "Store1"
         assert result[0].point_rate == 5.0
         assert result[0].color == "#ff0000"
+        assert result[0].price_unit == "円"
 
     def test_returns_empty_for_none(self) -> None:
         """None の場合は空リスト"""
@@ -928,12 +930,13 @@ class TestBuildStoreEntry:
         stats = price_watch.models.ItemStats(lowest_price=900, highest_price=1100, data_count=10)
         history = [price_watch.models.PriceRecord(time="2024-01-15 10:00:00", price=1000, stock=1)]
 
-        result = price_watch.webapi.page._build_store_entry(item, latest, stats, history, 10.0)
+        result = price_watch.webapi.page._build_store_entry(item, latest, stats, history, 10.0, "円")
 
         assert result.item_key == "key1"
         assert result.store == "Store1"
         assert result.current_price == 1000
         assert result.effective_price == 900
+        assert result.price_unit == "円"
 
 
 class TestBuildStoreEntryWithoutHistory:
@@ -951,12 +954,13 @@ class TestBuildStoreEntryWithoutHistory:
             search_keyword=None,
         )
 
-        result = price_watch.webapi.page._build_store_entry_without_history_from_record(item, 10.0)
+        result = price_watch.webapi.page._build_store_entry_without_history_from_record(item, 10.0, "円")
 
         assert result.item_key == "key1"
         assert result.store == "Store1"
         assert result.current_price is None
         assert result.history == []
+        assert result.price_unit == "円"
 
 
 class TestProcessItem:
@@ -1776,8 +1780,14 @@ class TestGroupItemsWithMercariSearch:
         mock_mercari_item.search_keyword = "keyword"
         mock_mercari_item.check_method = price_watch.target.CheckMethod.MERCARI_SEARCH
 
+        # ストア定義のモック
+        mock_store = MagicMock()
+        mock_store.point_rate = 0.0
+        mock_store.price_unit = "円"
+
         mock_config = MagicMock()
         mock_config.resolve_items.return_value = [mock_mercari_item]
+        mock_config.get_store.return_value = mock_store
 
         mock_history_manager = MagicMock()
 

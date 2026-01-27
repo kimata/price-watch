@@ -67,6 +67,7 @@ class StoreEntry(BaseSchema):
     history: list[PriceHistoryPoint]
     product_url: str | None = None  # メルカリ: 最安商品への直接リンク
     search_keyword: str | None = None  # メルカリ: 検索キーワード（表示用）
+    price_unit: str = "円"  # 価格の通貨単位
 
 
 class ResultItem(BaseSchema):
@@ -92,6 +93,7 @@ class StoreDefinition(BaseSchema):
     name: str
     point_rate: float
     color: str | None = None
+    price_unit: str = "円"  # 価格の通貨単位
 
 
 class ItemsResponse(BaseSchema):

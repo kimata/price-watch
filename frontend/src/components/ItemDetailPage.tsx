@@ -18,6 +18,7 @@ import EventHistory from "./EventHistory";
 import LoadingSpinner from "./LoadingSpinner";
 import Footer from "./Footer";
 import { fetchItems, fetchItemEvents, fetchItemHistory } from "../services/apiService";
+import { formatPrice } from "../utils/formatPrice";
 
 interface ItemDetailPageProps {
     item: Item;
@@ -153,6 +154,10 @@ export default function ItemDetailPage({
 
     const hasValidPrice = item.best_effective_price !== null;
 
+    // 最安ストアの通貨単位を取得
+    const bestStoreEntry = item.stores.find((s) => s.store === item.best_store);
+    const priceUnit = bestStoreEntry?.price_unit ?? "円";
+
     return (
         <div className="min-h-screen bg-gray-100">
             {/* 戻るボタン */}
@@ -189,7 +194,7 @@ export default function ItemDetailPage({
                                 {hasValidPrice ? (
                                     <>
                                         <span className="text-3xl font-bold text-gray-900">
-                                            {item.best_effective_price!.toLocaleString()}円
+                                            {formatPrice(item.best_effective_price!, priceUnit)}
                                         </span>
                                         <span className="text-sm text-gray-500">
                                             ({item.best_store}が最安)
@@ -210,7 +215,7 @@ export default function ItemDetailPage({
                                 <a
                                     href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
                                         hasValidPrice
-                                            ? `${item.name} - ${item.best_effective_price!.toLocaleString()}円`
+                                            ? `${item.name} - ${formatPrice(item.best_effective_price!, priceUnit)}`
                                             : item.name
                                     )}&url=${encodeURIComponent(window.location.href)}`}
                                     target="_blank"
@@ -256,23 +261,17 @@ export default function ItemDetailPage({
                             <div className="text-sm text-gray-600 mb-2">期間内最安値</div>
                             <div className="text-2xl font-bold text-green-600">
                                 {priceStats.lowestPrice !== null
-                                    ? `${priceStats.lowestPrice.toLocaleString()}`
+                                    ? formatPrice(priceStats.lowestPrice, priceUnit)
                                     : "-"}
                             </div>
-                            {priceStats.lowestPrice !== null && (
-                                <div className="text-sm text-green-600">円</div>
-                            )}
                         </div>
                         <div className="text-center p-4 bg-red-50 rounded-lg border border-red-100">
                             <div className="text-sm text-gray-600 mb-2">期間内最高値</div>
                             <div className="text-2xl font-bold text-red-600">
                                 {priceStats.highestPrice !== null
-                                    ? `${priceStats.highestPrice.toLocaleString()}`
+                                    ? formatPrice(priceStats.highestPrice, priceUnit)
                                     : "-"}
                             </div>
-                            {priceStats.highestPrice !== null && (
-                                <div className="text-sm text-red-600">円</div>
-                            )}
                         </div>
                         <div className="text-center p-4 bg-gray-50 rounded-lg">
                             <div className="text-sm text-gray-600 mb-2">データポイント数</div>

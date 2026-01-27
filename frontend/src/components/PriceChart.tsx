@@ -16,6 +16,7 @@ import annotationPlugin from "chartjs-plugin-annotation";
 import type { AnnotationOptions } from "chartjs-plugin-annotation";
 import dayjs from "dayjs";
 import type { StoreEntry, StoreDefinition } from "../types";
+import { formatPriceForChart, formatPriceForYAxis } from "../utils/formatPrice";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
@@ -136,6 +137,9 @@ interface PriceChartProps {
 export default function PriceChart({ stores, storeDefinitions, className = "h-40", period: _period = "30", largeLabels = false }: PriceChartProps) {
     // 選択された系列（null の場合は全て表示）
     const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+
+    // 最初のストアの通貨単位を取得（同一アイテムのストアは同じ通貨単位を持つと仮定）
+    const priceUnit = stores[0]?.price_unit ?? "円";
 
     // 凡例クリックハンドラ
     const handleLegendClick = useCallback(
@@ -318,7 +322,7 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                         label: (context) => {
                             const value = context.parsed.y;
                             const storeName = context.dataset.label || "";
-                            return value !== null ? `${storeName}: ¥${value.toLocaleString()}` : "";
+                            return value !== null ? `${storeName}: ${formatPriceForChart(value, priceUnit)}` : "";
                         },
                     },
                 },
@@ -341,9 +345,7 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     min: Math.max(0, minPrice - padding),
                     max: maxPrice + padding,
                     ticks: {
-                        callback: (value) => largeLabels
-                            ? `¥${Math.round(Number(value)).toLocaleString()}`
-                            : `${Math.round(Number(value)).toLocaleString()}`,
+                        callback: (value) => formatPriceForYAxis(Number(value), priceUnit, largeLabels),
                         precision: 0,
                         font: { size: largeLabels ? 13 : 10 },
                         color: largeLabels ? "#374151" : undefined,

@@ -6,6 +6,7 @@ import {
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import type { StoreEntry } from "../types";
+import { formatPrice, formatPriceDiff } from "../utils/formatPrice";
 
 interface StoreRowProps {
     store: StoreEntry;
@@ -59,11 +60,11 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
                     {hasPrice ? (
                         <>
                             <div className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
-                                {store.effective_price!.toLocaleString()}円
+                                {formatPrice(store.effective_price!, store.price_unit)}
                             </div>
                             {(priceDiff > 0 || store.point_rate > 0) && (
                                 <div className="text-xs text-gray-400 whitespace-nowrap">
-                                    {priceDiff > 0 && <span>+{priceDiff.toLocaleString()}円</span>}
+                                    {priceDiff > 0 && <span>{formatPriceDiff(priceDiff, store.price_unit)}</span>}
                                     {priceDiff > 0 && store.point_rate > 0 && <span> / </span>}
                                     {store.point_rate > 0 && <span>{store.point_rate}%還元考慮</span>}
                                 </div>

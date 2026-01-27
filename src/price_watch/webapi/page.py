@@ -108,6 +108,14 @@ def _get_point_rate(target_config: price_watch.target.TargetConfig | None, store
     return store.point_rate if store else 0.0
 
 
+def _get_price_unit(target_config: price_watch.target.TargetConfig | None, store_name: str) -> str:
+    """ストアの価格通貨単位を取得."""
+    if target_config is None:
+        return "円"
+    store = target_config.get_store(store_name)
+    return store.price_unit if store else "円"
+
+
 def _calc_effective_price(price: int | None, point_rate: float) -> int | None:
     """実質価格を計算（ポイント還元考慮）.
 
@@ -142,6 +150,7 @@ def _build_store_entry(
     stats: price_watch.models.ItemStats,
     history: list[price_watch.models.PriceRecord],
     point_rate: float,
+    price_unit: str,
     *,
     include_history: bool = True,
 ) -> price_watch.webapi.schemas.StoreEntry:
@@ -153,6 +162,7 @@ def _build_store_entry(
         stats: 統計情報
         history: 価格履歴
         point_rate: ポイント還元率
+        price_unit: 価格通貨単位
         include_history: 履歴を含めるかどうか（軽量API用）
     """
     current_price = latest.price  # None の場合がある
@@ -172,6 +182,7 @@ def _build_store_entry(
         history=_build_history_entries(history, point_rate) if include_history else [],
         product_url=item.url,  # メルカリの場合は最安商品URL
         search_keyword=item.search_keyword,
+        price_unit=price_unit,
     )
 
 
@@ -228,7 +239,10 @@ def _get_store_definitions(
         return []
     return [
         price_watch.webapi.schemas.StoreDefinition(
-            name=store.name, point_rate=store.point_rate, color=store.color
+            name=store.name,
+            point_rate=store.point_rate,
+            color=store.color,
+            price_unit=store.price_unit,
         )
         for store in target_config.stores
     ]
@@ -237,6 +251,7 @@ def _get_store_definitions(
 def _build_store_entry_without_history_from_record(
     item: price_watch.models.ItemRecord,
     point_rate: float,
+    price_unit: str,
 ) -> price_watch.webapi.schemas.StoreEntry:
     """履歴がないアイテム用のストアエントリを構築（ItemRecord版）."""
     return price_watch.webapi.schemas.StoreEntry(
@@ -253,6 +268,7 @@ def _build_store_entry_without_history_from_record(
         history=[],
         product_url=item.url,
         search_keyword=item.search_keyword,
+        price_unit=price_unit,
     )
 
 
@@ -273,14 +289,15 @@ def _process_item(
     """
     history = _get_history_manager()
 
-    # ポイント還元率を取得
+    # ポイント還元率と通貨単位を取得
     point_rate = _get_point_rate(target_config, item.store)
+    price_unit = _get_price_unit(target_config, item.store)
 
     # 最新価格を取得
     latest = history.get_latest(item.id)
     if not latest:
         # 履歴がないアイテムも表示（在庫なしとして）
-        store_entry = _build_store_entry_without_history_from_record(item, point_rate)
+        store_entry = _build_store_entry_without_history_from_record(item, point_rate, price_unit)
         return {
             "store_entry": store_entry,
             "thumb_url": item.thumb_url,
@@ -294,7 +311,9 @@ def _process_item(
     if include_history:
         _, hist = history.get_history(item.item_key, days)
 
-    store_entry = _build_store_entry(item, latest, stats, hist, point_rate, include_history=include_history)
+    store_entry = _build_store_entry(
+        item, latest, stats, hist, point_rate, price_unit, include_history=include_history
+    )
 
     return {
         "store_entry": store_entry,
@@ -391,11 +410,12 @@ def _process_item_without_db(
     target_config: price_watch.target.TargetConfig | None,
 ) -> dict[str, Any] | None:
     """DB に存在しないアイテムを処理してストアデータを構築."""
-    # ポイント還元率を取得
+    # ポイント還元率と通貨単位を取得
     point_rate = _get_point_rate(target_config, item.store)
+    price_unit = _get_price_unit(target_config, item.store)
 
     # 履歴がないアイテムとして表示
-    store_entry = _build_store_entry_without_history_from_record(item, point_rate)
+    store_entry = _build_store_entry_without_history_from_record(item, point_rate, price_unit)
     return {
         "store_entry": store_entry,
         "thumb_url": item.thumb_url,

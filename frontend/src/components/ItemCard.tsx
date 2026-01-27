@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import type { Item, StoreDefinition, Period } from "../types";
 import LazyPriceChart from "./LazyPriceChart";
 import StoreRow from "./StoreRow";
+import { formatPrice } from "../utils/formatPrice";
 
 interface ItemCardProps {
     item: Item;
@@ -33,6 +34,10 @@ export default function ItemCard({ item, storeDefinitions, onClick, period = "30
     // 有効な価格があるかどうか（null でなければ価格あり、0円も有効な価格）
     const hasValidPrice = item.best_effective_price !== null;
 
+    // 最安ストアの通貨単位を取得
+    const bestStore = item.stores.find((s) => s.store === item.best_store);
+    const priceUnit = bestStore?.price_unit ?? "円";
+
     const handleClick = () => {
         if (onClick) {
             onClick(item);
@@ -62,7 +67,7 @@ export default function ItemCard({ item, storeDefinitions, onClick, period = "30
                         <div className="flex items-center gap-2 mt-2">
                             {hasValidPrice ? (
                                 <span className="text-lg font-bold text-gray-900">
-                                    {item.best_effective_price!.toLocaleString()}円
+                                    {formatPrice(item.best_effective_price!, priceUnit)}
                                 </span>
                             ) : (
                                 <span className="text-lg text-gray-400">---</span>
