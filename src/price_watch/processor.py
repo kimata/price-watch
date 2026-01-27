@@ -406,14 +406,16 @@ class ItemProcessor:
         """
         history = self.app.history_manager
 
-        # 履歴を記録
-        item_id = history.insert_checked_item(item)
+        # アイテム情報のみを upsert（価格履歴はまだ挿入しない）
+        item_id = history.upsert_item(item)
 
-        # 最新の履歴を取得
+        # 最新の履歴を取得（イベント判定のため、価格履歴挿入前に取得）
         last = history.get_last(item_key=item_key) if item_key else history.get_last(item.url)
 
         # 新規監視開始
         if last is None:
+            # 価格履歴を挿入
+            history.insert_price_history(item_id, item)
             self._log_watch_start(item)
             return True
 
@@ -421,9 +423,12 @@ class ItemProcessor:
         if last.price is not None:
             item.old_price = last.price
 
-        # イベント判定
+        # イベント判定（価格履歴挿入前に判定することで、今回の価格を含めずに最安値を計算）
         crawl_status = 1 if item.crawl_status == price_watch.models.CrawlStatus.SUCCESS else 0
         self._check_and_notify_events(item, last, item_id, crawl_status)
+
+        # 価格履歴を挿入
+        history.insert_price_history(item_id, item)
 
         self._log_item_status(item)
 

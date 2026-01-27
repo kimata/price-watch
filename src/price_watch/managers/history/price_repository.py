@@ -135,6 +135,129 @@ class PriceRepository:
             conn.commit()
             return item_id
 
+    def upsert_item(self, item: dict[str, Any]) -> int:
+        """アイテム情報のみを upsert（価格履歴は挿入しない）.
+
+        Args:
+            item: アイテム情報
+
+        Returns:
+            アイテム ID
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            item_id = self.item_repo.get_or_create(
+                cur,
+                item["name"],
+                item["store"],
+                url=item.get("url"),
+                thumb_url=item.get("thumb_url"),
+                search_keyword=item.get("search_keyword"),
+                search_cond=item.get("search_cond"),
+            )
+            conn.commit()
+            return item_id
+
+    def insert_price_history(
+        self,
+        item_id: int,
+        price: int | None,
+        stock: int | None,
+        crawl_status: int,
+    ) -> None:
+        """価格履歴のみを挿入/更新.
+
+        1時間に1回の記録を保持する。同一時間帯で複数回取得した場合:
+        - より安い価格で更新（価格がある場合のみ）
+        - 収集時刻は常に最新に更新
+
+        Args:
+            item_id: アイテム ID
+            price: 価格
+            stock: 在庫状態（0: なし, 1: あり, None: 不明）
+            crawl_status: クロール状態（0: 失敗, 1: 成功）
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+
+            now = my_lib.time.now()
+            now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+            hour_start = now.replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+            # crawl_status=0 の場合は stock=NULL, price=NULL
+            if crawl_status == 0:
+                new_stock: int | None = None
+                new_price: int | None = None
+            else:
+                new_stock = stock
+                new_price = price
+
+            # 同一時間帯の既存レコードを確認
+            cur.execute(
+                """
+                SELECT id, price, stock, crawl_status
+                FROM price_history
+                WHERE item_id = ?
+                  AND time >= ?
+                ORDER BY time DESC
+                LIMIT 1
+                """,
+                (item_id, hour_start),
+            )
+            existing = cur.fetchone()
+
+            if existing:
+                existing_id = existing["id"]
+                existing_price = existing["price"]
+                existing_stock = existing["stock"]
+                existing_crawl_status = existing["crawl_status"]
+
+                should_update = False
+                final_price = new_price
+                final_stock = new_stock
+
+                if crawl_status == 1:
+                    if existing_crawl_status == 0:
+                        should_update = True
+                    elif new_price is not None and existing_price is not None:
+                        if new_stock == 1:
+                            final_price = min(new_price, existing_price)
+                            should_update = new_price < existing_price
+                        else:
+                            should_update = True
+                    elif (new_price is not None and existing_price is None) or new_stock != existing_stock:
+                        should_update = True
+                else:
+                    if existing_crawl_status == 1:
+                        final_price = existing_price
+                        final_stock = existing_stock
+                        should_update = True
+
+                if should_update:
+                    cur.execute(
+                        """
+                        UPDATE price_history
+                        SET price = ?, stock = ?, crawl_status = ?, time = ?
+                        WHERE id = ?
+                        """,
+                        (final_price, final_stock, crawl_status, now_str, existing_id),
+                    )
+                else:
+                    cur.execute(
+                        "UPDATE price_history SET time = ? WHERE id = ?",
+                        (now_str, existing_id),
+                    )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO price_history (item_id, price, stock, crawl_status, time)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (item_id, new_price, new_stock, crawl_status, now_str),
+                )
+
+            conn.commit()
+
     def get_last(self, url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
         """最新の価格履歴を取得.
 

@@ -364,8 +364,8 @@ class HistoryManager:
         """
         return self.prices.get_no_data_duration_hours(item_id)
 
-    def insert_checked_item(self, item: CheckedItem) -> int:
-        """CheckedItem から価格履歴を挿入.
+    def upsert_item(self, item: CheckedItem) -> int:
+        """アイテム情報のみを upsert（価格履歴は挿入しない）.
 
         Args:
             item: チェック済みアイテム
@@ -380,12 +380,36 @@ class HistoryManager:
             "thumb_url": item.thumb_url,
             "search_keyword": item.search_keyword,
             "search_cond": item.search_cond,
-            "price": item.price,
-            "stock": item.stock.to_int(),
         }
+        return self.prices.upsert_item(item_dict)
 
+    def insert_price_history(self, item_id: int, item: CheckedItem) -> None:
+        """価格履歴のみを挿入.
+
+        Args:
+            item_id: アイテム ID
+            item: チェック済みアイテム
+        """
         crawl_status = 1 if item.is_success() else 0
-        return self.prices.insert(item_dict, crawl_status=crawl_status)
+        self.prices.insert_price_history(
+            item_id,
+            item.price,
+            item.stock.to_int(),
+            crawl_status,
+        )
+
+    def insert_checked_item(self, item: CheckedItem) -> int:
+        """CheckedItem から価格履歴を挿入.
+
+        Args:
+            item: チェック済みアイテム
+
+        Returns:
+            アイテム ID
+        """
+        item_id = self.upsert_item(item)
+        self.insert_price_history(item_id, item)
+        return item_id
 
     @staticmethod
     def generate_item_key(
