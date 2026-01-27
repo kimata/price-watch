@@ -6,8 +6,6 @@ models モジュールのユニットテスト
 データモデルの動作を検証します。
 """
 
-import json
-
 import pytest
 
 from price_watch.models import (
@@ -16,8 +14,6 @@ from price_watch.models import (
     EventRecord,
     ItemRecord,
     ItemStats,
-    MercariSearchCondition,
-    MercariSearchResult,
     PriceRecord,
     PriceResult,
     ProcessResult,
@@ -321,74 +317,3 @@ class TestStoreStats:
         stats = StoreStats(store_name="amazon", stats_id=1, item_count=10, success_count=8, failed_count=2)
         assert stats.store_name == "amazon"
         assert stats.item_count == 10
-
-
-# === MercariSearchResult テスト ===
-class TestMercariSearchResult:
-    """MercariSearchResult dataclass のテスト"""
-
-    def test_create(self) -> None:
-        """作成"""
-        result = MercariSearchResult(
-            name="商品名",
-            price=1000,
-            url="https://mercari.com/item/xxx",
-            thumb_url="https://example.com/thumb.jpg",
-            status="新品・未使用",
-        )
-        assert result.name == "商品名"
-        assert result.price == 1000
-        assert result.status == "新品・未使用"
-
-
-# === MercariSearchCondition テスト ===
-class TestMercariSearchCondition:
-    """MercariSearchCondition dataclass のテスト"""
-
-    def test_create_minimal(self) -> None:
-        """最小構成での作成"""
-        cond = MercariSearchCondition(keyword="テスト")
-        assert cond.keyword == "テスト"
-        assert cond.exclude_keyword is None
-        assert cond.price_min is None
-        assert cond.price_max is None
-        assert cond.conditions == []
-
-    def test_create_full(self) -> None:
-        """全フィールド指定での作成"""
-        cond = MercariSearchCondition(
-            keyword="テスト",
-            exclude_keyword="除外",
-            price_min=100,
-            price_max=10000,
-            conditions=["NEW", "LIKE_NEW"],
-        )
-        assert cond.keyword == "テスト"
-        assert cond.exclude_keyword == "除外"
-        assert cond.price_min == 100
-        assert cond.price_max == 10000
-        assert cond.conditions == ["NEW", "LIKE_NEW"]
-
-    def test_to_json(self) -> None:
-        """to_json で JSON 文字列に変換"""
-        cond = MercariSearchCondition(
-            keyword="テスト",
-            price_min=100,
-            conditions=["NEW"],
-        )
-        json_str = cond.to_json()
-        data = json.loads(json_str)
-
-        assert data["keyword"] == "テスト"
-        assert data["exclude_keyword"] is None
-        assert data["price_min"] == 100
-        assert data["price_max"] is None
-        assert data["conditions"] == ["NEW"]
-
-    def test_to_json_with_japanese(self) -> None:
-        """to_json で日本語がエスケープされない"""
-        cond = MercariSearchCondition(keyword="日本語キーワード")
-        json_str = cond.to_json()
-
-        # ensure_ascii=False で日本語がそのまま出力される
-        assert "日本語キーワード" in json_str

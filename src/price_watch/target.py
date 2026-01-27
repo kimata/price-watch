@@ -29,7 +29,29 @@ class CheckMethod(str, Enum):
     SCRAPE = "scrape"
     AMAZON_PAAPI = "my_lib.store.amazon.api"
     MERCARI_SEARCH = "my_lib.store.mercari.search"
+    RAKUMA_SEARCH = "my_lib.store.rakuma.search"
+    PAYPAY_SEARCH = "my_lib.store.paypay.search"
     YAHOO_SEARCH = "my_lib.store.yahoo.api"
+
+
+# 検索系チェックメソッド（URL ではなく keyword で item_key を生成するストア）
+SEARCH_CHECK_METHODS: frozenset[CheckMethod] = frozenset(
+    {
+        CheckMethod.MERCARI_SEARCH,
+        CheckMethod.RAKUMA_SEARCH,
+        CheckMethod.PAYPAY_SEARCH,
+        CheckMethod.YAHOO_SEARCH,
+    }
+)
+
+# フリマ系チェックメソッド（WebDriver + 共通検索ロジックを使うストア）
+FLEA_MARKET_CHECK_METHODS: frozenset[CheckMethod] = frozenset(
+    {
+        CheckMethod.MERCARI_SEARCH,
+        CheckMethod.RAKUMA_SEARCH,
+        CheckMethod.PAYPAY_SEARCH,
+    }
+)
 
 
 class ActionType(str, Enum):
@@ -198,11 +220,11 @@ class ItemDefinition:
     unavailable_xpath: str | None = None
     price_unit: str | None = None
     preload: PreloadConfig | None = None
-    # メルカリ検索・Yahoo検索用
+    # 検索系ストア用（メルカリ・ラクマ・PayPayフリマ・Yahoo）
     search_keyword: str | None = None  # 検索キーワード（省略時は name で検索）
-    exclude_keyword: str | None = None  # 除外キーワード（メルカリのみ）
+    exclude_keyword: str | None = None  # 除外キーワード（フリマ検索用）
     price_range: list[int] | None = None  # [min] or [min, max]
-    cond: str | None = None  # メルカリ: "NEW|LIKE_NEW" 形式、Yahoo: "new" or "used"
+    cond: str | None = None  # フリマ: "NEW|LIKE_NEW" 形式、Yahoo: "new" or "used"
     jan_code: str | None = None  # JANコード（Yahoo検索用）
 
     @classmethod
@@ -296,7 +318,7 @@ class ResolvedItem:
 
     name: str
     store: str
-    url: str  # メルカリ・Yahoo検索の場合は空文字列（動的に更新される）
+    url: str  # 検索系ストアの場合は空文字列（動的に更新される）
     asin: str | None = None
     check_method: CheckMethod = CheckMethod.SCRAPE
     price_xpath: str | None = None
@@ -342,8 +364,8 @@ class ResolvedItem:
         if url is None and item.asin is not None:
             url = f"https://www.amazon.co.jp/dp/{item.asin}"
 
-        # メルカリ検索・Yahoo検索の場合は URL がなくても OK（検索結果から動的に取得）
-        if url is None and store_check_method in (CheckMethod.MERCARI_SEARCH, CheckMethod.YAHOO_SEARCH):
+        # 検索系ストアの場合は URL がなくても OK（検索結果から動的に取得）
+        if url is None and store_check_method in SEARCH_CHECK_METHODS:
             url = ""  # 空文字列（後から検索結果で更新）
         elif url is None:
             raise ValueError(f"Item '{item.name}' has no url or asin")

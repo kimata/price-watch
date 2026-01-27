@@ -24,19 +24,19 @@
 
 ![Slack 通知サンプル](./img/screenshot.png "Slack 通知サンプル")
 
-Selenium と undetected-chromedriver を使用してオンラインショップをスクレイピングし、価格変動を検出して Slack に通知します。Amazon PA-API やメルカリ/Yahoo!ショッピングのキーワード検索にも対応しています。
+Selenium と undetected-chromedriver を使用してオンラインショップをスクレイピングし、価格変動を検出して Slack に通知します。Amazon PA-API やメルカリ/ラクマ/PayPayフリマ/Yahoo!ショッピングのキーワード検索にも対応しています。
 
 ### ✨ 主な特徴
 
-| 機能                      | 説明                                                                   |
-| ------------------------- | ---------------------------------------------------------------------- |
-| 🛍️ **マルチストア対応**   | Amazon、ヨドバシ、Yahoo!ショッピング、メルカリなど多数のショップに対応 |
-| 🤖 **Bot 検出回避**       | undetected-chromedriver による高度な Bot 検出回避                      |
-| 🔊 **reCAPTCHA 自動突破** | 音声認識による reCAPTCHA の自動処理                                    |
-| 📊 **価格履歴グラフ**     | React フロントエンドによる価格推移の可視化                             |
-| 🔔 **Slack 通知**         | 価格下落・在庫復活をリアルタイム通知                                   |
-| ⚡ **ホットリロード**     | 監視対象設定の動的再読み込み                                           |
-| 📈 **メトリクス表示**     | 巡回状況のリアルタイムモニタリング                                     |
+| 機能                      | 説明                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| 🛍️ **マルチストア対応**   | Amazon、ヨドバシ、Yahoo!ショッピング、メルカリ、ラクマ、PayPayフリマなど多数のショップに対応 |
+| 🤖 **Bot 検出回避**       | undetected-chromedriver による高度な Bot 検出回避                                            |
+| 🔊 **reCAPTCHA 自動突破** | 音声認識による reCAPTCHA の自動処理                                                          |
+| 📊 **価格履歴グラフ**     | React フロントエンドによる価格推移の可視化                                                   |
+| 🔔 **Slack 通知**         | 価格下落・在庫復活をリアルタイム通知                                                         |
+| ⚡ **ホットリロード**     | 監視対象設定の動的再読み込み                                                                 |
+| 📈 **メトリクス表示**     | 巡回状況のリアルタイムモニタリング                                                           |
 
 ### 🏪 対応ショップ
 
@@ -44,6 +44,8 @@ Selenium と undetected-chromedriver を使用してオンラインショップ�
 | ------------------ | ----------------------- | ------------------------- |
 | Amazon.co.jp       | PA-API / スクレイピング | ASIN 指定                 |
 | メルカリ           | キーワード検索          | 新着商品検出              |
+| ラクマ             | キーワード検索          | 新着商品検出              |
+| PayPayフリマ       | キーワード検索          | 新着商品検出              |
 | Yahoo!ショッピング | API / スクレイピング    | キーワード/JAN コード検索 |
 | ヨドバシ.com       | スクレイピング          |                           |
 | Switch Science     | スクレイピング          |                           |
@@ -59,7 +61,7 @@ flowchart TB
     subgraph "データ収集層"
         SCRAPE[スクレイピング<br/>undetected-chromedriver]
         PAAPI[Amazon PA-API]
-        MERCARI[メルカリ検索]
+        FLEA[フリマ検索<br/>メルカリ/ラクマ/PayPayフリマ]
         YAHOO[Yahoo!ショッピング検索]
     end
 
@@ -82,7 +84,7 @@ flowchart TB
 
     SCRAPE --> PROC
     PAAPI --> PROC
-    MERCARI --> PROC
+    FLEA --> PROC
     YAHOO --> PROC
 
     PROC --> EVENT
@@ -145,7 +147,7 @@ src/
     │
     ├── store/                  # ストア別価格取得
     │   ├── scrape.py           # スクレイピング
-    │   ├── mercari.py          # メルカリ検索
+    │   ├── flea_market.py      # フリマ検索（メルカリ/ラクマ/PayPayフリマ）
     │   ├── yahoo.py            # Yahoo!ショッピング検索
     │   └── amazon/             # Amazon 関連
     │       ├── paapi.py        # PA-API
@@ -310,6 +312,16 @@ store_list:
     - name: Yahoo
       check_method: my_lib.store.yahoo.api
 
+    # フリマ検索
+    - name: メルカリ
+      check_method: my_lib.store.mercari.search
+
+    - name: ラクマ
+      check_method: my_lib.store.rakuma.search
+
+    - name: PayPayフリマ
+      check_method: my_lib.store.paypay.search
+
 item_list:
     # 1アイテムに複数ストアを紐付け可能
     - name: 商品名
@@ -337,14 +349,18 @@ item_list:
           - name: Yahoo
             jan_code: "4901234567890"
 
-    # メルカリ検索
-    - name: メルカリ商品
+    # フリマ検索（メルカリ・ラクマ・PayPayフリマ）
+    - name: フリマ商品
       store:
           - name: メルカリ
             search_keyword: 検索キーワード
             price:
                 - 5000 # price_min
                 - 20000 # price_max
+          - name: ラクマ
+            search_keyword: 検索キーワード
+          - name: PayPayフリマ
+            search_keyword: 検索キーワード
 ```
 
 ## 🖥️ Web UI

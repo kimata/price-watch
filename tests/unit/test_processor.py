@@ -61,13 +61,13 @@ class TestProcessAll:
         with (
             patch.object(processor, "process_scrape_items") as mock_scrape,
             patch.object(processor, "process_amazon_items") as mock_amazon,
-            patch.object(processor, "process_mercari_items") as mock_mercari,
+            patch.object(processor, "process_flea_market_items") as mock_flea_market,
         ):
             processor.process_all([])
 
         mock_scrape.assert_called_once()
         mock_amazon.assert_called_once()
-        mock_mercari.assert_called_once()
+        mock_flea_market.assert_called_once()
 
 
 class TestProcessScrapeItems:
@@ -328,8 +328,8 @@ class TestProcessAmazonItems:
         # No exception raised
 
 
-class TestProcessMercariItems:
-    """process_mercari_items メソッドのテスト"""
+class TestProcessFleaMarketItems:
+    """process_flea_market_items メソッドのテスト"""
 
     def test_returns_early_if_no_driver(self) -> None:
         """driver がない場合は早期リターン"""
@@ -337,7 +337,7 @@ class TestProcessMercariItems:
         mock_app.browser_manager.driver = None
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        processor.process_mercari_items([])
+        processor.process_flea_market_items([])
         # No exception raised
 
     def test_returns_early_if_no_items(self) -> None:
@@ -346,12 +346,12 @@ class TestProcessMercariItems:
         mock_app.browser_manager.driver = MagicMock()
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
-        processor.process_mercari_items([])
+        processor.process_flea_market_items([])
         # No exception raised
 
 
-class TestProcessMercariItem:
-    """_process_mercari_item メソッドのテスト"""
+class TestProcessFleaMarketItem:
+    """_process_flea_market_item メソッドのテスト"""
 
     def test_returns_false_if_no_driver(self) -> None:
         """driver がない場合は False"""
@@ -360,7 +360,7 @@ class TestProcessMercariItem:
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         item = _create_resolved_item(check_method=CheckMethod.MERCARI_SEARCH)
-        result = processor._process_mercari_item(item, "store")
+        result = processor._process_flea_market_item(item, "store")
 
         assert result is False
 
@@ -381,11 +381,11 @@ class TestProcessMercariItem:
         mock_checked.crawl_status = price_watch.models.CrawlStatus.SUCCESS
 
         with (
-            patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
-            patch("price_watch.store.mercari.check", return_value=mock_checked),
+            patch("price_watch.store.flea_market.generate_item_key", return_value="key123"),
+            patch("price_watch.store.flea_market.check", return_value=mock_checked),
             patch.object(processor, "_process_data"),
         ):
-            result = processor._process_mercari_item(item, "mercari.com")
+            result = processor._process_flea_market_item(item, "mercari.com")
 
         assert result is True
 
@@ -404,14 +404,14 @@ class TestProcessMercariItem:
         )
 
         with (
-            patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
+            patch("price_watch.store.flea_market.generate_item_key", return_value="key123"),
             patch(
-                "price_watch.store.mercari.check",
+                "price_watch.store.flea_market.check",
                 side_effect=selenium.common.exceptions.InvalidSessionIdException(),
             ),
             patch.object(processor, "_process_data"),
         ):
-            result = processor._process_mercari_item(item, "mercari.com")
+            result = processor._process_flea_market_item(item, "mercari.com")
 
         assert result is False
         mock_app.browser_manager.recreate_driver.assert_called_once()
@@ -860,14 +860,14 @@ class TestProcessAllWithYahoo:
         with (
             patch.object(processor, "process_scrape_items") as mock_scrape,
             patch.object(processor, "process_amazon_items") as mock_amazon,
-            patch.object(processor, "process_mercari_items") as mock_mercari,
+            patch.object(processor, "process_flea_market_items") as mock_flea_market,
             patch.object(processor, "process_yahoo_items") as mock_yahoo,
         ):
             processor.process_all([])
 
         mock_scrape.assert_called_once()
         mock_amazon.assert_called_once()
-        mock_mercari.assert_called_once()
+        mock_flea_market.assert_called_once()
         mock_yahoo.assert_called_once()
 
 
@@ -898,7 +898,7 @@ class TestExceptionHandling:
         # エラーカウントがインクリメントされる
         assert processor.error_count["https://example.com"] == 1
 
-    def test_mercari_general_exception(self) -> None:
+    def test_flea_market_general_exception(self) -> None:
         """メルカリの一般的な例外を処理"""
         mock_app = MagicMock()
         mock_app.browser_manager.driver = MagicMock()
@@ -913,11 +913,11 @@ class TestExceptionHandling:
         )
 
         with (
-            patch("price_watch.store.mercari.generate_item_key", return_value="key123"),
-            patch("price_watch.store.mercari.check", side_effect=Exception("Network Error")),
+            patch("price_watch.store.flea_market.generate_item_key", return_value="key123"),
+            patch("price_watch.store.flea_market.check", side_effect=Exception("Network Error")),
             patch.object(processor, "_process_data"),
         ):
-            result = processor._process_mercari_item(item, "mercari.com")
+            result = processor._process_flea_market_item(item, "mercari.com")
 
         assert result is False
         assert processor.error_count["key123"] == 1

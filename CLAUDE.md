@@ -10,6 +10,8 @@
 
 - Amazon.co.jp（PA-API / スクレイピング）
 - メルカリ（キーワード検索）
+- ラクマ（キーワード検索）
+- PayPayフリマ（キーワード検索）
 - Yahoo!ショッピング（API 検索 / スクレイピング）
 - ヨドバシ.com
 - Switch Science
@@ -151,7 +153,7 @@ src/
     │
     ├── store/                  # ストア別価格取得
     │   ├── scrape.py           # スクレイピングによる価格チェック
-    │   ├── mercari.py          # メルカリ検索
+    │   ├── flea_market.py      # フリマ検索（メルカリ・ラクマ・PayPayフリマ）
     │   ├── yahoo.py            # Yahoo!ショッピング検索
     │   └── amazon/             # Amazon 関連モジュール
     │       ├── paapi.py        # Amazon PA-API による価格取得
@@ -241,7 +243,7 @@ price-watch (cli/app.py)
 │   └── ItemProcessor.process_all() → 全アイテム処理
 │       ├── process_scrape_items() → スクレイピング
 │       ├── process_amazon_items() → PA-API
-│       ├── process_mercari_items() → メルカリ検索
+│       ├── process_flea_market_items() → フリマ検索（メルカリ・ラクマ・PayPayフリマ）
 │       └── process_yahoo_items() → Yahoo検索
 └── app.shutdown() → 終了処理
 ```
@@ -280,15 +282,13 @@ EventRecord      # イベントレコード
 ProcessResult    # 処理結果集計
 SessionStats     # セッション統計
 StoreStats       # ストア別統計
-MercariSearchResult    # メルカリ検索結果
-MercariSearchCondition # メルカリ検索条件
 ```
 
 #### target.py
 
 ```python
 # Enum
-CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH, YAHOO_SEARCH
+CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH, RAKUMA_SEARCH, PAYPAY_SEARCH, YAHOO_SEARCH
 ActionType: CLICK, INPUT, SIXDIGIT, RECAPTCHA
 
 # Protocol
@@ -378,6 +378,15 @@ store_list:
     - name: Amazon
       check_method: my_lib.store.amazon.api
 
+    - name: メルカリ
+      check_method: my_lib.store.mercari.search
+
+    - name: ラクマ
+      check_method: my_lib.store.rakuma.search
+
+    - name: PayPayフリマ
+      check_method: my_lib.store.paypay.search
+
     - name: Yahoo
       check_method: my_lib.store.yahoo.api
 
@@ -389,6 +398,19 @@ item_list:
             url: https://www.yodobashi.com/product/...
           - name: Amazon
             asin: B0XXXXXXXX
+
+    # フリマ検索（メルカリ・ラクマ・PayPayフリマ）
+    - name: フリマ商品
+      cond: NEW|LIKE_NEW # アイテムレベルで商品状態を指定（省略時デフォルト: NEW|LIKE_NEW）
+      price:
+          - 10000 # price_min
+          - 50000 # price_max
+      store:
+          - name: メルカリ
+            search_keyword: 検索キーワード # 省略時は name で検索
+            exclude_keyword: ジャンク # 除外キーワード（省略可）
+          - name: ラクマ
+          - name: PayPayフリマ
 
     # Yahoo検索（キーワード検索）
     - name: Yahoo商品
@@ -437,15 +459,19 @@ docker compose up
 
 ### my-lib（自作共通ライブラリ）
 
-| モジュール             | 用途                                          |
-| ---------------------- | --------------------------------------------- |
-| my_lib.selenium_util   | WebDriver 作成・操作ユーティリティ            |
-| my_lib.config          | YAML 設定ファイル読み込み（スキーマ検証付き） |
-| my_lib.notify.slack    | Slack 通知（レート制限機能付き）              |
-| my_lib.healthz         | Liveness チェック                             |
-| my_lib.footprint       | タイムスタンプファイル管理                    |
-| my_lib.store.amazon.\* | Amazon API 関連                               |
-| my_lib.store.yahoo.\*  | Yahoo!ショッピング API 関連                   |
+| モジュール               | 用途                                                             |
+| ------------------------ | ---------------------------------------------------------------- |
+| my_lib.selenium_util     | WebDriver 作成・操作ユーティリティ                               |
+| my_lib.config            | YAML 設定ファイル読み込み（スキーマ検証付き）                    |
+| my_lib.notify.slack      | Slack 通知（レート制限機能付き）                                 |
+| my_lib.healthz           | Liveness チェック                                                |
+| my_lib.footprint         | タイムスタンプファイル管理                                       |
+| my_lib.store.flea_market | フリマ検索共通型（ItemCondition, SearchCondition, SearchResult） |
+| my_lib.store.mercari.\*  | メルカリ検索                                                     |
+| my_lib.store.rakuma.\*   | ラクマ検索                                                       |
+| my_lib.store.paypay.\*   | PayPayフリマ検索                                                 |
+| my_lib.store.amazon.\*   | Amazon API 関連                                                  |
+| my_lib.store.yahoo.\*    | Yahoo!ショッピング API 関連                                      |
 
 ## コーディング規約
 

@@ -144,8 +144,8 @@ class AppRunner:
 
         # エラーカウントを初期化
         for item in items:
-            if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
-                # メルカリ検索の場合は item_key を使用
+            if item.check_method in price_watch.target.FLEA_MARKET_CHECK_METHODS:
+                # フリマ検索の場合は item_key を使用
                 search_keyword = item.search_keyword or item.name
                 item_key = price_watch.managers.history.generate_item_key(
                     search_keyword=search_keyword,

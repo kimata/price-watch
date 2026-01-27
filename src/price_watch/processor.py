@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """アイテム処理.
 
-スクレイピング、PA-API、メルカリ検索の共通処理を抽出したプロセッサ。
+スクレイピング、PA-API、フリマ検索、Yahoo検索の共通処理を抽出したプロセッサ。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import price_watch.managers.metrics_manager
 import price_watch.models
 import price_watch.notify
 import price_watch.store.amazon.paapi
-import price_watch.store.mercari
+import price_watch.store.flea_market
 import price_watch.store.scrape
 import price_watch.store.yahoo
 import price_watch.target
@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 class ItemProcessor:
     """アイテム処理クラス.
 
-    各チェック方法（スクレイピング、PA-API、メルカリ）の共通処理を提供します。
+    各チェック方法（スクレイピング、PA-API、フリマ検索、Yahoo検索）の共通処理を提供します。
     """
 
     app: PriceWatchApp
@@ -59,8 +59,8 @@ class ItemProcessor:
         # 2. Amazon PA-API 対象
         self.process_amazon_items(item_list)
 
-        # 3. メルカリ検索対象
-        self.process_mercari_items(item_list)
+        # 3. フリマ検索対象（メルカリ・ラクマ・PayPayフリマ）
+        self.process_flea_market_items(item_list)
 
         # 4. Yahoo検索対象
         self.process_yahoo_items(item_list)
@@ -207,8 +207,8 @@ class ItemProcessor:
             else:
                 logging.warning("[デバッグモード] %s: 失敗", store_name)
 
-    def process_mercari_items(self, item_list: list[ResolvedItem]) -> None:
-        """メルカリ検索対象アイテムを処理.
+    def process_flea_market_items(self, item_list: list[ResolvedItem]) -> None:
+        """フリマ検索対象アイテムを処理（メルカリ・ラクマ・PayPayフリマ）.
 
         Args:
             item_list: 全アイテムリスト
@@ -217,40 +217,49 @@ class ItemProcessor:
         if driver is None:
             return
 
-        mercari_items = [
-            item for item in item_list if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH
+        flea_market_items = [
+            item for item in item_list if item.check_method in price_watch.target.FLEA_MARKET_CHECK_METHODS
         ]
 
-        if not mercari_items:
+        if not flea_market_items:
             return
 
-        store_name = mercari_items[0].store
-
-        # デバッグモードでは1アイテムのみ
+        # デバッグモードでは各ストアにつき1アイテムのみ
         if self.app.debug_mode:
-            mercari_items = mercari_items[:1]
-            logging.info("[デバッグモード] メルカリ検索: 1件のアイテムをチェック")
+            flea_market_items = self._select_one_item_per_store(flea_market_items)
+            if flea_market_items:
+                logging.info(
+                    "[デバッグモード] フリマ検索: %d件のアイテムをチェック",
+                    len(flea_market_items),
+                )
         else:
-            logging.info("[メルカリ検索] %d件のアイテムをチェック中...", len(mercari_items))
+            logging.info("[フリマ検索] %d件のアイテムをチェック中...", len(flea_market_items))
 
-        with price_watch.managers.metrics_manager.StoreContext(
-            self.app.metrics_manager, store_name
-        ) as store_ctx:
-            for item in mercari_items:
-                if self.app.should_terminate:
-                    return
+        # ストアごとにグループ化してメトリクスを記録
+        items_by_store = self._group_by_store(flea_market_items)
 
-                success = self._process_mercari_item(item, store_name)
-                if success:
-                    store_ctx.record_success()
-                else:
-                    store_ctx.record_failure()
+        for store_name, store_items in items_by_store.items():
+            if self.app.should_terminate:
+                return
 
-                if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
-                    return
+            with price_watch.managers.metrics_manager.StoreContext(
+                self.app.metrics_manager, store_name
+            ) as store_ctx:
+                for item in store_items:
+                    if self.app.should_terminate:
+                        return
 
-    def _process_mercari_item(self, item: ResolvedItem, store_name: str) -> bool:
-        """メルカリアイテムを処理.
+                    success = self._process_flea_market_item(item, store_name)
+                    if success:
+                        store_ctx.record_success()
+                    else:
+                        store_ctx.record_failure()
+
+                    if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                        return
+
+    def _process_flea_market_item(self, item: ResolvedItem, store_name: str) -> bool:
+        """フリマアイテムを処理.
 
         Args:
             item: 監視対象アイテム
@@ -266,9 +275,9 @@ class ItemProcessor:
         crawl_success = False
 
         try:
-            checked = price_watch.store.mercari.check(self.config, driver, item)
+            checked = price_watch.store.flea_market.check(self.config, driver, item)
             crawl_success = checked.is_success()
-            item_key = price_watch.store.mercari.generate_item_key(checked)
+            item_key = price_watch.store.flea_market.generate_item_key(checked)
 
             self._process_data(checked, item_key=item_key)
 
@@ -289,7 +298,7 @@ class ItemProcessor:
             # 失敗として記録
             checked = price_watch.models.CheckedItem.from_resolved_item(item)
             checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
-            item_key = price_watch.store.mercari.generate_item_key(checked)
+            item_key = price_watch.store.flea_market.generate_item_key(checked)
             self._process_data(checked, item_key=item_key)
             self._mark_debug_failure(store_name, "セッションエラー")
 
@@ -297,10 +306,10 @@ class ItemProcessor:
             # 例外時は CheckedItem を生成
             checked = price_watch.models.CheckedItem.from_resolved_item(item)
             checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
-            item_key = price_watch.store.mercari.generate_item_key(checked)
+            item_key = price_watch.store.flea_market.generate_item_key(checked)
 
             self.error_count[item_key] = self.error_count.get(item_key, 0) + 1
-            logging.exception("Failed to check mercari item: %s", item.name)
+            logging.exception("Failed to check flea market item: %s", item.name)
             self._process_data(checked, item_key=item_key)
             if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
                 self.error_count[item_key] = 0

@@ -82,11 +82,8 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         return set()
 
     for item in resolved_items:
-        # メルカリ検索・Yahoo 検索の場合は keyword から item_key を生成
-        if item.check_method in (
-            price_watch.target.CheckMethod.MERCARI_SEARCH,
-            price_watch.target.CheckMethod.YAHOO_SEARCH,
-        ):
+        # 検索系ストアの場合は keyword から item_key を生成
+        if item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
             keyword = item.search_keyword or item.name
             keys.add(price_watch.managers.history.generate_item_key(search_keyword=keyword, search_cond=""))
         else:
@@ -369,8 +366,8 @@ def _group_items_by_name(
             resolved_items_list = []
 
         for resolved_item in resolved_items_list:
-            # メルカリ検索の場合の item_key を生成
-            if resolved_item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
+            # 検索系ストアの場合の item_key を生成
+            if resolved_item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
                 keyword = resolved_item.search_keyword or resolved_item.name
                 item_key = price_watch.managers.history.generate_item_key(
                     search_keyword=keyword, search_cond=""
@@ -391,7 +388,7 @@ def _group_items_by_name(
                 thumb_url=getattr(resolved_item, "thumb_url", None),
                 search_keyword=(
                     resolved_item.search_keyword or resolved_item.name
-                    if resolved_item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH
+                    if resolved_item.check_method in price_watch.target.SEARCH_CHECK_METHODS
                     else None
                 ),
             )

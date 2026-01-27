@@ -8,7 +8,7 @@ dict[str, Any] の代わりにこれらのクラスを使用することで、
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -377,40 +377,3 @@ class StoreStats:
     item_count: int = 0
     success_count: int = 0
     failed_count: int = 0
-
-
-@dataclass(frozen=True)
-class MercariSearchResult:
-    """メルカリ検索結果."""
-
-    name: str
-    price: int
-    url: str
-    thumb_url: str | None = None
-    status: str | None = None  # 商品の状態（新品・未使用など）
-
-
-@dataclass(frozen=True)
-class MercariSearchCondition:
-    """メルカリ検索条件."""
-
-    keyword: str
-    exclude_keyword: str | None = None
-    price_min: int | None = None
-    price_max: int | None = None
-    conditions: list[str] = field(default_factory=list)  # NEW, LIKE_NEW など
-
-    def to_json(self) -> str:
-        """JSON 文字列に変換."""
-        import json
-
-        return json.dumps(
-            {
-                "keyword": self.keyword,
-                "exclude_keyword": self.exclude_keyword,
-                "price_min": self.price_min,
-                "price_max": self.price_max,
-                "conditions": self.conditions,
-            },
-            ensure_ascii=False,
-        )
