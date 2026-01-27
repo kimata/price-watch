@@ -141,8 +141,19 @@ def _build_store_entry(
     stats: price_watch.models.ItemStats,
     history: list[price_watch.models.PriceRecord],
     point_rate: float,
+    *,
+    include_history: bool = True,
 ) -> price_watch.webapi.schemas.StoreEntry:
-    """ストアエントリを構築."""
+    """ストアエントリを構築.
+
+    Args:
+        item: アイテムレコード
+        latest: 最新価格レコード
+        stats: 統計情報
+        history: 価格履歴
+        point_rate: ポイント還元率
+        include_history: 履歴を含めるかどうか（軽量API用）
+    """
     current_price = latest.price  # None の場合がある
     effective_price = _calc_effective_price(current_price, point_rate)
 
@@ -157,7 +168,7 @@ def _build_store_entry(
         highest_price=stats.highest_price,
         stock=latest.stock,
         last_updated=latest.time,
-        history=_build_history_entries(history, point_rate),
+        history=_build_history_entries(history, point_rate) if include_history else [],
         product_url=item.url,  # メルカリの場合は最安商品URL
         search_keyword=item.search_keyword,
     )
@@ -248,8 +259,17 @@ def _process_item(
     item: price_watch.models.ItemRecord,
     days: int | None,
     target_config: price_watch.target.TargetConfig | None,
+    *,
+    include_history: bool = True,
 ) -> dict[str, Any] | None:
-    """1つのアイテムを処理してストアデータを構築."""
+    """1つのアイテムを処理してストアデータを構築.
+
+    Args:
+        item: アイテムレコード
+        days: 期間（日数）
+        target_config: ターゲット設定
+        include_history: 履歴を含めるかどうか（軽量API用にFalseを指定）
+    """
     history = _get_history_manager()
 
     # ポイント還元率を取得
@@ -268,10 +288,12 @@ def _process_item(
     # 統計情報を取得
     stats = history.get_stats(item.id, days)
 
-    # 価格履歴を取得
-    _, hist = history.get_history(item.item_key, days)
+    # 価格履歴を取得（include_history=False の場合はスキップ）
+    hist: list[price_watch.models.PriceRecord] = []
+    if include_history:
+        _, hist = history.get_history(item.item_key, days)
 
-    store_entry = _build_store_entry(item, latest, stats, hist, point_rate)
+    store_entry = _build_store_entry(item, latest, stats, hist, point_rate, include_history=include_history)
 
     return {
         "store_entry": store_entry,
@@ -284,8 +306,18 @@ def _group_items_by_name(
     target_item_keys: set[str],
     days: int | None,
     target_config: price_watch.target.TargetConfig | None,
+    *,
+    include_history: bool = True,
 ) -> dict[str, list[dict[str, Any]]]:
-    """アイテムを名前でグルーピング."""
+    """アイテムを名前でグルーピング.
+
+    Args:
+        all_items: 全アイテムレコード
+        target_item_keys: 監視対象アイテムキーのセット
+        days: 期間（日数）
+        target_config: ターゲット設定
+        include_history: 履歴を含めるかどうか（軽量API用にFalseを指定）
+    """
     items_by_name: dict[str, list[dict[str, Any]]] = {}
     processed_keys: set[str] = set()
 
@@ -295,7 +327,7 @@ def _group_items_by_name(
         if target_item_keys and item.item_key not in target_item_keys:
             continue
 
-        store_data = _process_item(item, days, target_config)
+        store_data = _process_item(item, days, target_config, include_history=include_history)
         if not store_data:
             continue
 
@@ -374,7 +406,11 @@ def _process_item_without_db(
 def get_items(
     query: price_watch.webapi.schemas.ItemsQueryParams,
 ) -> flask.Response | tuple[flask.Response, int]:
-    """アイテム一覧を取得（複数ストア対応・実質価格付き）."""
+    """アイテム一覧を取得（複数ストア対応・実質価格付き）.
+
+    履歴データはペイロード削減のため含まれません。
+    履歴が必要な場合は /api/items/<item_key>/history を使用してください。
+    """
     try:
         days = _parse_days(query.days)
 
@@ -384,8 +420,10 @@ def get_items(
 
         all_items = _get_history_manager().get_all_items()
 
-        # アイテム名でグルーピング
-        items_by_name = _group_items_by_name(all_items, target_item_keys, days, target_config)
+        # アイテム名でグルーピング（履歴なしで軽量化）
+        items_by_name = _group_items_by_name(
+            all_items, target_item_keys, days, target_config, include_history=False
+        )
 
         # グルーピングされたアイテムを構築
         result_items = [
@@ -625,7 +663,8 @@ def _get_item_data_for_ogp(
     stores: list[price_watch.webapi.schemas.StoreEntry] = []
 
     for item in matching_items:
-        store_data = _process_item(item, days, target_config)
+        # OGP 画像生成には履歴が必要
+        store_data = _process_item(item, days, target_config, include_history=True)
         if store_data:
             stores.append(store_data["store_entry"])
 

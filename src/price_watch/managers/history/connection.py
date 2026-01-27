@@ -75,6 +75,8 @@ INDEX_SQLS = [
     "CREATE INDEX IF NOT EXISTS idx_items_item_key ON items(item_key)",
     "CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)",
     "CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)",
+    # 複合インデックス: item_id + time でのクエリを高速化
+    "CREATE INDEX IF NOT EXISTS idx_price_history_item_time ON price_history(item_id, time DESC)",
     "CREATE INDEX IF NOT EXISTS idx_events_item_id ON events(item_id)",
     "CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)",

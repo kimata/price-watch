@@ -10,14 +10,14 @@ function XIcon({ className }: { className?: string }) {
         </svg>
     );
 }
-import type { Item, StoreDefinition, Period, Event } from "../types";
+import type { Item, StoreDefinition, Period, Event, StoreEntry, PriceHistoryPoint } from "../types";
 import PeriodSelector from "./PeriodSelector";
 import PriceChart from "./PriceChart";
 import StoreRow from "./StoreRow";
 import EventHistory from "./EventHistory";
 import LoadingSpinner from "./LoadingSpinner";
 import Footer from "./Footer";
-import { fetchItems, fetchItemEvents } from "../services/apiService";
+import { fetchItems, fetchItemEvents, fetchItemHistory } from "../services/apiService";
 
 interface ItemDetailPageProps {
     item: Item;
@@ -79,14 +79,36 @@ export default function ItemDetailPage({
         };
     }, [item.stores]);
 
-    // アイテム情報を期間変更時に再取得
+    // アイテム情報を期間変更時に再取得（履歴も含む）
     const loadItemData = useCallback(async () => {
         setLoadingItem(true);
         try {
+            // アイテム一覧を取得（履歴なし）
             const response = await fetchItems(period);
             const foundItem = response.items.find((i) => i.name === item.name);
             if (foundItem) {
-                setItem(foundItem);
+                // 各ストアの履歴を並列で取得
+                const storesWithHistory = await Promise.all(
+                    foundItem.stores.map(async (store): Promise<StoreEntry> => {
+                        try {
+                            const historyResponse = await fetchItemHistory(store.item_key, period);
+                            return {
+                                ...store,
+                                history: historyResponse.history,
+                            };
+                        } catch {
+                            // 個別のエラーは無視して空の履歴を返す
+                            return {
+                                ...store,
+                                history: [] as PriceHistoryPoint[],
+                            };
+                        }
+                    })
+                );
+                setItem({
+                    ...foundItem,
+                    stores: storesWithHistory,
+                });
             }
         } catch (err) {
             console.error("Failed to load item data:", err);

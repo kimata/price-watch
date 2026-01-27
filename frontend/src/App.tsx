@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "./components/Header";
 import EventBanner from "./components/EventBanner";
 import PeriodSelector from "./components/PeriodSelector";
-import ItemCard from "./components/ItemCard";
+import VirtualizedItemGrid from "./components/VirtualizedItemGrid";
 import ItemDetailPage from "./components/ItemDetailPage";
 import MetricsPage from "./components/MetricsPage";
 import LoadingSpinner from "./components/LoadingSpinner";
@@ -210,17 +210,12 @@ export default function App() {
                 ) : items.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">監視中のアイテムがありません</div>
                 ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {items.map((item) => (
-                            <ItemCard
-                                key={item.name}
-                                item={item}
-                                storeDefinitions={storeDefinitions}
-                                onClick={handleItemClick}
-                                period={period}
-                            />
-                        ))}
-                    </div>
+                    <VirtualizedItemGrid
+                        items={items}
+                        storeDefinitions={storeDefinitions}
+                        onItemClick={handleItemClick}
+                        period={period}
+                    />
                 )}
 
                 <EventBanner />

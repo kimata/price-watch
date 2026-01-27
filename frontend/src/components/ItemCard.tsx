@@ -1,14 +1,14 @@
 import { ClockIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
-import type { Item, StoreDefinition } from "../types";
-import PriceChart from "./PriceChart";
+import type { Item, StoreDefinition, Period } from "../types";
+import LazyPriceChart from "./LazyPriceChart";
 import StoreRow from "./StoreRow";
 
 interface ItemCardProps {
     item: Item;
     storeDefinitions: StoreDefinition[];
     onClick?: (item: Item) => void;
-    period?: string;
+    period?: Period;
 }
 
 export default function ItemCard({ item, storeDefinitions, onClick, period = "30" }: ItemCardProps) {
@@ -88,7 +88,7 @@ export default function ItemCard({ item, storeDefinitions, onClick, period = "30
             {/* グラフと最終更新を下部に配置 */}
             <div className="mt-auto">
                 <div className="px-4 pb-4">
-                    <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} period={period} />
+                    <LazyPriceChart stores={item.stores} storeDefinitions={storeDefinitions} period={period} />
                 </div>
 
                 <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
