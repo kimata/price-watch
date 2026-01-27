@@ -252,6 +252,28 @@ class TestProcessPreload:
         mock_driver.get.assert_called_once()
 
 
+class TestParseXpathAttr:
+    """_parse_xpath_attr 関数のテスト"""
+
+    def test_with_attr(self):
+        """属性指定ありの XPath"""
+        elem, attr = price_watch.store.scrape._parse_xpath_attr('//input[@class="largeUrl"]/@value')
+        assert elem == '//input[@class="largeUrl"]'
+        assert attr == "value"
+
+    def test_with_src_attr(self):
+        """src 属性指定ありの XPath"""
+        elem, attr = price_watch.store.scrape._parse_xpath_attr("//img/@src")
+        assert elem == "//img"
+        assert attr == "src"
+
+    def test_without_attr(self):
+        """属性指定なしの XPath（デフォルト src）"""
+        elem, attr = price_watch.store.scrape._parse_xpath_attr('//img[@id="mainImg"]')
+        assert elem == '//img[@id="mainImg"]'
+        assert attr == "src"
+
+
 class TestCheckImpl:
     """_check_impl 関数のテスト"""
 

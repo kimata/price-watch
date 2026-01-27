@@ -395,7 +395,7 @@ def format_event_title(event_type: str) -> str:
         case EventType.CRAWL_FAILURE.value:
             return "クロール失敗"
         case EventType.DATA_RETRIEVAL_FAILURE.value:
-            return "情報取得エラー"
+            return "エラー"
         case EventType.LOWEST_PRICE.value:
             return "過去最安値"
         case EventType.PRICE_DROP.value:

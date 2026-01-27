@@ -32,7 +32,7 @@ const EVENT_CONFIG: Record<
         emoji: "❌",
         bgColor: "bg-red-100",
         textColor: "text-red-700",
-        label: "情報取得エラー",
+        label: "エラー",
     },
     lowest_price: {
         emoji: "🔥",

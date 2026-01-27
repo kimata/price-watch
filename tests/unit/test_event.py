@@ -180,7 +180,7 @@ class TestFormatEventTitle:
 
     def test_data_retrieval_failure(self) -> None:
         """情報取得エラータイトル"""
-        assert format_event_title("data_retrieval_failure") == "情報取得エラー"
+        assert format_event_title("data_retrieval_failure") == "エラー"
 
     def test_lowest_price(self) -> None:
         """過去最安値タイトル"""

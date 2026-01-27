@@ -33,6 +33,18 @@ if TYPE_CHECKING:
 TIMEOUT_SEC = 4
 
 
+def _parse_xpath_attr(xpath: str) -> tuple[str, str]:
+    """XPath から要素パスと属性名を分離.
+
+    ``//img/@src`` のように ``/@attr`` で終わる場合は要素部分と属性名を返す。
+    属性指定がない場合はデフォルトで ``src`` を使用する。
+    """
+    match = re.match(r"^(.+?)/@(\w+)$", xpath)
+    if match:
+        return match.group(1), match.group(2)
+    return xpath, "src"
+
+
 def _resolve_template(template: str, item: ResolvedItem) -> str:
     """テンプレート文字列を解決."""
     tmpl = string.Template(template)
@@ -225,11 +237,13 @@ def _check_impl(
 
     # サムネイル画像を取得（価格が取得できなくても実行）
     thumb_url: str | None = None
-    if item.thumb_img_xpath is not None and my_lib.selenium_util.xpath_exists(driver, item.thumb_img_xpath):
-        thumb_url = urllib.parse.urljoin(
-            driver.current_url,
-            driver.find_element(By.XPATH, item.thumb_img_xpath).get_attribute("src"),
-        )
+    if item.thumb_img_xpath is not None:
+        elem_xpath, attr_name = _parse_xpath_attr(item.thumb_img_xpath)
+        if my_lib.selenium_util.xpath_exists(driver, elem_xpath):
+            thumb_url = urllib.parse.urljoin(
+                driver.current_url,
+                driver.find_element(By.XPATH, elem_xpath).get_attribute(attr_name),
+            )
 
     # サムネイルをローカルに保存
     if thumb_url:

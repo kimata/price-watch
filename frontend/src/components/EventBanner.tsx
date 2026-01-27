@@ -46,7 +46,7 @@ const EVENT_CONFIG: Record<
         borderColor: "border-red-200",
         textColor: "text-red-700",
         iconColor: "text-red-500",
-        label: "情報取得エラー",
+        label: "エラー",
     },
     lowest_price: {
         Icon: FireIcon,
