@@ -33,8 +33,9 @@ def _get_history_manager() -> HistoryManager:
         return _history_manager
     config = _get_app_config()
     if config is None:
-        msg = "App config not available"
+        msg = f"App config not available (config path: {_config_cache.file_path}, cwd: {pathlib.Path.cwd()})"
         raise RuntimeError(msg)
+    logging.debug("Initializing HistoryManager with data path: %s", config.data.price)
     manager = price_watch.managers.history.HistoryManager.create(config.data.price)
     manager.initialize()
     _history_manager = manager
@@ -579,9 +580,16 @@ def get_events() -> flask.Response | tuple[flask.Response, int]:
 def _get_app_config() -> price_watch.config.AppConfig | None:
     """config.yaml の設定を取得（キャッシュ使用）."""
     try:
-        return _config_cache.get()
+        config = _config_cache.get()
+        if config is None:
+            logging.warning(
+                "config.yaml not found at path: %s (cwd: %s)",
+                _config_cache.file_path,
+                pathlib.Path.cwd(),
+            )
+        return config
     except Exception:
-        logging.warning("Failed to load config.yaml")
+        logging.exception("Failed to load config.yaml from %s", _config_cache.file_path)
         return None
 
 
