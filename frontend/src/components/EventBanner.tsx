@@ -94,6 +94,12 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
     const [events, setEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [showAll, setShowAll] = useState(false);
+
+    // showAll が false の場合、crawl_failure を除外
+    const filteredEvents = showAll
+        ? events
+        : events.filter((e) => e.event_type !== "crawl_failure");
 
     const loadEvents = useCallback(async () => {
         try {
@@ -144,13 +150,24 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
         );
     }
 
-    if (events.length === 0) {
+    if (filteredEvents.length === 0) {
         return (
             <div className="mt-10 mb-6">
-                <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    <BellIcon className="w-5 h-5 text-gray-500" />
-                    最新イベント
-                </h2>
+                <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
+                        <BellIcon className="w-5 h-5 text-gray-500" />
+                        最新イベント
+                    </h2>
+                    <label className="flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={showAll}
+                            onChange={(e) => setShowAll(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        全て
+                    </label>
+                </div>
                 <div className="p-6 bg-gray-50 border border-gray-200 rounded-xl text-center">
                     <BellIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
                     <p className="text-gray-500 text-sm">まだイベントはありません</p>
@@ -164,15 +181,26 @@ export default function EventBanner({ refreshInterval = 60000 }: EventBannerProp
 
     return (
         <div className="mt-10 mb-6">
-            <h2 className="text-lg font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <BellIcon className="w-5 h-5 text-gray-500" />
-                最新イベント
-                <span className="text-sm font-normal text-gray-400">({events.length}件)</span>
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
+                    <BellIcon className="w-5 h-5 text-gray-500" />
+                    最新イベント
+                    <span className="text-sm font-normal text-gray-400">({filteredEvents.length}件)</span>
+                </h2>
+                <label className="flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={showAll}
+                        onChange={(e) => setShowAll(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    全て
+                </label>
+            </div>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <table className="w-full">
                     <tbody className="divide-y divide-gray-100">
-                        {events.map((event) => {
+                        {filteredEvents.map((event) => {
                             const config = EVENT_CONFIG[event.event_type] || EVENT_CONFIG.price_drop;
                             const IconComponent = config.Icon;
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import clsx from "clsx";
 import dayjs from "dayjs";
 import type { Event, EventType } from "../types";
@@ -53,17 +54,49 @@ function formatPrice(price: number | null): string {
 }
 
 export default function EventHistory({ events }: EventHistoryProps) {
-    if (events.length === 0) {
+    const [showAll, setShowAll] = useState(false);
+
+    // showAll が false の場合、crawl_failure を除外
+    const filteredEvents = showAll
+        ? events
+        : events.filter((e) => e.event_type !== "crawl_failure");
+
+    if (filteredEvents.length === 0) {
         return (
-            <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                <span className="text-2xl mb-2 block">📭</span>
-                <p className="text-gray-500 text-sm">イベント履歴はありません</p>
+            <div>
+                <div className="flex justify-end mb-3">
+                    <label className="flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={showAll}
+                            onChange={(e) => setShowAll(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        全て
+                    </label>
+                </div>
+                <div className="p-6 bg-gray-50 border border-gray-200 rounded-lg text-center">
+                    <span className="text-2xl mb-2 block">📭</span>
+                    <p className="text-gray-500 text-sm">イベント履歴はありません</p>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="overflow-x-auto">
+        <div>
+            <div className="flex justify-end mb-3">
+                <label className="flex items-center gap-1.5 text-sm text-gray-500 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={showAll}
+                        onChange={(e) => setShowAll(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    全て
+                </label>
+            </div>
+            <div className="overflow-x-auto">
             <table className="w-full text-sm">
                 <thead>
                     <tr className="border-b border-gray-200">
@@ -74,7 +107,7 @@ export default function EventHistory({ events }: EventHistoryProps) {
                     </tr>
                 </thead>
                 <tbody>
-                    {events.map((event) => {
+                    {filteredEvents.map((event) => {
                         const config = EVENT_CONFIG[event.event_type] || EVENT_CONFIG.price_drop;
 
                         return (
@@ -124,6 +157,7 @@ export default function EventHistory({ events }: EventHistoryProps) {
                     })}
                 </tbody>
             </table>
+            </div>
         </div>
     );
 }
