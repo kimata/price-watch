@@ -693,14 +693,20 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     # --- 価格・ストア名を右側に表示 ---
     price_text = _format_price(data.best_price)
     store_text = _truncate_text(img, data.best_store, font_label, 400)
+    lowest_label_text = "最安値"
+    font_lowest_label = _get_pillow_font(50, font_paths.jp_medium if font_paths else None)
 
     price_width, price_height = _get_text_size(img, price_text, font_price)
     store_width, store_height = _get_text_size(img, store_text, font_label)
+    lowest_label_width, _ = _get_text_size(img, lowest_label_text, font_lowest_label)
+
+    label_gap = 8  # 「最安値」と価格の間隔
+    price_line_width = lowest_label_width + label_gap + price_width
 
     # ボックスサイズを最小化（テキストサイズ + 最小パディング）
     box_padding = 5  # 上下左右の最小パディング
     text_gap = 8  # 価格とストア名の間隔
-    max_text_width = max(price_width, store_width)
+    max_text_width = max(price_line_width, store_width)
     info_width = max_text_width + box_padding * 2
     info_height = box_padding + price_height + text_gap + store_height + box_padding
 
@@ -724,6 +730,18 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
         my_lib.pil_util.draw_text(
             img, price_text, (text_right_edge, price_y), font_price, align="right", color="#dc3232"
         )
+        # 「最安値」ラベル（価格の左側、ベースライン揃え）
+        if isinstance(font_lowest_label, ImageFont.FreeTypeFont):
+            draw_tmp = ImageDraw.Draw(img)
+            price_bbox_top = draw_tmp.textbbox((0, 0), price_text, font=font_price)[1]
+            label_bbox_top = draw_tmp.textbbox((0, 0), lowest_label_text, font=font_lowest_label)[1]
+            price_ascent = font_price.getmetrics()[0]
+            label_ascent = font_lowest_label.getmetrics()[0]
+            label_y = price_y + (-price_bbox_top + price_ascent) - (-label_bbox_top + label_ascent)
+            label_x = text_right_edge - price_width - label_gap
+            my_lib.pil_util.draw_text(
+                img, lowest_label_text, (label_x, label_y), font_lowest_label, align="right", color="#888888"
+            )
         # 最安ストア名（右寄せ）
         my_lib.pil_util.draw_text(
             img, store_text, (text_right_edge, store_y), font_label, align="right", color="#646464"
@@ -733,6 +751,13 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
         draw = ImageDraw.Draw(img)
         price_x = text_right_edge - price_width
         draw.text((price_x, price_y), price_text, font=font_price, fill=(220, 50, 50))
+        label_x = price_x - label_gap - lowest_label_width
+        draw.text(
+            (label_x, price_y + price_height - _get_text_size(img, lowest_label_text, font_lowest_label)[1]),
+            lowest_label_text,
+            font=font_lowest_label,
+            fill=(136, 136, 136),
+        )
         store_x = text_right_edge - store_width
         draw.text((store_x, store_y), store_text, font=font_label, fill=(100, 100, 100))
 
@@ -854,13 +879,19 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
     # --- 価格・ストア名を右側に表示 ---
     price_text = _format_price(data.best_price)
     store_text = _truncate_text(img, data.best_store, font_label, 700)
+    lowest_label_text = "最安値"
+    font_lowest_label = _get_pillow_font(90, font_paths.jp_medium if font_paths else None)
 
     price_width, price_height = _get_text_size(img, price_text, font_price)
     store_width, store_height = _get_text_size(img, store_text, font_label)
+    lowest_label_width, _ = _get_text_size(img, lowest_label_text, font_lowest_label)
+
+    label_gap = 16  # 「最安値」と価格の間隔
+    price_line_width = lowest_label_width + label_gap + price_width
 
     box_padding = 10
     text_gap = 16
-    max_text_width = max(price_width, store_width)
+    max_text_width = max(price_line_width, store_width)
     info_width = max_text_width + box_padding * 2
     info_height = box_padding + price_height + text_gap + store_height + box_padding
 
@@ -881,6 +912,18 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
         my_lib.pil_util.draw_text(
             img, price_text, (text_right_edge, price_y), font_price, align="right", color="#dc3232"
         )
+        # 「最安値」ラベル（価格の左側、ベースライン揃え）
+        if isinstance(font_lowest_label, ImageFont.FreeTypeFont):
+            draw_tmp = ImageDraw.Draw(img)
+            price_bbox_top = draw_tmp.textbbox((0, 0), price_text, font=font_price)[1]
+            label_bbox_top = draw_tmp.textbbox((0, 0), lowest_label_text, font=font_lowest_label)[1]
+            price_ascent = font_price.getmetrics()[0]
+            label_ascent = font_lowest_label.getmetrics()[0]
+            label_y = price_y + (-price_bbox_top + price_ascent) - (-label_bbox_top + label_ascent)
+            label_x = text_right_edge - price_width - label_gap
+            my_lib.pil_util.draw_text(
+                img, lowest_label_text, (label_x, label_y), font_lowest_label, align="right", color="#888888"
+            )
         my_lib.pil_util.draw_text(
             img, store_text, (text_right_edge, store_y), font_label, align="right", color="#646464"
         )
@@ -888,6 +931,13 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
         draw = ImageDraw.Draw(img)
         price_x = text_right_edge - price_width
         draw.text((price_x, price_y), price_text, font=font_price, fill=(220, 50, 50))
+        label_x = price_x - label_gap - lowest_label_width
+        draw.text(
+            (label_x, price_y + price_height - _get_text_size(img, lowest_label_text, font_lowest_label)[1]),
+            lowest_label_text,
+            font=font_lowest_label,
+            fill=(136, 136, 136),
+        )
         store_x = text_right_edge - store_width
         draw.text((store_x, store_y), store_text, font=font_label, fill=(100, 100, 100))
 
