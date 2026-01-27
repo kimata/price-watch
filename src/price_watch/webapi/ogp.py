@@ -700,7 +700,7 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
     store_width, store_height = _get_text_size(img, store_text, font_label)
     lowest_label_width, _ = _get_text_size(img, lowest_label_text, font_lowest_label)
 
-    label_gap = 8  # 「最安値」と価格の間隔
+    label_gap = 16  # 「最安値」と価格の間隔
     price_line_width = lowest_label_width + label_gap + price_width
 
     # ボックスサイズを最小化（テキストサイズ + 最小パディング）
@@ -740,7 +740,7 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
             label_y = price_y + (-price_bbox_top + price_ascent) - (-label_bbox_top + label_ascent)
             label_x = text_right_edge - price_width - label_gap
             my_lib.pil_util.draw_text(
-                img, lowest_label_text, (label_x, label_y), font_lowest_label, align="right", color="#888888"
+                img, lowest_label_text, (label_x, label_y), font_lowest_label, align="right", color="#2e7d32"
             )
         # 最安ストア名（右寄せ）
         my_lib.pil_util.draw_text(
@@ -756,7 +756,7 @@ def generate_ogp_image(data: OgpData, font_paths: FontPaths | None = None) -> Im
             (label_x, price_y + price_height - _get_text_size(img, lowest_label_text, font_lowest_label)[1]),
             lowest_label_text,
             font=font_lowest_label,
-            fill=(136, 136, 136),
+            fill=(46, 125, 50),
         )
         store_x = text_right_edge - store_width
         draw.text((store_x, store_y), store_text, font=font_label, fill=(100, 100, 100))
@@ -886,7 +886,7 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
     store_width, store_height = _get_text_size(img, store_text, font_label)
     lowest_label_width, _ = _get_text_size(img, lowest_label_text, font_lowest_label)
 
-    label_gap = 16  # 「最安値」と価格の間隔
+    label_gap = 24  # 「最安値」と価格の間隔
     price_line_width = lowest_label_width + label_gap + price_width
 
     box_padding = 10
@@ -922,7 +922,7 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
             label_y = price_y + (-price_bbox_top + price_ascent) - (-label_bbox_top + label_ascent)
             label_x = text_right_edge - price_width - label_gap
             my_lib.pil_util.draw_text(
-                img, lowest_label_text, (label_x, label_y), font_lowest_label, align="right", color="#888888"
+                img, lowest_label_text, (label_x, label_y), font_lowest_label, align="right", color="#2e7d32"
             )
         my_lib.pil_util.draw_text(
             img, store_text, (text_right_edge, store_y), font_label, align="right", color="#646464"
@@ -936,7 +936,7 @@ def generate_ogp_image_square(data: OgpData, font_paths: FontPaths | None = None
             (label_x, price_y + price_height - _get_text_size(img, lowest_label_text, font_lowest_label)[1]),
             lowest_label_text,
             font=font_lowest_label,
-            fill=(136, 136, 136),
+            fill=(46, 125, 50),
         )
         store_x = text_right_edge - store_width
         draw.text((store_x, store_y), store_text, font=font_label, fill=(100, 100, 100))
