@@ -231,7 +231,7 @@ def event(
 
     # イベントタイプに応じたアイコンを選択
     icon = _get_event_icon(event_result.event_type)
-    title = f"{icon} {price_watch.event.format_event_title(event_result.event_type.value)}"
+    title = f"{icon}{price_watch.event.format_event_title(event_result.event_type.value)}: {item.name}"
 
     # メッセージを構築
     message_text = _build_event_message(event_result, item)
@@ -252,7 +252,7 @@ def event(
         )
 
     formatted = my_lib.notify.slack.FormattedMessage(
-        text=f"{title}: {item.name}",
+        text=title,
         json=json.loads(message_json),
     )
 
