@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Any
 from price_watch.managers.history.connection import HistoryDBConnection
 from price_watch.managers.history.event_repository import EventRepository
 from price_watch.managers.history.item_repository import ItemRepository
-from price_watch.managers.history.migrations import HistoryMigrations
 from price_watch.managers.history.price_repository import PriceRepository
 from price_watch.managers.history.utils import generate_item_key, url_hash
 
@@ -32,7 +31,6 @@ __all__ = [
     "EventRepository",
     "HistoryDBConnection",
     "HistoryManager",
-    "HistoryMigrations",
     "ItemRepository",
     "PriceRepository",
     "generate_item_key",
@@ -51,14 +49,12 @@ class HistoryManager:
     items: ItemRepository = field(init=False)
     prices: PriceRepository = field(init=False)
     events: EventRepository = field(init=False)
-    _migrations: HistoryMigrations = field(init=False)
 
     def __post_init__(self) -> None:
         """Repository インスタンスを初期化."""
         self.items = ItemRepository(db=self.db)
         self.prices = PriceRepository(db=self.db, item_repo=self.items)
         self.events = EventRepository(db=self.db)
-        self._migrations = HistoryMigrations(db=self.db)
 
     @classmethod
     def create(cls, data_path: pathlib.Path) -> HistoryManager:
@@ -76,10 +72,9 @@ class HistoryManager:
     def initialize(self) -> None:
         """データベースを初期化.
 
-        テーブル作成、マイグレーション、インデックス作成を行います。
+        テーブル作成とインデックス作成を行います。
         """
         self.db.initialize()
-        self._migrations.run_all()
         self.db.create_indexes()
 
     # --- 後方互換性のための委譲メソッド ---

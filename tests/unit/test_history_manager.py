@@ -22,7 +22,6 @@ from price_watch.managers.history import (
     generate_item_key,
     url_hash,
 )
-from price_watch.managers.history.migrations import HistoryMigrations
 
 # 時間単位で異なる時刻を生成するためのベース時刻
 _BASE_TIME = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone(timedelta(hours=9)))
@@ -571,26 +570,6 @@ class TestHistoryManager:
         result = manager.get_item_id(url="https://example.com/item/1")
 
         assert result == item_id
-
-
-# === HistoryMigrations テスト ===
-class TestHistoryMigrations:
-    """HistoryMigrations のテスト"""
-
-    def test_run_all_idempotent(self, temp_data_dir: pathlib.Path) -> None:
-        """マイグレーションは冪等（複数回実行しても問題なし）"""
-        db = HistoryDBConnection.create(temp_data_dir)
-        db.initialize()
-
-        migrations = HistoryMigrations(db=db)
-
-        # 2回実行してもエラーにならない
-        migrations.run_all()
-        migrations.run_all()
-
-        # テーブルが正常に存在
-        assert db.table_exists("items")
-        assert db.table_exists("price_history")
 
 
 # === PriceRepository 追加テスト（状態遷移） ===

@@ -16,16 +16,8 @@ from datetime import datetime, timedelta
 
 import my_lib.time
 
-# スキーマバージョン（マイグレーション用）
-SCHEMA_VERSION = 2
-
 # テーブル作成SQL
 _CREATE_TABLES_SQL = """
--- スキーマバージョン管理
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY
-);
-
 -- 巡回セッション（一通りの巡回サイクル）
 CREATE TABLE IF NOT EXISTS crawl_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,29 +159,7 @@ class MetricsDB:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(self.db_path) as conn:
             conn.executescript(_CREATE_TABLES_SQL)
-            # スキーマバージョンを確認・マイグレーション
-            cursor = conn.execute("SELECT version FROM schema_version LIMIT 1")
-            row = cursor.fetchone()
-            if row is None:
-                conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
-            else:
-                current_version = row[0]
-                if current_version < 2:
-                    self._migrate_v1_to_v2(conn)
             conn.commit()
-
-    @staticmethod
-    def _migrate_v1_to_v2(conn: sqlite3.Connection) -> None:
-        """v1 → v2: work_ended_at カラムを追加"""
-        # カラムが存在しない場合のみ追加
-        cursor = conn.execute("PRAGMA table_info(crawl_sessions)")
-        columns = {row[1] for row in cursor.fetchall()}
-        if "work_ended_at" not in columns:
-            conn.execute("ALTER TABLE crawl_sessions ADD COLUMN work_ended_at TEXT")
-            # 既存データ: work_ended_at を ended_at で埋める
-            conn.execute("UPDATE crawl_sessions SET work_ended_at = ended_at WHERE ended_at IS NOT NULL")
-            logging.info("Migrated metrics DB from v1 to v2: added work_ended_at column")
-        conn.execute("UPDATE schema_version SET version = 2")
 
     def _get_conn(self) -> sqlite3.Connection:
         """データベース接続を取得"""

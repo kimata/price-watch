@@ -58,7 +58,6 @@ class TestMetricsDBInit:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
 
-        assert "schema_version" in tables
         assert "crawl_sessions" in tables
         assert "store_crawl_stats" in tables
 
