@@ -1,0 +1,108 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "category_list": {
+            "type": "array",
+            "items": { "type": "string" }
+        },
+        "store_list": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "check_method": { "type": "string" },
+                    "price_xpath": { "type": "string" },
+                    "thumb_img_xpath": { "type": "string" },
+                    "unavailable_xpath": { "type": "string" },
+                    "price_unit": { "type": "string" },
+                    "point_rate": { "type": "number" },
+                    "color": { "type": "string" },
+                    "action": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "type": { "type": "string" },
+                                "xpath": { "type": "string" },
+                                "value": { "type": "string" }
+                            },
+                            "required": ["type"]
+                        }
+                    },
+                    "assumption": {
+                        "type": "object",
+                        "properties": {
+                            "point_rate": { "type": "number" }
+                        }
+                    }
+                },
+                "required": ["name"]
+            }
+        },
+        "item_list": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" },
+                    "category": { "type": "string" },
+                    "cond": { "type": "string" },
+                    "price": {
+                        "oneOf": [
+                            { "type": "integer" },
+                            {
+                                "type": "array",
+                                "items": { "type": "integer" }
+                            }
+                        ]
+                    },
+                    "store": {
+                        "oneOf": [
+                            { "type": "string" },
+                            {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": { "type": "string" },
+                                        "url": { "type": "string" },
+                                        "asin": { "type": "string" },
+                                        "search_keyword": { "type": "string" },
+                                        "exclude_keyword": { "type": "string" },
+                                        "jan_code": { "type": "string" },
+                                        "price": {
+                                            "oneOf": [
+                                                { "type": "integer" },
+                                                {
+                                                    "type": "array",
+                                                    "items": { "type": "integer" }
+                                                }
+                                            ]
+                                        },
+                                        "cond": { "type": "string" },
+                                        "preload": {
+                                            "type": "object",
+                                            "properties": {
+                                                "url": { "type": "string" },
+                                                "every": { "type": "integer" }
+                                            },
+                                            "required": ["url"]
+                                        },
+                                        "price_xpath": { "type": "string" },
+                                        "thumb_img_xpath": { "type": "string" },
+                                        "unavailable_xpath": { "type": "string" },
+                                        "price_unit": { "type": "string" }
+                                    },
+                                    "required": ["name"]
+                                }
+                            }
+                        ]
+                    }
+                },
+                "required": ["name", "store"]
+            }
+        }
+    }
+}

@@ -1,0 +1,160 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "check": {
+            "type": "object",
+            "properties": {
+                "interval_sec": {
+                    "type": "integer",
+                    "minimum": 1
+                },
+                "drop": {
+                    "type": "object",
+                    "properties": {
+                        "ignore": {
+                            "type": "object",
+                            "properties": {
+                                "hour": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                }
+                            }
+                        },
+                        "windows": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "days": {
+                                        "type": "integer",
+                                        "minimum": 1
+                                    },
+                                    "price": {
+                                        "type": "object",
+                                        "properties": {
+                                            "rate": { "type": "number" },
+                                            "value": { "type": "number" }
+                                        }
+                                    },
+                                    "rate": { "type": "number" },
+                                    "value": { "type": "number" }
+                                },
+                                "required": ["days"]
+                            }
+                        }
+                    }
+                },
+                "judge": {
+                    "type": "object"
+                },
+                "lowest": {
+                    "type": "object",
+                    "properties": {
+                        "rate": { "type": "number" },
+                        "value": { "type": "number" }
+                    }
+                },
+                "currency": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": { "type": "string" },
+                            "rate": { "type": "number" }
+                        },
+                        "required": ["label", "rate"]
+                    }
+                }
+            }
+        },
+        "slack": {
+            "type": "object",
+            "properties": {
+                "bot_token": { "type": "string" },
+                "from": { "type": "string" },
+                "info": { "type": "object" },
+                "error": { "type": "object" }
+            }
+        },
+        "store": {
+            "type": "object",
+            "properties": {
+                "amazon": {
+                    "type": "object",
+                    "properties": {
+                        "associate": { "type": "string" },
+                        "access_key": { "type": "string" },
+                        "secret_key": { "type": "string" },
+                        "host": { "type": "string" },
+                        "region": { "type": "string" }
+                    }
+                },
+                "yahoo": {
+                    "type": "object",
+                    "properties": {
+                        "client_id": { "type": "string" },
+                        "secret": { "type": "string" }
+                    }
+                }
+            }
+        },
+        "data": {
+            "type": "object",
+            "properties": {
+                "selenium": { "type": "string" },
+                "dump": { "type": "string" },
+                "price": { "type": "string" },
+                "thumb": { "type": "string" },
+                "metrics": { "type": "string" },
+                "cache": { "type": "string" }
+            }
+        },
+        "webapp": {
+            "type": "object"
+        },
+        "target": {
+            "type": "object",
+            "properties": {
+                "define": { "type": "string" }
+            }
+        },
+        "font": {
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "map": {
+                    "type": "object",
+                    "properties": {
+                        "jp_regular": { "type": "string" },
+                        "jp_medium": { "type": "string" },
+                        "jp_bold": { "type": "string" },
+                        "en_medium": { "type": "string" },
+                        "en_bold": { "type": "string" }
+                    }
+                }
+            }
+        },
+        "liveness": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "oneOf": [
+                        { "type": "string" },
+                        {
+                            "type": "object",
+                            "properties": {
+                                "crawler": { "type": "string" }
+                            }
+                        }
+                    ]
+                },
+                "interval_sec": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        }
+    },
+    "required": ["webapp"]
+}

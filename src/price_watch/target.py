@@ -15,6 +15,8 @@ from typing import Any, Protocol
 
 import my_lib.config
 
+import price_watch.const
+
 TARGET_FILE_PATH = pathlib.Path("target.yaml")
 
 
@@ -447,5 +449,5 @@ def load(target_file: pathlib.Path | None = None) -> TargetConfig:
     """
     if target_file is None:
         target_file = TARGET_FILE_PATH
-    raw = my_lib.config.load(str(target_file))
+    raw = my_lib.config.load(str(target_file), price_watch.const.SCHEMA_TARGET)
     return TargetConfig.parse(raw)

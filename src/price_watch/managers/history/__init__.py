@@ -72,10 +72,9 @@ class HistoryManager:
     def initialize(self) -> None:
         """データベースを初期化.
 
-        テーブル作成とインデックス作成を行います。
+        テーブルとインデックスを作成します。
         """
         self.db.initialize()
-        self.db.create_indexes()
 
     # --- 後方互換性のための委譲メソッド ---
 

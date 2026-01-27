@@ -18,6 +18,8 @@ import my_lib.store.amazon.config
 import my_lib.store.yahoo.config
 import my_lib.webapp.config
 
+import price_watch.const
+
 CONFIG_FILE_PATH = pathlib.Path("config.yaml")
 
 
@@ -367,5 +369,5 @@ def load(config_file: pathlib.Path | None = None) -> AppConfig:
     """
     if config_file is None:
         config_file = CONFIG_FILE_PATH
-    raw = my_lib.config.load(str(config_file))
+    raw = my_lib.config.load(str(config_file), price_watch.const.SCHEMA_CONFIG)
     return AppConfig.parse(raw)
