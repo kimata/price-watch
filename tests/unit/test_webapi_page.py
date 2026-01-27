@@ -294,6 +294,21 @@ class TestGetTargetItemKeys:
 
         assert "mercari_key" in result
 
+    def test_handles_yahoo_search(self) -> None:
+        """Yahoo 検索のキー生成"""
+        mock_item = MagicMock()
+        mock_item.check_method = price_watch.target.CheckMethod.YAHOO_SEARCH
+        mock_item.search_keyword = "keyword"
+        mock_item.name = "Item Name"
+
+        mock_config = MagicMock()
+        mock_config.resolve_items.return_value = [mock_item]
+
+        with patch("price_watch.managers.history.generate_item_key", return_value="yahoo_key"):
+            result = price_watch.webapi.page._get_target_item_keys(mock_config)
+
+        assert "yahoo_key" in result
+
     def test_returns_empty_set_on_exception(self) -> None:
         """resolve_items が例外を投げた場合は空セット"""
         mock_config = MagicMock()

@@ -82,8 +82,11 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         return set()
 
     for item in resolved_items:
-        # メルカリ検索の場合は keyword + cond から item_key を生成
-        if item.check_method == price_watch.target.CheckMethod.MERCARI_SEARCH:
+        # メルカリ検索・Yahoo 検索の場合は keyword から item_key を生成
+        if item.check_method in (
+            price_watch.target.CheckMethod.MERCARI_SEARCH,
+            price_watch.target.CheckMethod.YAHOO_SEARCH,
+        ):
             keyword = item.search_keyword or item.name
             keys.add(price_watch.managers.history.generate_item_key(search_keyword=keyword, search_cond=""))
         else:
