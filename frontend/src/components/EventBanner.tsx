@@ -50,10 +50,10 @@ const EVENT_CONFIG: Record<
     },
     lowest_price: {
         Icon: FireIcon,
-        bgColor: "bg-rose-50",
-        borderColor: "border-rose-200",
-        textColor: "text-rose-700",
-        iconColor: "text-rose-500",
+        bgColor: "bg-green-50",
+        borderColor: "border-green-200",
+        textColor: "text-green-700",
+        iconColor: "text-green-500",
         label: "最安値更新",
     },
     price_drop: {

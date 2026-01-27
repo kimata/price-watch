@@ -36,8 +36,8 @@ const EVENT_CONFIG: Record<
     },
     lowest_price: {
         emoji: "🔥",
-        bgColor: "bg-rose-100",
-        textColor: "text-rose-700",
+        bgColor: "bg-green-100",
+        textColor: "text-green-700",
         label: "最安値更新",
     },
     price_drop: {
