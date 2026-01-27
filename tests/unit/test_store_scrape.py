@@ -228,8 +228,14 @@ class TestCheckImpl:
 
         mock_price_elem = MagicMock()
         mock_price_elem.text = "1,234円"
-        mock_driver.find_element.return_value = mock_price_elem
-        mock_driver.find_elements.return_value = []  # unavailable なし
+        mock_price_elem.is_displayed.return_value = True
+
+        def find_elements_side_effect(_by, xpath):
+            if "price" in xpath:
+                return [mock_price_elem]
+            return []  # unavailable なし
+
+        mock_driver.find_elements.side_effect = find_elements_side_effect
 
         item = _create_resolved_item(
             url="https://example.com/item",
@@ -252,9 +258,15 @@ class TestCheckImpl:
 
         mock_price_elem = MagicMock()
         mock_price_elem.text = "在庫切れ"
-        mock_driver.find_element.return_value = mock_price_elem
-        # unavailable_xpath がマッチ
-        mock_driver.find_elements.return_value = [MagicMock()]
+        mock_price_elem.is_displayed.return_value = True
+
+        def find_elements_side_effect(_by, xpath):
+            if "price" in xpath:
+                return [mock_price_elem]
+            # unavailable_xpath がマッチ
+            return [MagicMock()]
+
+        mock_driver.find_elements.side_effect = find_elements_side_effect
 
         item = _create_resolved_item(
             url="https://example.com/item",
@@ -277,7 +289,8 @@ class TestCheckImpl:
 
         mock_price_elem = MagicMock()
         mock_price_elem.text = "5,000円"
-        mock_driver.find_element.return_value = mock_price_elem
+        mock_price_elem.is_displayed.return_value = True
+        mock_driver.find_elements.return_value = [mock_price_elem]
 
         item = _create_resolved_item(
             url="https://example.com/item",
@@ -299,7 +312,8 @@ class TestCheckImpl:
 
         mock_price_elem = MagicMock()
         mock_price_elem.text = "1,000円"
-        mock_driver.find_element.return_value = mock_price_elem
+        mock_price_elem.is_displayed.return_value = True
+        mock_driver.find_elements.return_value = [mock_price_elem]
 
         item = _create_resolved_item(
             url="https://example.com/item",
@@ -324,16 +338,18 @@ class TestCheckImpl:
 
         mock_price_elem = MagicMock()
         mock_price_elem.text = "1,000円"
+        mock_price_elem.is_displayed.return_value = True
 
         mock_thumb_elem = MagicMock()
         mock_thumb_elem.get_attribute.return_value = "/images/thumb.jpg"
 
         def find_element(_by, xpath):
-            if "price" in xpath:
-                return mock_price_elem
-            return mock_thumb_elem
+            if "img" in xpath:
+                return mock_thumb_elem
+            return mock_price_elem
 
         mock_driver.find_element.side_effect = find_element
+        mock_driver.find_elements.return_value = [mock_price_elem]
 
         item = _create_resolved_item(
             url="https://example.com/item",
@@ -357,8 +373,14 @@ class TestCheckImpl:
 
         mock_price_elem = MagicMock()
         mock_price_elem.text = "価格未定"
-        mock_driver.find_element.return_value = mock_price_elem
-        mock_driver.find_elements.return_value = []  # unavailable なし
+        mock_price_elem.is_displayed.return_value = True
+
+        def find_elements_side_effect(_by, xpath):
+            if "price" in xpath:
+                return [mock_price_elem]
+            return []  # unavailable なし
+
+        mock_driver.find_elements.side_effect = find_elements_side_effect
 
         item = _create_resolved_item(
             url="https://example.com/item",
