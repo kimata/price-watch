@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import TYPE_CHECKING
+from urllib.parse import urljoin
 
 import my_lib.notify.slack
 
@@ -77,10 +78,9 @@ def _resolve_thumb_url(thumb_url: str | None, external_url: str | None) -> str:
         return ""
     if not external_url:
         return thumb_url
-    # external_url の末尾スラッシュと thumb_url の先頭スラッシュを正規化
-    base = external_url.rstrip("/")
-    path = thumb_url.lstrip("/")
-    return f"{base}/{path}"
+    # urljoin を使用して正しく URL を結合
+    # thumb_url が絶対パス（/price/...）の場合、ホストからのパスとして解釈される
+    return urljoin(external_url, thumb_url)
 
 
 def info(
