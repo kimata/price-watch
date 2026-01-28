@@ -624,6 +624,7 @@ class TestApiMetricsStatus:
         """ステータスを返す"""
         mock_status = MagicMock()
         mock_status.is_running = True
+        mock_status.is_crawling = False
         mock_status.session_id = 1
         mock_status.started_at = None
         mock_status.last_heartbeat_at = None
