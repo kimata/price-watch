@@ -63,6 +63,26 @@ ERROR_TMPL = """\
 """
 
 
+def _resolve_thumb_url(thumb_url: str | None, external_url: str | None) -> str:
+    """サムネイルの相対URLを絶対URLに変換.
+
+    Args:
+        thumb_url: サムネイルの相対URL（例: /price/thumb/abc.png）
+        external_url: アプリケーションの外部URL（例: https://example.com/price/）
+
+    Returns:
+        絶対URL。変換できない場合は空文字列。
+    """
+    if not thumb_url:
+        return ""
+    if not external_url:
+        return thumb_url
+    # external_url の末尾スラッシュと thumb_url の先頭スラッシュを正規化
+    base = external_url.rstrip("/")
+    path = thumb_url.lstrip("/")
+    return f"{base}/{path}"
+
+
 def info(
     slack_config: my_lib.notify.slack.SlackConfigTypes,
     item: CheckedItem,
@@ -215,6 +235,7 @@ def event(
     slack_config: my_lib.notify.slack.SlackConfigTypes,
     event_result: price_watch.event.EventResult,
     item: CheckedItem,
+    external_url: str | None = None,
 ) -> str | None:
     """イベントを通知.
 
@@ -222,6 +243,7 @@ def event(
         slack_config: Slack 設定
         event_result: イベント判定結果
         item: チェック済みアイテム
+        external_url: アプリケーションの外部URL
 
     Returns:
         スレッドのタイムスタンプ、または通知失敗時は None
@@ -237,7 +259,7 @@ def event(
     message_text = _build_event_message(event_result, item)
 
     # テンプレートを選択
-    thumb_url = item.thumb_url or ""
+    thumb_url = _resolve_thumb_url(item.thumb_url, external_url)
     if thumb_url:
         message_json = EVENT_TMPL.format(
             title=json.dumps(title),

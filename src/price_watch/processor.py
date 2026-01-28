@@ -528,7 +528,10 @@ class ItemProcessor:
             item.name,
         )
 
-        notified = price_watch.notify.event(self.config.slack, result, item) is not None
+        notified = (
+            price_watch.notify.event(self.config.slack, result, item, self.config.webapp.external_url)
+            is not None
+        )
         price_watch.event.record_event(self.app.history_manager, result, item_id, notified=notified)
 
     def _handle_crawl_failure(

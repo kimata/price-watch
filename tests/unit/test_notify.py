@@ -426,3 +426,35 @@ class TestBuildEventMessage:
         result = price_watch.notify._build_event_message(event_result, item)
         assert "詳細を見る" in result
         assert "https://example.com" in result
+
+
+class TestResolveThumbUrl:
+    """_resolve_thumb_url 関数のテスト"""
+
+    def test_returns_empty_when_no_thumb_url(self) -> None:
+        """thumb_url が None の場合は空文字列"""
+        assert price_watch.notify._resolve_thumb_url(None, "https://example.com") == ""
+
+    def test_returns_empty_when_thumb_url_is_empty(self) -> None:
+        """thumb_url が空文字列の場合は空文字列"""
+        assert price_watch.notify._resolve_thumb_url("", "https://example.com") == ""
+
+    def test_returns_thumb_url_when_no_external_url(self) -> None:
+        """external_url が None の場合は thumb_url をそのまま返す"""
+        assert price_watch.notify._resolve_thumb_url("/price/thumb/abc.png", None) == "/price/thumb/abc.png"
+
+    def test_resolves_to_absolute_url(self) -> None:
+        """相対URLを絶対URLに変換"""
+        result = price_watch.notify._resolve_thumb_url(
+            "/price/thumb/abc.png",
+            "https://example.com",
+        )
+        assert result == "https://example.com/price/thumb/abc.png"
+
+    def test_handles_trailing_slash_in_external_url(self) -> None:
+        """external_url の末尾スラッシュを正規化"""
+        result = price_watch.notify._resolve_thumb_url(
+            "/price/thumb/abc.png",
+            "https://example.com/",
+        )
+        assert result == "https://example.com/price/thumb/abc.png"
