@@ -59,6 +59,29 @@ _config_cache: price_watch.file_cache.FileCache[price_watch.config.AppConfig] = 
 )
 
 
+def init_file_paths(
+    config_file: pathlib.Path,
+    target_file: pathlib.Path,
+) -> None:
+    """キャッシュのファイルパスを設定.
+
+    CLI 引数で指定されたパスを反映するために、サーバー起動時に呼び出す。
+
+    Args:
+        config_file: 設定ファイルパス
+        target_file: ターゲット設定ファイルパス
+    """
+    global _target_config_cache, _config_cache
+    _target_config_cache = price_watch.file_cache.FileCache(
+        target_file,
+        lambda path: price_watch.target.load(path),
+    )
+    _config_cache = price_watch.file_cache.FileCache(
+        config_file,
+        lambda path: price_watch.config.load(path),
+    )
+
+
 def _parse_days(days_str: str | None) -> int | None:
     """期間パラメータをパース."""
     if not days_str or days_str == "all":

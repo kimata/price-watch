@@ -188,6 +188,8 @@ class PriceWatchApp:
             self.port,
             static_dir_path=static_dir_path,
             metrics_db_path=metrics_db_path if metrics_db_path.exists() else None,
+            config_file=self.config_manager.config_file,
+            target_file=self.config_manager.target_file,
         )
         logging.info("WebUI server started on port %d", self.port)
 

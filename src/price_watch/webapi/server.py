@@ -141,13 +141,21 @@ class ServerHandle:
 
 def create_app(
     static_dir_path: pathlib.Path,
+    config_file: pathlib.Path | None = None,
+    target_file: pathlib.Path | None = None,
 ) -> flask.Flask:
     """Flask アプリケーションを作成.
 
     Args:
         static_dir_path: フロントエンドの静的ファイルディレクトリパス（frontend/dist）
+        config_file: 設定ファイルパス（指定時にキャッシュパスを更新）
+        target_file: ターゲット設定ファイルパス（指定時にキャッシュパスを更新）
     """
     import price_watch.webapi.page
+
+    # CLI 引数で指定されたファイルパスをキャッシュに反映
+    if config_file is not None and target_file is not None:
+        price_watch.webapi.page.init_file_paths(config_file, target_file)
 
     # NOTE: アクセスログは無効にする
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
@@ -182,6 +190,8 @@ def start(
     port: int,
     static_dir_path: pathlib.Path,
     metrics_db_path: pathlib.Path | None = None,
+    config_file: pathlib.Path | None = None,
+    target_file: pathlib.Path | None = None,
 ) -> ServerHandle:
     """サーバーを開始.
 
@@ -189,11 +199,13 @@ def start(
         port: サーバーのポート番号
         static_dir_path: フロントエンドの静的ファイルディレクトリパス
         metrics_db_path: メトリクス DB パス（指定時に DB ウォッチャーを開始）
+        config_file: 設定ファイルパス
+        target_file: ターゲット設定ファイルパス
     """
     server = werkzeug.serving.make_server(
         "0.0.0.0",  # noqa: S104
         port,
-        create_app(static_dir_path),
+        create_app(static_dir_path, config_file=config_file, target_file=target_file),
         threaded=True,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
