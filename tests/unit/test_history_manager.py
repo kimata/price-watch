@@ -167,8 +167,8 @@ class TestItemRepository:
 
         item = item_repo.get_by_id(item_id)
         assert item is not None
-        assert item["name"] == "テスト商品"
-        assert item["store"] == "test-store"
+        assert item.name == "テスト商品"
+        assert item.store == "test-store"
 
     def test_get_or_create_existing_item(self, item_repo: ItemRepository) -> None:
         """既存アイテムを取得（重複作成しない）"""
@@ -202,7 +202,7 @@ class TestItemRepository:
 
         item = item_repo.get_by_id(item_id)
         assert item is not None
-        assert item["name"] == "新名前"
+        assert item.name == "新名前"
 
     def test_get_id_by_url(self, item_repo: ItemRepository) -> None:
         """URL からアイテム ID を取得"""
@@ -267,7 +267,7 @@ class TestPriceRepository:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["price"] == 1000
+        assert latest.price == 1000
 
     def test_insert_same_hour_keeps_lower_price(self, price_repo: PriceRepository) -> None:
         """同一時間帯では安い価格を保持"""
@@ -288,7 +288,7 @@ class TestPriceRepository:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["price"] == 800
+        assert latest.price == 800
 
     def test_get_last(self, price_repo: PriceRepository) -> None:
         """最新の価格履歴を取得"""
@@ -309,7 +309,7 @@ class TestPriceRepository:
 
         result = price_repo.get_last(url="https://example.com/item/1")
         assert result is not None
-        assert result["price"] == 800
+        assert result.price == 800
 
     def test_get_lowest(self, price_repo: PriceRepository) -> None:
         """最安値を取得"""
@@ -334,7 +334,7 @@ class TestPriceRepository:
 
         result = price_repo.get_lowest(url="https://example.com/item/1")
         assert result is not None
-        assert result["price"] == 800
+        assert result.price == 800
 
     def test_get_stats(self, price_repo: PriceRepository) -> None:
         """統計情報を取得"""
@@ -358,9 +358,9 @@ class TestPriceRepository:
             price_repo.insert(item)
 
         stats = price_repo.get_stats(item_id)
-        assert stats["lowest_price"] == 800
-        assert stats["highest_price"] == 1200
-        assert stats["data_count"] == 3
+        assert stats.lowest_price == 800
+        assert stats.highest_price == 1200
+        assert stats.data_count == 3
 
     def test_crawl_status_failure(self, price_repo: PriceRepository) -> None:
         """crawl_status=0 で stock と price が NULL"""
@@ -376,8 +376,8 @@ class TestPriceRepository:
         latest = price_repo.get_latest(item_id)
 
         assert latest is not None
-        assert latest["price"] is None
-        assert latest["stock"] is None
+        assert latest.price is None
+        assert latest.stock is None
 
     def test_get_out_of_stock_duration_hours(self, price_repo: PriceRepository) -> None:
         """在庫なし継続時間を取得"""
@@ -449,7 +449,7 @@ class TestEventRepository:
 
         last = repo.get_last(item_id, "PRICE_DROP")
         assert last is not None
-        assert last["price"] == 800
+        assert last.price == 800
 
     def test_has_event_in_hours(self, event_repo: tuple[EventRepository, int]) -> None:
         """指定時間内のイベント存在確認
@@ -466,7 +466,7 @@ class TestEventRepository:
         # イベントが存在することを確認
         last = repo.get_last(item_id, "PRICE_DROP")
         assert last is not None
-        assert last["price"] == 800
+        assert last.price == 800
 
     def test_get_recent(self, event_repo: tuple[EventRepository, int]) -> None:
         """最新イベントリストを取得"""
@@ -477,7 +477,7 @@ class TestEventRepository:
         recent = repo.get_recent(limit=10)
         assert len(recent) == 2
         # アイテム名も含まれる
-        assert recent[0]["item_name"] == "テスト商品"
+        assert recent[0].item_name == "テスト商品"
 
     def test_mark_notified(self, event_repo: tuple[EventRepository, int]) -> None:
         """通知済みフラグを設定"""
@@ -488,7 +488,7 @@ class TestEventRepository:
 
         last = repo.get_last(item_id, "PRICE_DROP")
         assert last is not None
-        assert last["notified"] == 1
+        assert last.notified is True
 
 
 # === HistoryManager テスト ===
@@ -604,8 +604,8 @@ class TestPriceRepositoryStateTransitions:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["price"] == 1000
-        assert latest["stock"] == 1
+        assert latest.price == 1000
+        assert latest.stock == 1
 
     def test_insert_success_to_failure_preserves_data(self, price_repo: PriceRepository) -> None:
         """成功状態から失敗状態への遷移（データは保持）"""
@@ -628,8 +628,8 @@ class TestPriceRepositoryStateTransitions:
         latest = price_repo.get_latest(item_id)
         assert latest is not None
         # 成功時のデータが保持されている
-        assert latest["price"] == 1000
-        assert latest["stock"] == 1
+        assert latest.price == 1000
+        assert latest.stock == 1
 
     def test_insert_in_stock_to_out_of_stock(self, price_repo: PriceRepository) -> None:
         """在庫あり→在庫なしへの遷移"""
@@ -652,7 +652,7 @@ class TestPriceRepositoryStateTransitions:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["stock"] == 0
+        assert latest.stock == 0
 
     def test_insert_out_of_stock_to_in_stock(self, price_repo: PriceRepository) -> None:
         """在庫なし→在庫あり（復活）への遷移"""
@@ -675,8 +675,8 @@ class TestPriceRepositoryStateTransitions:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["stock"] == 1
-        assert latest["price"] == 1200
+        assert latest.stock == 1
+        assert latest.price == 1200
 
     def test_insert_price_decrease(self, price_repo: PriceRepository) -> None:
         """価格下落"""
@@ -698,7 +698,7 @@ class TestPriceRepositoryStateTransitions:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["price"] == 800
+        assert latest.price == 800
 
     def test_insert_price_increase(self, price_repo: PriceRepository) -> None:
         """価格上昇"""
@@ -720,7 +720,7 @@ class TestPriceRepositoryStateTransitions:
 
         latest = price_repo.get_latest(item_id)
         assert latest is not None
-        assert latest["price"] == 1200
+        assert latest.price == 1200
 
     def test_get_no_data_duration_hours(self, price_repo: PriceRepository) -> None:
         """データなし継続時間の計算"""
@@ -866,7 +866,7 @@ class TestEventRepositoryEdgeCases:
         # item_key を取得して by_item でイベントを取得
         events = repo.get_by_item(url_hash("https://example.com/item/1"), limit=10)
         assert len(events) == 1
-        assert events[0]["item_name"] == "テスト商品"
+        assert events[0].item_name == "テスト商品"
 
     def test_get_recent_multiple_types(self, event_repo: tuple[EventRepository, int]) -> None:
         """複数イベントタイプの取得"""
@@ -884,7 +884,7 @@ class TestEventRepositoryEdgeCases:
         assert len(recent) == 3
 
         # 新しい順に並んでいることを確認
-        event_types = [e["event_type"] for e in recent]
+        event_types = [e.event_type for e in recent]
         assert event_types == ["STOCK_RECOVERY", "LOWEST_PRICE", "PRICE_DROP"]
 
     def test_get_last_nonexistent_type(self, event_repo: tuple[EventRepository, int]) -> None:
@@ -1114,7 +1114,7 @@ class TestPriceRepositoryBranchCoverage:
         # 価格が保持されていることを確認
         last = price_repo.get_last(url="https://example.com/item/1")
         assert last is not None
-        assert last["price"] == 1000
+        assert last.price == 1000
 
     def test_insert_out_of_stock_with_higher_price(self, price_repo: PriceRepository) -> None:
         """在庫なし時の価格更新（should_update=True パス）"""
@@ -1135,7 +1135,7 @@ class TestPriceRepositoryBranchCoverage:
         # 更新されていることを確認
         last = price_repo.get_last(url="https://example.com/item/1")
         assert last is not None
-        assert last["price"] == 1200
+        assert last.price == 1200
 
     def test_insert_same_price_same_stock_no_update(self, price_repo: PriceRepository) -> None:
         """同じ価格・在庫の挿入（時間のみ更新）"""
@@ -1155,7 +1155,7 @@ class TestPriceRepositoryBranchCoverage:
         # 価格は変わらない
         last = price_repo.get_last(url="https://example.com/item/1")
         assert last is not None
-        assert last["price"] == 1000
+        assert last.price == 1000
 
     def test_get_history_with_days(self, price_repo: PriceRepository) -> None:
         """日数指定での履歴取得"""
@@ -1195,9 +1195,9 @@ class TestPriceRepositoryBranchCoverage:
 
         # 日数を指定して統計取得（現在時刻のデータなので7日以内に含まれる）
         stats = price_repo.get_stats(item_id, days=7)
-        assert stats["lowest_price"] == 1000
-        assert stats["highest_price"] == 1000
-        assert stats["data_count"] >= 1
+        assert stats.lowest_price == 1000
+        assert stats.highest_price == 1000
+        assert stats.data_count >= 1
 
     def test_insert_with_price_change_stock_same(self, price_repo: PriceRepository) -> None:
         """価格変更・在庫同じの挿入"""
@@ -1218,7 +1218,7 @@ class TestPriceRepositoryBranchCoverage:
         last = price_repo.get_last(url="https://example.com/item/1")
         assert last is not None
         # 在庫ありの場合は最小価格が保持される
-        assert last["price"] == 1000
+        assert last.price == 1000
 
     def test_insert_none_price_to_valid_price(self, price_repo: PriceRepository) -> None:
         """価格なしから価格ありへの更新"""
@@ -1240,4 +1240,4 @@ class TestPriceRepositoryBranchCoverage:
 
         last = price_repo.get_last(url="https://example.com/item/1")
         assert last is not None
-        assert last["price"] == 1000
+        assert last.price == 1000

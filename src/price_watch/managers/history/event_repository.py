@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import my_lib.time
+
+import price_watch.models
 
 if TYPE_CHECKING:
     from price_watch.managers.history.connection import HistoryDBConnection
@@ -61,7 +63,7 @@ class EventRepository:
             conn.commit()
             return cur.lastrowid or 0
 
-    def get_last(self, item_id: int, event_type: str) -> dict[str, Any] | None:
+    def get_last(self, item_id: int, event_type: str) -> price_watch.models.EventRecord | None:
         """指定タイプの最新イベントを取得.
 
         Args:
@@ -83,7 +85,8 @@ class EventRepository:
                 """,
                 (item_id, event_type),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            return price_watch.models.EventRecord.from_dict(row) if row else None
 
     def has_event_in_hours(self, item_id: int, event_type: str, hours: int) -> bool:
         """指定時間内に同じイベントが発生しているか確認.
@@ -114,7 +117,7 @@ class EventRepository:
                 return values[0] > 0 if values else False
             return False
 
-    def get_recent(self, limit: int = 10) -> list[dict[str, Any]]:
+    def get_recent(self, limit: int = 10) -> list[price_watch.models.EventRecord]:
         """最新のイベントを取得（アイテム情報付き）.
 
         サムネイル画像は、該当アイテムになければ同じ商品名の他のストアから取得する。
@@ -152,7 +155,7 @@ class EventRepository:
                 """,
                 (limit,),
             )
-            return cur.fetchall()
+            return [price_watch.models.EventRecord.from_dict(row) for row in cur.fetchall()]
 
     def mark_notified(self, event_id: int) -> None:
         """イベントを通知済みにする.
@@ -165,7 +168,7 @@ class EventRepository:
             cur.execute("UPDATE events SET notified = 1 WHERE id = ?", (event_id,))
             conn.commit()
 
-    def get_by_item(self, item_key: str, limit: int = 50) -> list[dict[str, Any]]:
+    def get_by_item(self, item_key: str, limit: int = 50) -> list[price_watch.models.EventRecord]:
         """指定アイテムのイベント履歴を取得（アイテム情報付き）.
 
         サムネイル画像は、該当アイテムになければ同じ商品名の他のストアから取得する。
@@ -205,4 +208,4 @@ class EventRepository:
                 """,
                 (item_key, limit),
             )
-            return cur.fetchall()
+            return [price_watch.models.EventRecord.from_dict(row) for row in cur.fetchall()]

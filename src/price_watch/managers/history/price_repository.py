@@ -8,13 +8,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import my_lib.time
 
+import price_watch.models
 from price_watch.managers.history.utils import url_hash
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from price_watch.managers.history.connection import HistoryDBConnection
     from price_watch.managers.history.item_repository import ItemRepository
 
@@ -258,7 +261,9 @@ class PriceRepository:
 
             conn.commit()
 
-    def get_last(self, url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
+    def get_last(
+        self, url: str | None = None, *, item_key: str | None = None
+    ) -> price_watch.models.PriceHistoryRecord | None:
         """最新の価格履歴を取得.
 
         Args:
@@ -285,9 +290,12 @@ class PriceRepository:
                 """,
                 (key,),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            return price_watch.models.PriceHistoryRecord.from_dict(row) if row else None
 
-    def get_lowest(self, url: str | None = None, *, item_key: str | None = None) -> dict[str, Any] | None:
+    def get_lowest(
+        self, url: str | None = None, *, item_key: str | None = None
+    ) -> price_watch.models.PriceHistoryRecord | None:
         """最安値の価格履歴を取得.
 
         Args:
@@ -314,11 +322,12 @@ class PriceRepository:
                 """,
                 (key,),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            return price_watch.models.PriceHistoryRecord.from_dict(row) if row else None
 
     def get_history(
         self, item_key: str, days: int | None = None
-    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    ) -> tuple[price_watch.models.ItemRecord | None, list[price_watch.models.PriceRecord]]:
         """アイテムの価格履歴を取得.
 
         Args:
@@ -340,9 +349,9 @@ class PriceRepository:
                 """,
                 (item_key,),
             )
-            item = cur.fetchone()
+            item_row = cur.fetchone()
 
-            if not item:
+            if not item_row:
                 return None, []
 
             if days and days > 0:
@@ -354,7 +363,7 @@ class PriceRepository:
                       AND time >= datetime('now', 'localtime', ?)
                     ORDER BY time ASC
                     """,
-                    (item["id"], f"-{days} days"),
+                    (item_row["id"], f"-{days} days"),
                 )
             else:
                 cur.execute(
@@ -364,12 +373,14 @@ class PriceRepository:
                     WHERE item_id = ?
                     ORDER BY time ASC
                     """,
-                    (item["id"],),
+                    (item_row["id"],),
                 )
 
-            return item, cur.fetchall()
+            item = price_watch.models.ItemRecord.from_dict(item_row)
+            history = [price_watch.models.PriceRecord.from_dict(row) for row in cur.fetchall()]
+            return item, history
 
-    def get_stats(self, item_id: int, days: int | None = None) -> dict[str, Any]:
+    def get_stats(self, item_id: int, days: int | None = None) -> price_watch.models.ItemStats:
         """アイテムの統計情報を取得.
 
         Args:
@@ -410,10 +421,12 @@ class PriceRepository:
                     (item_id,),
                 )
 
-            stats = cur.fetchone()
-            return stats or {"lowest_price": None, "highest_price": None, "data_count": 0}
+            row = cur.fetchone()
+            if row:
+                return price_watch.models.ItemStats.from_dict(row)
+            return price_watch.models.ItemStats(lowest_price=None, highest_price=None, data_count=0)
 
-    def get_latest(self, item_id: int) -> dict[str, Any] | None:
+    def get_latest(self, item_id: int) -> price_watch.models.LatestPriceRecord | None:
         """アイテムの最新価格を取得.
 
         Args:
@@ -426,7 +439,7 @@ class PriceRepository:
             cur = conn.cursor()
             cur.execute(
                 """
-                SELECT price, stock, time
+                SELECT price, stock, crawl_status, time
                 FROM price_history
                 WHERE item_id = ?
                 ORDER BY time DESC
@@ -434,7 +447,8 @@ class PriceRepository:
                 """,
                 (item_id,),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            return price_watch.models.LatestPriceRecord.from_dict(row) if row else None
 
     def get_lowest_in_period(self, item_id: int, days: int | None = None) -> int | None:
         """指定期間内の最安値を取得.
@@ -556,7 +570,7 @@ class PriceRepository:
             duration_seconds = (now - oldest_time).total_seconds()
             return duration_seconds / 3600
 
-    def get_last_successful_crawl(self, item_id: int) -> dict[str, Any] | None:
+    def get_last_successful_crawl(self, item_id: int) -> price_watch.models.LatestPriceRecord | None:
         """最後に成功したクロールを取得.
 
         Args:
@@ -578,7 +592,8 @@ class PriceRepository:
                 """,
                 (item_id,),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            return price_watch.models.LatestPriceRecord.from_dict(row) if row else None
 
     def get_no_data_duration_hours(self, item_id: int) -> float | None:
         """データ取得失敗の継続時間（時間）を取得.

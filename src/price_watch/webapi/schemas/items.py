@@ -122,3 +122,60 @@ class ErrorResponse(BaseSchema):
     """Error response."""
 
     error: str
+
+
+# === クエリパラメータスキーマ（flask-pydantic 用） ===
+
+
+class ItemEventsQueryParams(BaseSchema):
+    """Query parameters for /api/items/<item_key>/events endpoint."""
+
+    limit: int = Field(default=50, ge=1, le=100)
+
+
+class EventsQueryParams(BaseSchema):
+    """Query parameters for /api/events endpoint."""
+
+    limit: int = Field(default=10, ge=1, le=100)
+
+
+class MetricsSessionsQueryParams(BaseSchema):
+    """Query parameters for /api/metrics/sessions endpoint."""
+
+    start_date: str | None = None
+    end_date: str | None = None
+    limit: int = Field(default=100, ge=1, le=10000)
+
+
+class MetricsStoresQueryParams(BaseSchema):
+    """Query parameters for /api/metrics/stores endpoint."""
+
+    store_name: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    limit: int = Field(default=1000, ge=1, le=10000)
+
+
+class MetricsHeatmapQueryParams(BaseSchema):
+    """Query parameters for /api/metrics/heatmap endpoint."""
+
+    start_date: str | None = None
+    end_date: str | None = None
+
+
+class MetricsHeatmapSvgQueryParams(BaseSchema):
+    """Query parameters for /api/metrics/heatmap.svg endpoint."""
+
+    days: int = Field(default=7, ge=1, le=365)
+
+
+class MetricsCrawlTimeQueryParams(BaseSchema):
+    """Query parameters for crawl-time endpoints."""
+
+    days: int = Field(default=7, ge=1, le=365)
+
+
+class MetricsFailuresQueryParams(BaseSchema):
+    """Query parameters for failures endpoint."""
+
+    days: int = Field(default=7, ge=1, le=365)

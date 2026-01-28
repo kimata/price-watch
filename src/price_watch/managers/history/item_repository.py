@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import my_lib.time
 
+import price_watch.models
 from price_watch.managers.history.utils import generate_item_key, url_hash
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from price_watch.managers.history.connection import HistoryDBConnection
 
 
@@ -98,7 +101,7 @@ class ItemRepository:
         )
         return cur.lastrowid or 0
 
-    def get_by_id(self, item_id: int) -> dict[str, Any] | None:
+    def get_by_id(self, item_id: int) -> price_watch.models.ItemRecord | None:
         """アイテム ID からアイテム情報を取得.
 
         Args:
@@ -118,7 +121,8 @@ class ItemRepository:
                 """,
                 (item_id,),
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            return price_watch.models.ItemRecord.from_dict(row) if row else None
 
     def get_id(self, url: str | None = None, *, item_key: str | None = None) -> int | None:
         """アイテム ID を取得.
@@ -139,7 +143,7 @@ class ItemRepository:
             row = cur.fetchone()
             return row["id"] if row else None
 
-    def get_all(self) -> list[dict[str, Any]]:
+    def get_all(self) -> list[price_watch.models.ItemRecord]:
         """全アイテムを取得.
 
         Returns:
@@ -155,4 +159,4 @@ class ItemRepository:
                 ORDER BY updated_at DESC
                 """
             )
-            return cur.fetchall()
+            return [price_watch.models.ItemRecord.from_dict(row) for row in cur.fetchall()]

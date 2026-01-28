@@ -3,7 +3,7 @@
 
 import logging
 import pathlib
-from typing import Any
+from dataclasses import dataclass
 
 import flask
 from flask_pydantic import validate
@@ -21,6 +21,15 @@ import price_watch.webapi.schemas
 from price_watch.managers import HistoryManager
 
 blueprint = flask.Blueprint("page", __name__)
+
+
+@dataclass(frozen=True)
+class ProcessedStoreData:
+    """ストア処理の中間結果."""
+
+    store_entry: price_watch.webapi.schemas.StoreEntry
+    thumb_url: str | None
+
 
 # HistoryManager のキャッシュ（遅延初期化）
 _history_manager: HistoryManager | None = None
@@ -233,21 +242,21 @@ def _find_best_store(
     return stores[0]
 
 
-def _find_first_thumb_url(store_data_list: list[dict[str, Any]]) -> str | None:
+def _find_first_thumb_url(store_data_list: list[ProcessedStoreData]) -> str | None:
     """最初に見つかったサムネイルURLを取得."""
     for sd in store_data_list:
-        if sd["thumb_url"]:
-            return sd["thumb_url"]
+        if sd.thumb_url:
+            return sd.thumb_url
     return None
 
 
 def _build_result_item(
     name: str,
-    store_data_list: list[dict[str, Any]],
+    store_data_list: list[ProcessedStoreData],
     category: str = "その他",
 ) -> price_watch.webapi.schemas.ResultItem:
     """グルーピングされたアイテムから結果アイテムを構築."""
-    stores = [sd["store_entry"] for sd in store_data_list]
+    stores = [sd.store_entry for sd in store_data_list]
     best_store_entry = _find_best_store(stores)
     thumb_url = _find_first_thumb_url(store_data_list)
 
@@ -374,7 +383,7 @@ def _process_item(
     target_config: price_watch.target.TargetConfig | None,
     *,
     include_history: bool = True,
-) -> dict[str, Any] | None:
+) -> ProcessedStoreData | None:
     """1つのアイテムを処理してストアデータを構築.
 
     Args:
@@ -394,10 +403,7 @@ def _process_item(
     if not latest:
         # 履歴がないアイテムも表示（在庫なしとして）
         store_entry = _build_store_entry_without_history_from_record(item, point_rate, price_unit)
-        return {
-            "store_entry": store_entry,
-            "thumb_url": item.thumb_url,
-        }
+        return ProcessedStoreData(store_entry=store_entry, thumb_url=item.thumb_url)
 
     # 統計情報を取得
     stats = history.get_stats(item.id, days)
@@ -411,10 +417,7 @@ def _process_item(
         item, latest, stats, hist, point_rate, price_unit, include_history=include_history
     )
 
-    return {
-        "store_entry": store_entry,
-        "thumb_url": item.thumb_url,
-    }
+    return ProcessedStoreData(store_entry=store_entry, thumb_url=item.thumb_url)
 
 
 def _collect_stores_for_name(
@@ -425,9 +428,9 @@ def _collect_stores_for_name(
     target_config: price_watch.target.TargetConfig | None,
     *,
     include_history: bool = True,
-) -> list[dict[str, Any]]:
+) -> list[ProcessedStoreData]:
     """指定されたアイテム名に対応する全ストアのデータを収集."""
-    store_data_list: list[dict[str, Any]] = []
+    store_data_list: list[ProcessedStoreData] = []
     for item in all_items:
         if item.name != item_name:
             continue
@@ -446,7 +449,7 @@ def _group_items_by_name(
     target_config: price_watch.target.TargetConfig | None,
     *,
     include_history: bool = True,
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[str, list[ProcessedStoreData]]:
     """アイテムを名前でグルーピング.
 
     Args:
@@ -456,7 +459,7 @@ def _group_items_by_name(
         target_config: ターゲット設定
         include_history: 履歴を含めるかどうか（軽量API用にFalseを指定）
     """
-    items_by_name: dict[str, list[dict[str, Any]]] = {}
+    items_by_name: dict[str, list[ProcessedStoreData]] = {}
     processed_keys: set[str] = set()
 
     # DBにあるアイテムを名前でグルーピングして処理
@@ -479,7 +482,7 @@ def _group_items_by_name(
         if store_data_list:
             items_by_name[item.name] = store_data_list
             for sd in store_data_list:
-                processed_keys.add(sd["store_entry"].item_key)
+                processed_keys.add(sd.store_entry.item_key)
 
     # target.yaml にあるがDBにないアイテムを追加
     if target_config:
@@ -532,7 +535,7 @@ def _group_items_by_name(
 def _process_item_without_db(
     item: price_watch.models.ItemRecord,
     target_config: price_watch.target.TargetConfig | None,
-) -> dict[str, Any] | None:
+) -> ProcessedStoreData | None:
     """DB に存在しないアイテムを処理してストアデータを構築."""
     # ポイント還元率と通貨単位を取得
     point_rate = _get_point_rate(target_config, item.store)
@@ -540,10 +543,7 @@ def _process_item_without_db(
 
     # 履歴がないアイテムとして表示
     store_entry = _build_store_entry_without_history_from_record(item, point_rate, price_unit)
-    return {
-        "store_entry": store_entry,
-        "thumb_url": item.thumb_url,
-    }
+    return ProcessedStoreData(store_entry=store_entry, thumb_url=item.thumb_url)
 
 
 @blueprint.route("/api/items")
@@ -648,17 +648,13 @@ def get_item_history(
 
 
 @blueprint.route("/api/items/<item_key>/events")
-def get_item_events(item_key: str) -> flask.Response | tuple[flask.Response, int]:
+@validate()
+def get_item_events(
+    item_key: str, query: price_watch.webapi.schemas.ItemEventsQueryParams
+) -> flask.Response | tuple[flask.Response, int]:
     """アイテム別イベント履歴を取得."""
     try:
-        limit = flask.request.args.get("limit", 50, type=int)
-        # 上限を設定
-        if limit > 100:
-            limit = 100
-        if limit < 1:
-            limit = 1
-
-        events = _get_history_manager().get_item_events(item_key, limit)
+        events = _get_history_manager().get_item_events(item_key, query.limit)
 
         if not events:
             # アイテムが存在しない場合も空リストを返す（404 ではなく）
@@ -692,17 +688,13 @@ def get_item_events(item_key: str) -> flask.Response | tuple[flask.Response, int
 
 
 @blueprint.route("/api/events")
-def get_events() -> flask.Response | tuple[flask.Response, int]:
+@validate()
+def get_events(
+    query: price_watch.webapi.schemas.EventsQueryParams,
+) -> flask.Response | tuple[flask.Response, int]:
     """最新イベント一覧を取得."""
     try:
-        limit = flask.request.args.get("limit", 10, type=int)
-        # 上限を設定
-        if limit > 100:
-            limit = 100
-        if limit < 1:
-            limit = 1
-
-        events = _get_history_manager().get_recent_events(limit)
+        events = _get_history_manager().get_recent_events(query.limit)
 
         # イベントにメッセージを追加
         formatted_events = []
@@ -833,7 +825,7 @@ def _get_item_data_for_ogp(
         include_history=True,
     )
 
-    stores = [sd["store_entry"] for sd in store_data_list]
+    stores = [sd.store_entry for sd in store_data_list]
     return item_name, stores
 
 
@@ -1226,17 +1218,18 @@ def api_metrics_status() -> flask.Response:
 
 
 @blueprint.route("/api/metrics/sessions")
-def api_metrics_sessions() -> flask.Response:
+@validate()
+def api_metrics_sessions(
+    query: price_watch.webapi.schemas.MetricsSessionsQueryParams,
+) -> flask.Response:
     """セッション一覧を取得."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
         return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
 
-    start_date = flask.request.args.get("start_date")
-    end_date = flask.request.args.get("end_date")
-    limit = int(flask.request.args.get("limit", "100"))
-
-    sessions = metrics_db.get_sessions(start_date=start_date, end_date=end_date, limit=limit)
+    sessions = metrics_db.get_sessions(
+        start_date=query.start_date, end_date=query.end_date, limit=query.limit
+    )
     return flask.jsonify(
         {
             "sessions": [
@@ -1258,19 +1251,20 @@ def api_metrics_sessions() -> flask.Response:
 
 
 @blueprint.route("/api/metrics/stores")
-def api_metrics_stores() -> flask.Response:
+@validate()
+def api_metrics_stores(
+    query: price_watch.webapi.schemas.MetricsStoresQueryParams,
+) -> flask.Response:
     """ストア統計一覧を取得."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
         return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
 
-    store_name = flask.request.args.get("store_name")
-    start_date = flask.request.args.get("start_date")
-    end_date = flask.request.args.get("end_date")
-    limit = int(flask.request.args.get("limit", "1000"))
-
     stats = metrics_db.get_store_stats(
-        store_name=store_name, start_date=start_date, end_date=end_date, limit=limit
+        store_name=query.store_name,
+        start_date=query.start_date,
+        end_date=query.end_date,
+        limit=query.limit,
     )
     return flask.jsonify(
         {
@@ -1293,7 +1287,10 @@ def api_metrics_stores() -> flask.Response:
 
 
 @blueprint.route("/api/metrics/heatmap")
-def api_metrics_heatmap() -> flask.Response:
+@validate()
+def api_metrics_heatmap(
+    query: price_watch.webapi.schemas.MetricsHeatmapQueryParams,
+) -> flask.Response:
     """稼働率ヒートマップを取得."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
@@ -1305,8 +1302,8 @@ def api_metrics_heatmap() -> flask.Response:
     import my_lib.time
 
     now = my_lib.time.now()
-    end_date = flask.request.args.get("end_date", now.strftime("%Y-%m-%d"))
-    start_date = flask.request.args.get("start_date", (now - timedelta(days=6)).strftime("%Y-%m-%d"))
+    end_date = query.end_date if query.end_date else now.strftime("%Y-%m-%d")
+    start_date = query.start_date if query.start_date else (now - timedelta(days=6)).strftime("%Y-%m-%d")
 
     heatmap = metrics_db.get_uptime_heatmap(start_date, end_date)
     return flask.jsonify(
@@ -1476,7 +1473,10 @@ def _generate_heatmap_svg(heatmap: price_watch.metrics.HeatmapData) -> bytes:
 
 
 @blueprint.route("/api/metrics/heatmap.svg")
-def api_metrics_heatmap_svg() -> flask.Response:
+@validate()
+def api_metrics_heatmap_svg(
+    query: price_watch.webapi.schemas.MetricsHeatmapSvgQueryParams,
+) -> flask.Response:
     """稼働率ヒートマップ画像（SVG）を取得."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
@@ -1487,9 +1487,8 @@ def api_metrics_heatmap_svg() -> flask.Response:
     import my_lib.time
 
     now = my_lib.time.now()
-    days = int(flask.request.args.get("days", "7"))
     end_date = now.strftime("%Y-%m-%d")
-    start_date = (now - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    start_date = (now - timedelta(days=query.days - 1)).strftime("%Y-%m-%d")
 
     try:
         heatmap = metrics_db.get_uptime_heatmap(start_date, end_date)
@@ -1501,15 +1500,17 @@ def api_metrics_heatmap_svg() -> flask.Response:
 
 
 @blueprint.route("/api/metrics/crawl-time/boxplot")
-def api_metrics_crawl_time_boxplot() -> flask.Response:
+@validate()
+def api_metrics_crawl_time_boxplot(
+    query: price_watch.webapi.schemas.MetricsCrawlTimeQueryParams,
+) -> flask.Response:
     """巡回時間の箱ひげ図データを取得."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
         return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
 
-    days = int(flask.request.args.get("days", "7"))
     try:
-        boxplot_data = metrics_db.get_crawl_time_boxplot(days)
+        boxplot_data = metrics_db.get_crawl_time_boxplot(query.days)
 
         def _stats_to_dict(stats: price_watch.metrics.BoxPlotStats) -> dict[str, object]:
             return {
@@ -1532,15 +1533,17 @@ def api_metrics_crawl_time_boxplot() -> flask.Response:
 
 
 @blueprint.route("/api/metrics/crawl-time/timeseries-boxplot")
-def api_metrics_crawl_time_timeseries_boxplot() -> flask.Response:
+@validate()
+def api_metrics_crawl_time_timeseries_boxplot(
+    query: price_watch.webapi.schemas.MetricsCrawlTimeQueryParams,
+) -> flask.Response:
     """巡回時間の時系列箱ひげ図データを取得（日単位）."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
         return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
 
-    days = int(flask.request.args.get("days", "7"))
     try:
-        ts_data = metrics_db.get_crawl_time_timeseries_boxplot(days)
+        ts_data = metrics_db.get_crawl_time_timeseries_boxplot(query.days)
         return flask.jsonify(
             {
                 "periods": ts_data.periods,
@@ -1554,15 +1557,17 @@ def api_metrics_crawl_time_timeseries_boxplot() -> flask.Response:
 
 
 @blueprint.route("/api/metrics/failures/timeseries")
-def api_metrics_failures_timeseries() -> flask.Response:
+@validate()
+def api_metrics_failures_timeseries(
+    query: price_watch.webapi.schemas.MetricsFailuresQueryParams,
+) -> flask.Response:
     """失敗数時系列データを取得."""
     metrics_db = _get_metrics_db()
     if metrics_db is None:
         return flask.make_response(flask.jsonify({"error": "Metrics DB not available"}), 503)
 
-    days = int(flask.request.args.get("days", "7"))
     try:
-        ts_data = metrics_db.get_failure_timeseries(days)
+        ts_data = metrics_db.get_failure_timeseries(query.days)
         return flask.jsonify({"labels": ts_data.labels, "data": ts_data.data})
     except Exception:
         logging.exception("Failed to get failure timeseries data")

@@ -197,10 +197,17 @@ class TestFindFirstThumbUrl:
 
     def test_returns_first_thumb_url(self) -> None:
         """最初のサムネイル URL を返す"""
+        mock_store1 = MagicMock()
+        mock_store2 = MagicMock()
+        mock_store3 = MagicMock()
         data = [
-            {"thumb_url": None},
-            {"thumb_url": "http://example.com/thumb.png"},
-            {"thumb_url": "http://example.com/thumb2.png"},
+            price_watch.webapi.page.ProcessedStoreData(store_entry=mock_store1, thumb_url=None),
+            price_watch.webapi.page.ProcessedStoreData(
+                store_entry=mock_store2, thumb_url="http://example.com/thumb.png"
+            ),
+            price_watch.webapi.page.ProcessedStoreData(
+                store_entry=mock_store3, thumb_url="http://example.com/thumb2.png"
+            ),
         ]
 
         result = price_watch.webapi.page._find_first_thumb_url(data)
@@ -209,9 +216,11 @@ class TestFindFirstThumbUrl:
 
     def test_returns_none_if_no_thumb(self) -> None:
         """サムネイルがない場合は None を返す"""
+        mock_store1 = MagicMock()
+        mock_store2 = MagicMock()
         data = [
-            {"thumb_url": None},
-            {"thumb_url": None},
+            price_watch.webapi.page.ProcessedStoreData(store_entry=mock_store1, thumb_url=None),
+            price_watch.webapi.page.ProcessedStoreData(store_entry=mock_store2, thumb_url=None),
         ]
 
         result = price_watch.webapi.page._find_first_thumb_url(data)
@@ -1009,7 +1018,7 @@ class TestProcessItem:
             result = price_watch.webapi.page._process_item(item, 30, None)
 
         assert result is not None
-        assert result["store_entry"].store == "Store1"
+        assert result.store_entry.store == "Store1"
 
     def test_handles_item_without_latest(self) -> None:
         """latest がないアイテムを処理"""
@@ -1030,7 +1039,7 @@ class TestProcessItem:
             result = price_watch.webapi.page._process_item(item, 30, None)
 
         assert result is not None
-        assert result["store_entry"].current_price is None
+        assert result.store_entry.current_price is None
 
 
 class TestBuildResultItem:
@@ -1053,7 +1062,11 @@ class TestBuildResultItem:
         mock_store.product_url = None
         mock_store.search_keyword = None
 
-        store_data_list = [{"store_entry": mock_store, "thumb_url": "http://example.com/thumb.png"}]
+        store_data_list = [
+            price_watch.webapi.page.ProcessedStoreData(
+                store_entry=mock_store, thumb_url="http://example.com/thumb.png"
+            )
+        ]
 
         result = price_watch.webapi.page._build_result_item("Test Item", store_data_list)
 
@@ -1776,9 +1789,9 @@ class TestProcessItemWithoutDb:
         result = price_watch.webapi.page._process_item_without_db(item, None)
 
         assert result is not None
-        assert result["store_entry"].item_key == "key1"
-        assert result["store_entry"].store == "Store1"
-        assert result["thumb_url"] == "http://example.com/thumb.png"
+        assert result.store_entry.item_key == "key1"
+        assert result.store_entry.store == "Store1"
+        assert result.thumb_url == "http://example.com/thumb.png"
 
 
 class TestGroupItemsWithMercariSearch:
