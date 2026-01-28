@@ -1363,9 +1363,9 @@ def _generate_heatmap_svg(heatmap: price_watch.metrics.HeatmapData) -> bytes:
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_width} {svg_height}" '
         f'width="100%" preserveAspectRatio="xMidYMid meet">',
         "<style>",
-        "  .label { font-family: sans-serif; font-size: 10px; fill: #57606a; }",
-        "  .label-sat { font-family: sans-serif; font-size: 10px; fill: #2196f3; }",
-        "  .label-sun { font-family: sans-serif; font-size: 10px; fill: #cf222e; }",
+        "  .label { font-family: sans-serif; font-size: 11px; fill: #57606a; }",
+        "  .label-sat { font-family: sans-serif; font-size: 11px; fill: #2196f3; }",
+        "  .label-sun { font-family: sans-serif; font-size: 11px; fill: #cf222e; }",
         "  .heatmap-cell { cursor: pointer; }",
         "  .heatmap-cell.selected { stroke: #ff6b00; stroke-width: 2; }",
         "</style>",
