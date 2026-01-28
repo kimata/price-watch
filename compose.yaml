@@ -1,0 +1,11 @@
+services:
+    price-watch:
+        image: ghcr.io/kimata/price-watch:latest
+        tty: false
+        stdin_open: true
+        volumes:
+            - ./config.yaml:/opt/price-watch/config.yaml:ro
+            - ./target.yaml:/opt/price-watch/target.yaml:ro
+            - ./data:/opt/price-watch/data
+        ports:
+            - "5000:5000"
