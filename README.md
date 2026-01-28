@@ -247,11 +247,78 @@ uv run price-watch-webui
 uv run price-watch-healthz
 ```
 
-### Docker で実行
+### Docker Compose で実行
+
+Docker イメージは GitHub Container Registry で公開されています。
+`compose.yaml` を使って手軽に起動できます。
+
+#### 1. 設定ファイルの準備
+
+```bash
+cp config.example.yaml config.yaml
+cp target.example.yaml target.yaml
+```
+
+`config.yaml` に Slack Bot トークンや API キーを、`target.yaml` に監視対象の商品を設定します。
+詳細は[設定ファイル](#設定ファイル)を参照してください。
+
+#### 2. データディレクトリの作成
+
+```bash
+mkdir -p data
+```
+
+価格履歴 DB・サムネイル画像・メトリクス等の永続データが保存されます。
+
+#### 3. コンテナの起動
 
 ```bash
 docker compose up -d
 ```
+
+#### 4. 動作確認
+
+Web UI に `http://localhost:5000` でアクセスできます。
+
+ログを確認するには:
+
+```bash
+docker compose logs -f
+```
+
+#### 5. 停止・再起動
+
+```bash
+# 停止
+docker compose down
+
+# 設定変更後の再起動
+docker compose up -d
+```
+
+#### compose.yaml の構成
+
+```yaml
+services:
+    price-watch:
+        image: ghcr.io/kimata/price-watch:latest
+        volumes:
+            - ./config.yaml:/opt/price-watch/config.yaml:ro
+            - ./target.yaml:/opt/price-watch/target.yaml:ro
+            - ./data:/opt/price-watch/data
+        ports:
+            - "5000:5000"
+```
+
+| マウント      | 説明                                              |
+| ------------- | ------------------------------------------------- |
+| `config.yaml` | アプリケーション設定（読み取り専用）              |
+| `target.yaml` | 監視対象設定（読み取り専用）                      |
+| `data/`       | 価格履歴 DB・サムネイル・メトリクス等の永続データ |
+
+| ポート | 説明              |
+| ------ | ----------------- |
+| 5000   | Web UI / REST API |
 
 ## ⚙️ 設定ファイル
 
