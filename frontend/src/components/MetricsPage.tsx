@@ -184,7 +184,7 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
         switch (connectionState) {
             case "connected":
                 return {
-                    dotClass: "bg-green-500",
+                    dotClass: "bg-green-500 animate-pulse",
                     label: "リアルタイム更新",
                 };
             case "disconnected":
