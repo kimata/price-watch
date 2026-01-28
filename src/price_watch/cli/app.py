@@ -123,6 +123,8 @@ class AppRunner:
             if not self.app.should_terminate:
                 self.app.metrics_manager.end_session("normal")
                 self.app.metrics_manager.start_session()
+                # 巡回再開を記録（work_ended_at をクリア）
+                self.app.metrics_manager.record_work_started()
 
         # 最終セッションを終了
         self.app.metrics_manager.end_session("terminated")

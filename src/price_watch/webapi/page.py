@@ -1190,6 +1190,7 @@ def api_metrics_status() -> flask.Response:
     return flask.jsonify(
         {
             "is_running": status.is_running,
+            "is_crawling": status.is_crawling,
             "session_id": status.session_id,
             "started_at": status.started_at.isoformat() if status.started_at else None,
             "last_heartbeat_at": status.last_heartbeat_at.isoformat() if status.last_heartbeat_at else None,

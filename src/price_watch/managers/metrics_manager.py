@@ -111,12 +111,20 @@ class MetricsManager:
         self._work_ended_at = None
 
     def record_work_ended(self, timestamp: float) -> None:
-        """作業終了時刻を記録.
+        """作業終了時刻を記録し、DB に即時反映.
 
         Args:
             timestamp: Unix timestamp
         """
         self._work_ended_at = timestamp
+        if self._db is not None and self._current_session_id is not None:
+            self._db.update_work_ended_at(self._current_session_id)
+
+    def record_work_started(self) -> None:
+        """作業開始を記録し、DB の work_ended_at をクリア."""
+        self._work_ended_at = None
+        if self._db is not None and self._current_session_id is not None:
+            self._db.clear_work_ended_at(self._current_session_id)
 
     def record_item_result(self, *, success: bool) -> None:
         """アイテムの巡回結果を記録.

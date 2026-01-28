@@ -254,7 +254,7 @@ export default function CrawlTimeBoxPlotChart({ days, refreshKey }: CrawlTimeBox
     const storeNames = Object.keys(chartData.stores);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4">
             {storeNames.map((storeName) => {
                 // ストアにデータがあるか確認
                 const storeData = chartData.stores[storeName];
@@ -264,7 +264,7 @@ export default function CrawlTimeBoxPlotChart({ days, refreshKey }: CrawlTimeBox
                 if (!hasData) return null;
 
                 return (
-                    <div key={storeName}>
+                    <div key={storeName} className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 p-4">
                         <h3 className="text-sm font-medium text-gray-600 mb-2">
                             巡回時間（{storeName}）
                         </h3>

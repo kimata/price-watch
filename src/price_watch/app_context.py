@@ -183,7 +183,12 @@ class PriceWatchApp:
             logging.warning("Static directory not found: %s", static_dir_path)
             logging.warning("Run 'cd frontend && npm run build' to build the frontend")
 
-        self._server_handle = price_watch.webapi.server.start(self.port, static_dir_path=static_dir_path)
+        metrics_db_path = self.config.data.metrics / "metrics.db"
+        self._server_handle = price_watch.webapi.server.start(
+            self.port,
+            static_dir_path=static_dir_path,
+            metrics_db_path=metrics_db_path if metrics_db_path.exists() else None,
+        )
         logging.info("WebUI server started on port %d", self.port)
 
     def stop_webui_server(self) -> None:

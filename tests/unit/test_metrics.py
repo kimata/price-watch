@@ -352,6 +352,7 @@ class TestDataclasses:
         """CurrentSessionStatus は不変"""
         status = CurrentSessionStatus(
             is_running=True,
+            is_crawling=True,
             session_id=1,
             started_at=datetime.now(),
             last_heartbeat_at=datetime.now(),

@@ -73,6 +73,7 @@ class CurrentSessionStatus:
     """現在のセッション状態"""
 
     is_running: bool
+    is_crawling: bool  # True: 巡回中, False: スリープ中（is_running=True の場合のみ意味がある）
     session_id: int | None
     started_at: datetime | None
     last_heartbeat_at: datetime | None
@@ -292,6 +293,34 @@ class MetricsDB:
                 duration,
             )
 
+    def update_work_ended_at(self, session_id: int) -> None:
+        """セッションの work_ended_at を現在時刻で即時更新（スリープ開始時に呼ぶ）."""
+        now_str = my_lib.time.now().isoformat()
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE crawl_sessions
+                SET work_ended_at = ?, last_heartbeat_at = ?
+                WHERE id = ?
+                """,
+                (now_str, now_str, session_id),
+            )
+            conn.commit()
+
+    def clear_work_ended_at(self, session_id: int) -> None:
+        """セッションの work_ended_at を NULL にクリア（巡回再開時に呼ぶ）."""
+        now_str = my_lib.time.now().isoformat()
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                UPDATE crawl_sessions
+                SET work_ended_at = NULL, last_heartbeat_at = ?
+                WHERE id = ?
+                """,
+                (now_str, session_id),
+            )
+            conn.commit()
+
     # === ストア統計 ===
 
     def start_store_crawl(self, session_id: int, store_name: str) -> int:
@@ -351,11 +380,16 @@ class MetricsDB:
     # === クエリ ===
 
     def get_current_session_status(self) -> CurrentSessionStatus:
-        """現在のセッション状態を取得"""
+        """現在のセッション状態を取得
+
+        巡回中/スリープ中の判定:
+        - ended_at IS NULL かつ work_ended_at IS NULL → 巡回中
+        - ended_at IS NULL かつ work_ended_at IS NOT NULL → スリープ中
+        """
         with self._get_conn() as conn:
             cursor = conn.execute(
                 """
-                SELECT id, started_at, last_heartbeat_at,
+                SELECT id, started_at, last_heartbeat_at, work_ended_at,
                        total_items, success_items, failed_items
                 FROM crawl_sessions
                 WHERE ended_at IS NULL
@@ -367,6 +401,7 @@ class MetricsDB:
             if row is None:
                 return CurrentSessionStatus(
                     is_running=False,
+                    is_crawling=False,
                     session_id=None,
                     started_at=None,
                     last_heartbeat_at=None,
@@ -376,14 +411,18 @@ class MetricsDB:
                     failed_items=0,
                 )
 
-            session_id, started_at_str, heartbeat_str, total, success, failed = row
+            session_id, started_at_str, heartbeat_str, work_ended_at_str, total, success, failed = row
             started_at = datetime.fromisoformat(started_at_str)
             last_heartbeat = datetime.fromisoformat(heartbeat_str) if heartbeat_str else None
             now = my_lib.time.now()
             uptime = (now - started_at).total_seconds()
 
+            # work_ended_at が NULL → 巡回中、NOT NULL → スリープ中
+            is_crawling = work_ended_at_str is None
+
             return CurrentSessionStatus(
                 is_running=True,
+                is_crawling=is_crawling,
                 session_id=session_id,
                 started_at=started_at,
                 last_heartbeat_at=last_heartbeat,
