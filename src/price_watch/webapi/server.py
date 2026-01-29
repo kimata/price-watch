@@ -15,7 +15,6 @@ import logging
 import pathlib
 import sqlite3
 import threading
-import time
 from dataclasses import dataclass
 
 import flask
@@ -40,11 +39,8 @@ class _MetricsDataState:
 
 
 # DB ファイル監視用
-_db_path: pathlib.Path | None = None
-_last_mtime: float = 0
-_last_data_state: _MetricsDataState | None = None
 _watch_thread: threading.Thread | None = None
-_should_terminate = threading.Event()
+_watch_stop_event: threading.Event | None = None
 
 
 def _get_metrics_data_state(db_path: pathlib.Path) -> _MetricsDataState | None:
@@ -80,54 +76,29 @@ def _get_metrics_data_state(db_path: pathlib.Path) -> _MetricsDataState | None:
         return None
 
 
-def _watch_db_file() -> None:
-    """DB ファイルの変更を監視し、データに変化があれば SSE イベントを送信."""
-    global _last_mtime, _last_data_state
-    while not _should_terminate.is_set():
-        try:
-            if _db_path and _db_path.exists():
-                current_mtime = _db_path.stat().st_mtime
-                if current_mtime > _last_mtime:
-                    _last_mtime = current_mtime
-
-                    current_state = _get_metrics_data_state(_db_path)
-                    if _last_data_state is None or current_state != _last_data_state:
-                        if _last_data_state is not None:
-                            logging.debug("Metrics data changed, notifying clients")
-                            my_lib.webapp.event.notify_event(my_lib.webapp.event.EVENT_TYPE.CONTROL)
-                        _last_data_state = current_state
-        except Exception:
-            logging.exception("Error checking metrics db file")
-
-        time.sleep(1.0)
-
-
 def start_db_watcher(db_path: pathlib.Path) -> None:
     """メトリクス DB ファイル監視スレッドを開始."""
-    global _db_path, _last_mtime, _last_data_state, _watch_thread
+    global _watch_thread, _watch_stop_event
     if _watch_thread is not None and _watch_thread.is_alive():
         stop_db_watcher()
 
-    _db_path = db_path
-    _last_data_state = None
-    if _db_path and _db_path.exists():
-        _last_mtime = _db_path.stat().st_mtime
-
-    _should_terminate.clear()
-    _watch_thread = threading.Thread(target=_watch_db_file, daemon=True)
-    _watch_thread.start()
+    _watch_stop_event, _watch_thread = my_lib.webapp.event.start_db_state_watcher(
+        db_path,
+        _get_metrics_data_state,
+        my_lib.webapp.event.EVENT_TYPE.CONTROL,
+    )
     logging.info("Metrics db watcher thread started")
 
 
 def stop_db_watcher() -> None:
     """メトリクス DB ファイル監視スレッドを停止."""
-    global _watch_thread
-    if _watch_thread is None:
+    global _watch_thread, _watch_stop_event
+    if _watch_thread is None or _watch_stop_event is None:
         return
 
-    _should_terminate.set()
-    _watch_thread.join(timeout=5.0)
+    my_lib.webapp.event.stop_db_state_watcher(_watch_stop_event, _watch_thread)
     _watch_thread = None
+    _watch_stop_event = None
     logging.info("Metrics db watcher thread stopped")
 
 

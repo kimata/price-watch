@@ -53,7 +53,7 @@ def main() -> None:
             interval=liveness_interval,
         ),
     ]
-    failed_targets = my_lib.healthz.check_liveness_all(target_list)
+    failed_targets = my_lib.healthz.check_liveness_all_with_ports(target_list)
 
     if failed_targets:
         logging.error("Liveness check failed: %s", ", ".join(failed_targets))
