@@ -8,17 +8,16 @@ from dataclasses import dataclass
 import flask
 from flask_pydantic import validate
 
-import price_watch.config
 import price_watch.event
-import price_watch.file_cache
 import price_watch.managers.history
 import price_watch.metrics
 import price_watch.models
 import price_watch.target
 import price_watch.thumbnail
+import price_watch.webapi.cache
+import price_watch.webapi.metrics
 import price_watch.webapi.ogp
 import price_watch.webapi.schemas
-from price_watch.managers import HistoryManager
 
 blueprint = flask.Blueprint("page", __name__)
 
@@ -31,64 +30,9 @@ class ProcessedStoreData:
     thumb_url: str | None
 
 
-# HistoryManager のキャッシュ（遅延初期化）
-_history_manager: HistoryManager | None = None
-
-
-def _get_history_manager() -> HistoryManager:
-    """HistoryManager を取得（遅延初期化）."""
-    global _history_manager
-    if _history_manager is not None:
-        return _history_manager
-    config = _get_app_config()
-    if config is None:
-        msg = f"App config not available (config path: {_config_cache.file_path}, cwd: {pathlib.Path.cwd()})"
-        raise RuntimeError(msg)
-    logging.debug("Initializing HistoryManager with data path: %s", config.data.price)
-    manager = price_watch.managers.history.HistoryManager.create(config.data.price)
-    manager.initialize()
-    _history_manager = manager
-    return _history_manager
-
-
-# target.yaml のキャッシュ（ファイル更新時刻が変わった場合のみ再読み込み）
-_target_config_cache: price_watch.file_cache.FileCache[price_watch.target.TargetConfig] = (
-    price_watch.file_cache.FileCache(
-        price_watch.target.TARGET_FILE_PATH,
-        lambda path: price_watch.target.load(path),
-    )
-)
-
-# config.yaml のキャッシュ
-_config_cache: price_watch.file_cache.FileCache[price_watch.config.AppConfig] = (
-    price_watch.file_cache.FileCache(
-        price_watch.config.CONFIG_FILE_PATH,
-        lambda path: price_watch.config.load(path),
-    )
-)
-
-
-def init_file_paths(
-    config_file: pathlib.Path,
-    target_file: pathlib.Path,
-) -> None:
-    """キャッシュのファイルパスを設定.
-
-    CLI 引数で指定されたパスを反映するために、サーバー起動時に呼び出す。
-
-    Args:
-        config_file: 設定ファイルパス
-        target_file: ターゲット設定ファイルパス
-    """
-    global _target_config_cache, _config_cache
-    _target_config_cache = price_watch.file_cache.FileCache(
-        target_file,
-        lambda path: price_watch.target.load(path),
-    )
-    _config_cache = price_watch.file_cache.FileCache(
-        config_file,
-        lambda path: price_watch.config.load(path),
-    )
+# キャッシュ関連は cache モジュールに移動
+# 互換性のためのエイリアス
+init_file_paths = price_watch.webapi.cache.init_file_paths
 
 
 def _parse_days(days_str: str | None) -> int | None:
@@ -125,15 +69,6 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         else:
             keys.add(price_watch.managers.history.url_hash(item.url))
     return keys
-
-
-def _get_target_config() -> price_watch.target.TargetConfig | None:
-    """target.yaml の設定を取得（キャッシュ使用）."""
-    try:
-        return _target_config_cache.get()
-    except Exception:
-        logging.warning("Failed to load target.yaml config")
-        return None
 
 
 def _get_point_rate(target_config: price_watch.target.TargetConfig | None, store_name: str) -> float:
@@ -392,7 +327,7 @@ def _process_item(
         target_config: ターゲット設定
         include_history: 履歴を含めるかどうか（軽量API用にFalseを指定）
     """
-    history = _get_history_manager()
+    history = price_watch.webapi.cache.get_history_manager()
 
     # ポイント還元率と通貨単位を取得
     point_rate = _get_point_rate(target_config, item.store)
@@ -560,10 +495,10 @@ def get_items(
         days = _parse_days(query.days)
 
         # target.yaml の設定を取得（キャッシュ使用）
-        target_config = _get_target_config()
+        target_config = price_watch.webapi.cache.get_target_config()
         target_item_keys = _get_target_item_keys(target_config)
 
-        all_items = _get_history_manager().get_all_items()
+        all_items = price_watch.webapi.cache.get_history_manager().get_all_items()
 
         # アイテム名でグルーピング（履歴なしで軽量化）
         items_by_name = _group_items_by_name(
@@ -625,14 +560,14 @@ def get_item_history(
     try:
         days = _parse_days(query.days)
 
-        item, hist = _get_history_manager().get_history(item_key, days)
+        item, hist = price_watch.webapi.cache.get_history_manager().get_history(item_key, days)
 
         if item is None:
             error = price_watch.webapi.schemas.ErrorResponse(error="Item not found")
             return flask.jsonify(error.model_dump()), 404
 
         # ポイント還元率を取得（キャッシュ使用）
-        target_config = _get_target_config()
+        target_config = price_watch.webapi.cache.get_target_config()
         point_rate = _get_point_rate(target_config, item.store)
 
         # 履歴を構築（effective_price 付き）
@@ -654,7 +589,7 @@ def get_item_events(
 ) -> flask.Response | tuple[flask.Response, int]:
     """アイテム別イベント履歴を取得."""
     try:
-        events = _get_history_manager().get_item_events(item_key, query.limit)
+        events = price_watch.webapi.cache.get_history_manager().get_item_events(item_key, query.limit)
 
         if not events:
             # アイテムが存在しない場合も空リストを返す（404 ではなく）
@@ -694,7 +629,7 @@ def get_events(
 ) -> flask.Response | tuple[flask.Response, int]:
     """最新イベント一覧を取得."""
     try:
-        events = _get_history_manager().get_recent_events(query.limit)
+        events = price_watch.webapi.cache.get_history_manager().get_recent_events(query.limit)
 
         # イベントにメッセージを追加
         formatted_events = []
@@ -721,22 +656,6 @@ def get_events(
         logging.exception("Error getting events")
         error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
         return flask.jsonify(error.model_dump()), 500
-
-
-def _get_app_config() -> price_watch.config.AppConfig | None:
-    """config.yaml の設定を取得（キャッシュ使用）."""
-    try:
-        config = _config_cache.get()
-        if config is None:
-            logging.warning(
-                "config.yaml not found at path: %s (cwd: %s)",
-                _config_cache.file_path,
-                pathlib.Path.cwd(),
-            )
-        return config
-    except Exception:
-        logging.exception("Failed to load config.yaml from %s", _config_cache.file_path)
-        return None
 
 
 def _build_ogp_data(
@@ -804,8 +723,8 @@ def _get_item_data_for_ogp(
     Returns:
         (アイテム名, ストアエントリリスト) のタプル。アイテムが見つからない場合は (None, [])
     """
-    target_config = _get_target_config()
-    all_items = _get_history_manager().get_all_items()
+    target_config = price_watch.webapi.cache.get_target_config()
+    all_items = price_watch.webapi.cache.get_history_manager().get_all_items()
 
     # item_key からアイテム名を特定
     primary = next((item for item in all_items if item.item_key == item_key), None)
@@ -973,7 +892,7 @@ def item_detail_page(item_key: str) -> flask.Response | tuple[flask.Response, in
         is_facebook = _is_facebook_crawler(user_agent)
 
         # 設定からstatic_dirを取得
-        app_config = _get_app_config()
+        app_config = price_watch.webapi.cache.get_app_config()
         static_dir = app_config.webapp.static_dir_path if app_config else None
 
         # HTML を生成
@@ -1000,7 +919,7 @@ def ogp_image(item_key: str) -> flask.Response:
     """OGP 画像を配信."""
     try:
         # 設定を取得
-        app_config = _get_app_config()
+        app_config = price_watch.webapi.cache.get_app_config()
         if app_config is None:
             return flask.Response("Configuration not found", status=500)
 
@@ -1017,7 +936,7 @@ def ogp_image(item_key: str) -> flask.Response:
             return flask.Response("Item not found", status=404)
 
         # target.yaml の設定を取得
-        target_config = _get_target_config()
+        target_config = price_watch.webapi.cache.get_target_config()
 
         # OGP データを構築
         ogp_data = _build_ogp_data(item_name, stores, target_config, thumb_dir)
@@ -1046,7 +965,7 @@ def ogp_image_square(item_key: str) -> flask.Response:
     """正方形 OGP 画像を配信."""
     try:
         # 設定を取得
-        app_config = _get_app_config()
+        app_config = price_watch.webapi.cache.get_app_config()
         if app_config is None:
             return flask.Response("Configuration not found", status=500)
 
@@ -1063,7 +982,7 @@ def ogp_image_square(item_key: str) -> flask.Response:
             return flask.Response("Item not found", status=404)
 
         # target.yaml の設定を取得
-        target_config = _get_target_config()
+        target_config = price_watch.webapi.cache.get_target_config()
 
         # OGP データを構築
         ogp_data = _build_ogp_data(item_name, stores, target_config, thumb_dir)
@@ -1145,7 +1064,7 @@ def top_page() -> flask.Response:
     """トップページ（OGP メタタグ付き）."""
     try:
         # 設定からstatic_dirを取得
-        app_config = _get_app_config()
+        app_config = price_watch.webapi.cache.get_app_config()
         static_dir = app_config.webapp.static_dir_path if app_config else None
 
         # HTML を生成
@@ -1163,7 +1082,7 @@ def metrics_page() -> flask.Response:
     """メトリクスページ（SPA ルーティング対応）."""
     try:
         # 設定からstatic_dirを取得
-        app_config = _get_app_config()
+        app_config = price_watch.webapi.cache.get_app_config()
         static_dir = app_config.webapp.static_dir_path if app_config else None
 
         # トップページと同じ HTML を返す（React Router が /metrics を処理）
@@ -1182,7 +1101,7 @@ def metrics_page() -> flask.Response:
 def _get_metrics_db() -> price_watch.metrics.MetricsDB | None:
     """メトリクス DB を取得."""
     try:
-        app_config = _get_app_config()
+        app_config = price_watch.webapi.cache.get_app_config()
         if app_config is None:
             return None
         metrics_db_path = app_config.data.metrics / "metrics.db"
@@ -1315,163 +1234,6 @@ def api_metrics_heatmap(
     )
 
 
-def _generate_heatmap_svg(heatmap: price_watch.metrics.HeatmapData) -> bytes:
-    """GitHubスタイルのヒートマップSVGを直接生成.
-
-    横幅を固定し、日数に応じてセル幅を自動調整。縦は24時間固定。
-    """
-    from datetime import datetime as dt
-
-    dates = heatmap.dates
-    hours = heatmap.hours
-    day_names = ["月", "火", "水", "木", "金", "土", "日"]
-
-    # カラーパレット（5段階：灰色→黄色→緑）
-    colors = ["#e0e0e0", "#fff59d", "#ffee58", "#a5d610", "#4caf50"]
-
-    def get_color(ratio: float | None) -> str:
-        """稼働率から色を取得."""
-        if ratio is None:
-            return "#ebedf0"
-        if ratio < 0.2:
-            return colors[0]
-        elif ratio < 0.4:
-            return colors[1]
-        elif ratio < 0.6:
-            return colors[2]
-        elif ratio < 0.8:
-            return colors[3]
-        else:
-            return colors[4]
-
-    # 固定横幅とマージン
-    target_width = 1000.0  # px
-    margin_left = 25.0  # 時間ラベル用
-    margin_right = 4.0
-    margin_top = 18.0  # 日付ラベル用
-    margin_bottom = 10.0  # 24時ラベル用
-    cell_gap = 1.0  # px
-
-    # 縦方向は固定（24時間）
-    cell_height = 6.0  # px
-    cell_step_y = cell_height + cell_gap
-
-    if not dates:
-        return (
-            b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 30" '
-            b'width="100%" preserveAspectRatio="xMidYMid meet">'
-            b'<text x="500" y="20" text-anchor="middle" font-size="12">No data</text></svg>'
-        )
-
-    num_dates = len(dates)
-    num_hours = len(hours)
-
-    # セルデータをマップ化
-    cell_map = {(c.date, c.hour): c.uptime_rate for c in heatmap.cells}
-
-    # セル幅を計算（横幅固定）
-    available_width = target_width - margin_left - margin_right
-    cell_step_x = available_width / num_dates
-    cell_width = max(1, cell_step_x - cell_gap)
-
-    # SVGサイズ計算
-    svg_width = target_width
-    svg_height = margin_top + num_hours * cell_step_y + margin_bottom
-
-    # SVG構築開始（viewBoxでレスポンシブ対応）
-    svg_parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {svg_width} {svg_height}" '
-        f'width="100%" preserveAspectRatio="xMidYMid meet">',
-        "<style>",
-        "  .label { font-family: sans-serif; font-size: 11px; fill: #57606a; }",
-        "  .label-sat { font-family: sans-serif; font-size: 11px; fill: #2196f3; }",
-        "  .label-sun { font-family: sans-serif; font-size: 11px; fill: #cf222e; }",
-        "  .heatmap-cell { cursor: pointer; }",
-        "  .heatmap-cell.selected { stroke: #ff6b00; stroke-width: 2; }",
-        "</style>",
-    ]
-
-    # 日付ラベル（間引いて表示）
-    label_width_estimate = 85  # "1月23日(水)" の推定幅
-    label_step = max(1, int(label_width_estimate / cell_step_x) + 1)
-
-    # 表示するラベルのインデックスを収集
-    label_indices = [j for j in range(num_dates) if j % label_step == 0]
-
-    label_half_width = label_width_estimate / 2  # ラベル幅の半分
-    # 許容される最小x座標（左端から少し余裕を持たせつつ、時刻ラベルエリアも活用）
-    min_label_x = 4.0
-
-    for j in label_indices:
-        date_str = dates[j]
-        date_obj = dt.strptime(date_str, "%Y-%m-%d")
-        dow = day_names[date_obj.weekday()]
-        label = f"{date_obj.month}月{date_obj.day}日({dow})"
-
-        # 位置とアンカーを決定
-        cell_center_x = margin_left + j * cell_step_x + cell_width / 2
-
-        if j == label_indices[0] and cell_center_x - label_half_width < min_label_x:
-            # 最初のラベル: 見切れる場合のみ左寄せ（時刻ラベルエリアも活用）
-            x = min_label_x
-            anchor = "start"
-        elif j == label_indices[-1] and cell_center_x + label_half_width > svg_width:
-            # 最後のラベル: 見切れる場合のみ右寄せ
-            x = margin_left + j * cell_step_x + cell_width
-            anchor = "end"
-        else:
-            # 中央揃え
-            x = cell_center_x
-            anchor = "middle"
-
-        weekday = date_obj.weekday()
-        if weekday == 5:  # 土曜日
-            css_class = "label-sat"
-        elif weekday == 6:  # 日曜日
-            css_class = "label-sun"
-        else:
-            css_class = "label"
-        svg_parts.append(
-            f'<text x="{x}" y="{margin_top - 5}" class="{css_class}" text-anchor="{anchor}">{label}</text>'
-        )
-
-    # 時間ラベル（左側: 0, 6, 12, 18, 24）
-    time_labels = [0, 6, 12, 18, 24]
-    for hour_label in time_labels:
-        if hour_label == 24:
-            # 24時は最下部（23時台セルの下端）
-            y = margin_top + (num_hours - 1) * cell_step_y + cell_height
-        else:
-            # 各時間の行のセンターに配置
-            y = margin_top + hour_label * cell_step_y + cell_height / 2
-        svg_parts.append(
-            f'<text x="{margin_left - 4}" y="{y}" class="label" text-anchor="end" '
-            f'dominant-baseline="middle">{hour_label}</text>'
-        )
-
-    # セル描画（縦:24時間、横:日付）
-    for i, hour in enumerate(hours):
-        y = margin_top + i * cell_step_y
-        for j, date_str in enumerate(dates):
-            x = margin_left + j * cell_step_x
-            ratio = cell_map.get((date_str, hour))
-            color = get_color(ratio)
-            # ツールチップ用のテキスト
-            date_obj = dt.strptime(date_str, "%Y-%m-%d")
-            dow = day_names[date_obj.weekday()]
-            ratio_text = f"{ratio * 100:.1f}%" if ratio is not None else "データなし"
-            tooltip = f"{date_obj.month}月{date_obj.day}日({dow}) {hour}時台: {ratio_text}"
-            svg_parts.append(
-                f'<rect x="{x}" y="{y}" width="{cell_width}" height="{cell_height}" '
-                f'fill="{color}" data-tooltip="{tooltip}" class="heatmap-cell" '
-                f'style="cursor: pointer;"/>'
-            )
-
-    svg_parts.append("</svg>")
-
-    return "\n".join(svg_parts).encode("utf-8")
-
-
 @blueprint.route("/api/metrics/heatmap.svg")
 @validate()
 def api_metrics_heatmap_svg(
@@ -1492,7 +1254,7 @@ def api_metrics_heatmap_svg(
 
     try:
         heatmap = metrics_db.get_uptime_heatmap(start_date, end_date)
-        svg_data = _generate_heatmap_svg(heatmap)
+        svg_data = price_watch.webapi.metrics.generate_heatmap_svg(heatmap)
         return flask.Response(svg_data, mimetype="image/svg+xml")
     except Exception:
         logging.exception("Failed to generate heatmap SVG")

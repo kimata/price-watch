@@ -17,6 +17,8 @@ import pytest
 import price_watch.managers.history
 import price_watch.models
 import price_watch.target
+import price_watch.webapi.cache
+import price_watch.webapi.metrics
 import price_watch.webapi.page
 
 
@@ -334,11 +336,11 @@ class TestGetTargetConfig:
     def test_returns_none_on_exception(self) -> None:
         """例外時は None を返す"""
         with patch.object(
-            price_watch.webapi.page._target_config_cache,
+            price_watch.webapi.cache._target_config_cache,
             "get",
             side_effect=Exception("File not found"),
         ):
-            result = price_watch.webapi.page._get_target_config()
+            result = price_watch.webapi.cache.get_target_config()
 
         assert result is None
 
@@ -425,8 +427,8 @@ class TestGetItems:
         mock_history_manager.get_latest.return_value = None
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/api/items")
 
@@ -438,8 +440,8 @@ class TestGetItems:
         mock_history_manager.get_all_items.side_effect = Exception("DB error")
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/api/items")
 
@@ -466,8 +468,8 @@ class TestGetItemHistory:
         mock_history_manager.get_history.return_value = (mock_item, mock_history)
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/api/items/key1/history")
 
@@ -480,7 +482,7 @@ class TestGetItemHistory:
         mock_history_manager = MagicMock()
         mock_history_manager.get_history.return_value = (None, [])
 
-        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+        with patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager):
             response = client.get("/price/api/items/missing/history")
 
         assert response.status_code == 404
@@ -512,8 +514,8 @@ class TestGetItemEvents:
         mock_history_manager.get_item_events.return_value = mock_events
 
         # グローバル変数を直接設定
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = mock_history_manager
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = mock_history_manager
         try:
             with (
                 patch("price_watch.event.format_event_message", return_value="Message"),
@@ -521,7 +523,7 @@ class TestGetItemEvents:
             ):
                 response = client.get("/price/api/items/key1/events")
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
 
         assert response.status_code == 200
         data = response.get_json()
@@ -533,12 +535,12 @@ class TestGetItemEvents:
         mock_history_manager.get_item_events.return_value = []
 
         # グローバル変数を直接設定
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = mock_history_manager
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = mock_history_manager
         try:
             response = client.get("/price/api/items/key1/events")
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
 
         assert response.status_code == 200
         data = response.get_json()
@@ -550,12 +552,12 @@ class TestGetItemEvents:
         mock_history_manager.get_item_events.return_value = []
 
         # グローバル変数を直接設定
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = mock_history_manager
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = mock_history_manager
         try:
             client.get("/price/api/items/key1/events?limit=25")
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
 
         mock_history_manager.get_item_events.assert_called_once_with("key1", 25)
 
@@ -586,8 +588,8 @@ class TestGetEvents:
         mock_history_manager.get_recent_events.return_value = mock_events
 
         # グローバル変数を直接設定
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = mock_history_manager
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = mock_history_manager
         try:
             with (
                 patch("price_watch.event.format_event_message", return_value="Message"),
@@ -595,7 +597,7 @@ class TestGetEvents:
             ):
                 response = client.get("/price/api/events")
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
 
         assert response.status_code == 200
         data = response.get_json()
@@ -607,7 +609,7 @@ class TestTopPage:
 
     def test_returns_html(self, client: flask.testing.FlaskClient) -> None:
         """HTML を返す"""
-        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+        with patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None):
             response = client.get("/price/")
 
         assert response.status_code == 200
@@ -619,7 +621,7 @@ class TestMetricsPage:
 
     def test_returns_html(self, client: flask.testing.FlaskClient) -> None:
         """HTML を返す"""
-        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+        with patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None):
             response = client.get("/price/metrics")
 
         assert response.status_code == 200
@@ -807,9 +809,9 @@ class TestItemDetailPage:
         mock_history_manager.get_history.return_value = (mock_items[0], [])
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/items/key1")
 
@@ -822,8 +824,8 @@ class TestItemDetailPage:
         mock_history_manager.get_all_items.return_value = []
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/items/missing")
 
@@ -843,9 +845,9 @@ class TestOgpImage:
         mock_history_manager.get_all_items.return_value = []
 
         with (
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/ogp/missing.png")
 
@@ -853,7 +855,7 @@ class TestOgpImage:
 
     def test_returns_500_without_config(self, client: flask.testing.FlaskClient) -> None:
         """設定がない場合は 500"""
-        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+        with patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None):
             response = client.get("/price/ogp/key1.png")
 
         assert response.status_code == 500
@@ -874,7 +876,7 @@ class TestGenerateHeatmapSvg:
         mock_heatmap.hours = list(range(24))
         mock_heatmap.cells = [mock_cell]
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         assert b"<svg" in result
         assert b"</svg>" in result
@@ -886,7 +888,7 @@ class TestGenerateHeatmapSvg:
         mock_heatmap.hours = []
         mock_heatmap.cells = []
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         assert b"No data" in result
 
@@ -1014,7 +1016,7 @@ class TestProcessItem:
         mock_history_manager.get_stats.return_value = mock_stats
         mock_history_manager.get_history.return_value = (item, [])
 
-        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+        with patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager):
             result = price_watch.webapi.page._process_item(item, 30, None)
 
         assert result is not None
@@ -1035,7 +1037,7 @@ class TestProcessItem:
         mock_history_manager = MagicMock()
         mock_history_manager.get_latest.return_value = None
 
-        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+        with patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager):
             result = price_watch.webapi.page._process_item(item, 30, None)
 
         assert result is not None
@@ -1213,7 +1215,7 @@ class TestGenerateHeatmapSvgAdvanced:
         mock_heatmap.hours = list(range(24))
         mock_heatmap.cells = mock_cells
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         # SVG 構造を確認
         assert b"<svg" in result
@@ -1247,7 +1249,7 @@ class TestGenerateHeatmapSvgAdvanced:
         mock_heatmap.hours = hours
         mock_heatmap.cells = mock_cells
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         # 各色が SVG に含まれる
         assert b"#e0e0e0" in result  # 低稼働率
@@ -1271,7 +1273,7 @@ class TestGenerateHeatmapSvgAdvanced:
         mock_heatmap.hours = [0]
         mock_heatmap.cells = mock_cells
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         # 土曜・日曜用の CSS クラスが含まれる
         assert b"label-sat" in result
@@ -1289,7 +1291,7 @@ class TestGenerateHeatmapSvgAdvanced:
         mock_heatmap.hours = [10]
         mock_heatmap.cells = [cell]
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         # データなしの色が適用される
         assert b"#ebedf0" in result
@@ -1302,27 +1304,27 @@ class TestGetHistoryManager:
     def test_get_history_manager_without_config(self) -> None:
         """設定がない場合は RuntimeError"""
         # グローバル変数をリセット
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = None
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = None
         try:
             with (
-                patch.object(price_watch.webapi.page._config_cache, "get", return_value=None),
+                patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None),
                 pytest.raises(RuntimeError, match="App config not available"),
             ):
-                price_watch.webapi.page._get_history_manager()
+                price_watch.webapi.cache.get_history_manager()
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
 
     def test_get_history_manager_cached(self) -> None:
         """キャッシュされた HistoryManager を返す"""
         mock_manager = MagicMock()
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = mock_manager
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = mock_manager
         try:
-            result = price_watch.webapi.page._get_history_manager()
+            result = price_watch.webapi.cache.get_history_manager()
             assert result is mock_manager
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
 
 
 class TestGroupItemsByName:
@@ -1348,7 +1350,7 @@ class TestGroupItemsByName:
         # target_item_keys に key1 が含まれない
         target_keys = {"key2", "key3"}
 
-        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+        with patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager):
             result = price_watch.webapi.page._group_items_by_name(
                 items, target_keys, days=30, target_config=None
             )
@@ -1365,7 +1367,7 @@ class TestGroupItemsByName:
 
         mock_history_manager = MagicMock()
 
-        with patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager):
+        with patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager):
             result = price_watch.webapi.page._group_items_by_name(
                 items, set(), days=30, target_config=mock_config
             )
@@ -1448,9 +1450,9 @@ class TestOgpImageSquare:
         mock_history_manager.get_all_items.return_value = []
 
         with (
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             response = client.get("/price/ogp/missing_square.png")
 
@@ -1458,7 +1460,7 @@ class TestOgpImageSquare:
 
     def test_returns_500_without_config(self, client: flask.testing.FlaskClient) -> None:
         """設定がない場合は 500"""
-        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+        with patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None):
             response = client.get("/price/ogp/key1_square.png")
 
         assert response.status_code == 500
@@ -1473,8 +1475,8 @@ class TestGetItemDataForOgp:
         mock_history_manager.get_all_items.return_value = []
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             name, stores = price_watch.webapi.page._get_item_data_for_ogp("nonexistent")
 
@@ -1505,8 +1507,8 @@ class TestGetItemDataForOgp:
         mock_history_manager.get_history.return_value = (mock_item, [])
 
         with (
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
         ):
             name, stores = price_watch.webapi.page._get_item_data_for_ogp("key1")
 
@@ -1557,9 +1559,9 @@ class TestOgpImageSuccess:
         mock_history_manager.get_history.return_value = (mock_item, [])
 
         with (
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
             patch("price_watch.webapi.ogp.get_or_generate_ogp_image", return_value=image_path),
         ):
             response = client.get("/price/ogp/test_key.png")
@@ -1606,9 +1608,9 @@ class TestOgpImageSuccess:
         mock_history_manager.get_history.return_value = (mock_item, [])
 
         with (
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
             patch("price_watch.webapi.ogp.get_or_generate_ogp_image_square", return_value=image_path),
         ):
             response = client.get("/price/ogp/test_key_square.png")
@@ -1650,9 +1652,9 @@ class TestOgpImageException:
         mock_history_manager.get_history.return_value = (mock_item, [])
 
         with (
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
             patch("price_watch.webapi.ogp.get_or_generate_ogp_image", side_effect=Exception("OGP error")),
         ):
             response = client.get("/price/ogp/key1.png")
@@ -1689,9 +1691,9 @@ class TestOgpImageException:
         mock_history_manager.get_history.return_value = (mock_item, [])
 
         with (
-            patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
-            patch.object(price_watch.webapi.page._target_config_cache, "get", return_value=None),
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
             patch("price_watch.webapi.ogp.get_or_generate_ogp_image_square", side_effect=Exception("Error")),
         ):
             response = client.get("/price/ogp/key1_square.png")
@@ -1704,7 +1706,7 @@ class TestGetMetricsDb:
 
     def test_returns_none_without_config(self) -> None:
         """設定がない場合は None を返す"""
-        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=None):
+        with patch.object(price_watch.webapi.cache._config_cache, "get", return_value=None):
             result = price_watch.webapi.page._get_metrics_db()
         assert result is None
 
@@ -1713,7 +1715,7 @@ class TestGetMetricsDb:
         mock_config = MagicMock()
         mock_config.data.metrics = tmp_path  # metrics.db は存在しない
 
-        with patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config):
+        with patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config):
             result = price_watch.webapi.page._get_metrics_db()
 
         assert result is None
@@ -1721,7 +1723,7 @@ class TestGetMetricsDb:
     def test_returns_none_on_exception(self) -> None:
         """例外発生時は None を返す"""
         with patch.object(
-            price_watch.webapi.page._config_cache, "get", side_effect=Exception("Config error")
+            price_watch.webapi.cache._config_cache, "get", side_effect=Exception("Config error")
         ):
             result = price_watch.webapi.page._get_metrics_db()
 
@@ -1822,7 +1824,7 @@ class TestGroupItemsWithMercariSearch:
         mock_history_manager = MagicMock()
 
         with (
-            patch.object(price_watch.webapi.page, "_get_history_manager", return_value=mock_history_manager),
+            patch.object(price_watch.webapi.cache, "get_history_manager", return_value=mock_history_manager),
             patch.object(price_watch.managers.history, "generate_item_key", return_value="mercari_key"),
         ):
             result = price_watch.webapi.page._group_items_by_name(
@@ -1855,7 +1857,7 @@ class TestHeatmapSvgLabelAlignment:
         mock_heatmap.hours = hours
         mock_heatmap.cells = mock_cells
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         # SVG が正常に生成される
         assert b"<svg" in result
@@ -1881,7 +1883,7 @@ class TestHeatmapSvgLabelAlignment:
         mock_heatmap.hours = hours
         mock_heatmap.cells = mock_cells
 
-        result = price_watch.webapi.page._generate_heatmap_svg(mock_heatmap)
+        result = price_watch.webapi.metrics.generate_heatmap_svg(mock_heatmap)
 
         # SVG が正常に生成される
         assert b"<svg" in result
@@ -1916,20 +1918,20 @@ class TestGetHistoryManagerCreate:
         mock_config.data.price = tmp_path
 
         # グローバル変数をリセット
-        original = price_watch.webapi.page._history_manager
-        price_watch.webapi.page._history_manager = None
+        original = price_watch.webapi.cache._history_manager
+        price_watch.webapi.cache._history_manager = None
 
         mock_manager = MagicMock()
         mock_manager_class = MagicMock(return_value=mock_manager)
 
         try:
             with (
-                patch.object(price_watch.webapi.page._config_cache, "get", return_value=mock_config),
+                patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
                 patch.object(price_watch.managers.history.HistoryManager, "create", mock_manager_class),
             ):
-                result = price_watch.webapi.page._get_history_manager()
+                result = price_watch.webapi.cache.get_history_manager()
 
             assert result is mock_manager
             mock_manager.initialize.assert_called_once()
         finally:
-            price_watch.webapi.page._history_manager = original
+            price_watch.webapi.cache._history_manager = original
