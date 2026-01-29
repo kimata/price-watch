@@ -187,10 +187,17 @@ def _check_impl(
     price_xpath_exists = my_lib.selenium_util.xpath_exists(driver, item.price_xpath)
 
     if not price_xpath_exists:
-        # 価格要素が見つからない → クロール失敗
-        logging.warning("%s: price element not found (crawl failure).", item.name)
-        my_lib.selenium_util.dump_page(driver, int(random.random() * 100), price_watch.const.DUMP_PATH)
-        result.crawl_status = price_watch.models.CrawlStatus.FAILURE
+        # 価格要素が見つからない場合でも、unavailable_xpath をチェック
+        if item.unavailable_xpath is not None and driver.find_elements(By.XPATH, item.unavailable_xpath):
+            # 在庫なし状態（販売終了など）として SUCCESS 扱い
+            result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
+            result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+            logging.info("%s: price element not found, but unavailable detected (out of stock).", item.name)
+        else:
+            # unavailable_xpath が未定義またはマッチしない場合は FAILURE
+            logging.warning("%s: price element not found (crawl failure).", item.name)
+            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), price_watch.const.DUMP_PATH)
+            result.crawl_status = price_watch.models.CrawlStatus.FAILURE
     else:
         # 価格要素が見つかった → 在庫状態を確認
         if item.unavailable_xpath is not None:

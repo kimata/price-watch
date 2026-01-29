@@ -311,6 +311,55 @@ class TestCheckImpl:
         assert result.crawl_status == price_watch.models.CrawlStatus.FAILURE
         assert result.price is None
 
+    def test_price_element_not_found_but_unavailable_detected(self):
+        """価格要素が見つからないが unavailable_xpath がマッチする場合（販売終了など）"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        mock_driver.current_url = "https://example.com/item"
+
+        # unavailable_xpath がマッチするようにモック
+        mock_unavailable_elem = MagicMock()
+        mock_driver.find_elements.return_value = [mock_unavailable_elem]
+
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            unavailable_xpath='//p[contains(., "販売を終了しました")]',
+        )
+
+        with patch("my_lib.selenium_util.xpath_exists", return_value=False):
+            result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
+
+        # 在庫なしとして SUCCESS 扱い
+        assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
+        assert result.stock == price_watch.models.StockStatus.OUT_OF_STOCK
+        assert result.price is None
+
+    def test_price_element_not_found_unavailable_not_matched(self):
+        """価格要素が見つからず unavailable_xpath もマッチしない場合"""
+        mock_config = MagicMock()
+        mock_driver = MagicMock()
+        mock_driver.current_url = "https://example.com/item"
+
+        # unavailable_xpath がマッチしないようにモック
+        mock_driver.find_elements.return_value = []
+
+        item = _create_resolved_item(
+            url="https://example.com/item",
+            price_xpath="//price",
+            unavailable_xpath='//p[contains(., "販売を終了しました")]',
+        )
+
+        with (
+            patch("my_lib.selenium_util.xpath_exists", return_value=False),
+            patch("my_lib.selenium_util.dump_page"),
+        ):
+            result = price_watch.store.scrape._check_impl(mock_config, mock_driver, item, 0)
+
+        # FAILURE 扱い
+        assert result.crawl_status == price_watch.models.CrawlStatus.FAILURE
+        assert result.price is None
+
     def test_price_found_with_stock(self):
         """価格取得成功・在庫あり"""
         mock_config = MagicMock()
