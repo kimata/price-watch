@@ -10,6 +10,9 @@ import Footer from "./components/Footer";
 import { fetchItems } from "./services/apiService";
 import type { Item, Period, StoreDefinition } from "./types";
 
+// SSE イベントタイプ
+const SSE_EVENT_CONTENT = "content";
+
 // グローバル変数から item_key を取得（OGP ページ用）
 declare global {
     interface Window {
@@ -53,6 +56,10 @@ export default function App() {
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
 
+    // SSE 接続用 refs
+    const eventSourceRef = useRef<EventSource | null>(null);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const loadItems = useCallback(async () => {
         setLoading(true);
         setError(null);
@@ -71,6 +78,44 @@ export default function App() {
 
     useEffect(() => {
         loadItems();
+    }, [loadItems]);
+
+    // SSE 接続（コンテンツ更新イベントを受信）
+    useEffect(() => {
+        const connectSSE = () => {
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+            }
+
+            const eventSource = new EventSource("/price/api/event");
+
+            eventSource.onmessage = (event) => {
+                if (event.data === SSE_EVENT_CONTENT) {
+                    loadItems();
+                }
+            };
+
+            eventSource.onerror = () => {
+                eventSource.close();
+                // 5秒後に再接続
+                reconnectTimerRef.current = setTimeout(() => {
+                    connectSSE();
+                }, 5000);
+            };
+
+            eventSourceRef.current = eventSource;
+        };
+
+        connectSSE();
+
+        return () => {
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+            }
+            if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+            }
+        };
     }, [loadItems]);
 
     // item_key からアイテムを検索

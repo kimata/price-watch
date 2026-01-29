@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import my_lib.logger
+import my_lib.webapp.event
 
 import price_watch.app_context
 import price_watch.const
@@ -112,6 +113,9 @@ class AppRunner:
 
             # 作業終了時刻を記録（スリープ前）
             self.app.metrics_manager.record_work_ended(time.time())
+
+            # コンテンツ更新をクライアントに通知
+            my_lib.webapp.event.notify_event(my_lib.webapp.event.EVENT_TYPE.CONTENT)
 
             if self.app.should_terminate:
                 break

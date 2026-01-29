@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { ArrowLeftIcon, ClockIcon, ChartBarIcon, ListBulletIcon, CalculatorIcon, BuildingStorefrontIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 
@@ -20,6 +20,9 @@ import Footer from "./Footer";
 import { fetchItems, fetchItemEvents, fetchItemHistory } from "../services/apiService";
 import { formatPrice } from "../utils/formatPrice";
 
+// SSE イベントタイプ
+const SSE_EVENT_CONTENT = "content";
+
 interface ItemDetailPageProps {
     item: Item;
     storeDefinitions: StoreDefinition[];
@@ -39,6 +42,10 @@ export default function ItemDetailPage({
     const [events, setEvents] = useState<Event[]>([]);
     const [loadingEvents, setLoadingEvents] = useState(true);
     const [loadingItem, setLoadingItem] = useState(false);
+
+    // SSE 接続用 refs
+    const eventSourceRef = useRef<EventSource | null>(null);
+    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // ストアを実質価格の安い順にソート
     const sortedStores = useMemo(() => {
@@ -151,6 +158,45 @@ export default function ItemDetailPage({
     useEffect(() => {
         loadEvents();
     }, [loadEvents]);
+
+    // SSE 接続（コンテンツ更新イベントを受信）
+    useEffect(() => {
+        const connectSSE = () => {
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+            }
+
+            const eventSource = new EventSource("/price/api/event");
+
+            eventSource.onmessage = (event) => {
+                if (event.data === SSE_EVENT_CONTENT) {
+                    loadItemData();
+                    loadEvents();
+                }
+            };
+
+            eventSource.onerror = () => {
+                eventSource.close();
+                // 5秒後に再接続
+                reconnectTimerRef.current = setTimeout(() => {
+                    connectSSE();
+                }, 5000);
+            };
+
+            eventSourceRef.current = eventSource;
+        };
+
+        connectSSE();
+
+        return () => {
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+            }
+            if (reconnectTimerRef.current) {
+                clearTimeout(reconnectTimerRef.current);
+            }
+        };
+    }, [loadItemData, loadEvents]);
 
     const hasValidPrice = item.best_effective_price !== null;
 
