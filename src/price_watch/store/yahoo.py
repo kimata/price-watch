@@ -192,7 +192,7 @@ def check(
     # 結果を設定
     result.url = cheapest.url
     result.price = cheapest.price
-    result.thumb_url = cheapest.thumb_url
+    # NOTE: Yahoo 検索結果のサムネイルは使用しない（検索のたびに別商品になる可能性があるため）
     result.stock = price_watch.models.StockStatus.IN_STOCK
     result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
 
