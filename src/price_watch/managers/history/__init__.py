@@ -167,6 +167,7 @@ class HistoryManager:
         price: int | None = None,
         old_price: int | None = None,
         threshold_days: int | None = None,
+        url: str | None = None,
         notified: bool = False,
     ) -> int:
         """イベントを記録.
@@ -177,6 +178,7 @@ class HistoryManager:
             price: 現在価格
             old_price: 以前の価格
             threshold_days: 判定に使用した期間
+            url: イベント発生時点の URL（スナップショット）
             notified: 通知済みフラグ
 
         Returns:
@@ -188,6 +190,7 @@ class HistoryManager:
             price=price,
             old_price=old_price,
             threshold_days=threshold_days,
+            url=url,
             notified=notified,
         )
 

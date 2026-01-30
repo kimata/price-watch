@@ -528,6 +528,9 @@ class ItemProcessor:
             item.name,
         )
 
+        # イベント発生時点の URL をスナップショットとして保存
+        result.url = item.url
+
         notified = (
             price_watch.notify.event(self.config.slack, result, item, self.config.webapp.external_url)
             is not None

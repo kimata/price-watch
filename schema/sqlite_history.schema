@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS events(
     price          INTEGER,
     old_price      INTEGER,
     threshold_days INTEGER,
+    url            TEXT,
     created_at     TIMESTAMP DEFAULT(DATETIME('now','localtime')),
     notified       INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE

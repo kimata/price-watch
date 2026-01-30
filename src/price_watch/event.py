@@ -36,6 +36,7 @@ class EventResult:
     price: int | None = None
     old_price: int | None = None
     threshold_days: int | None = None
+    url: str | None = None
 
 
 def check_back_in_stock(
@@ -336,6 +337,7 @@ def record_event(
         price=result.price,
         old_price=result.old_price,
         threshold_days=result.threshold_days,
+        url=result.url,
         notified=notified,
     )
 

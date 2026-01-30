@@ -34,6 +34,7 @@ class EventRepository:
         price: int | None = None,
         old_price: int | None = None,
         threshold_days: int | None = None,
+        url: str | None = None,
         notified: bool = False,
     ) -> int:
         """イベントを記録.
@@ -44,6 +45,7 @@ class EventRepository:
             price: 現在価格
             old_price: 以前の価格
             threshold_days: 判定に使用した期間
+            url: イベント発生時点の URL（スナップショット）
             notified: 通知済みフラグ
 
         Returns:
@@ -55,10 +57,10 @@ class EventRepository:
             cur.execute(
                 """
                 INSERT INTO events
-                    (item_id, event_type, price, old_price, threshold_days, created_at, notified)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (item_id, event_type, price, old_price, threshold_days, url, created_at, notified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (item_id, event_type, price, old_price, threshold_days, now_str, 1 if notified else 0),
+                (item_id, event_type, price, old_price, threshold_days, url, now_str, 1 if notified else 0),
             )
             conn.commit()
             return cur.lastrowid or 0
@@ -121,6 +123,7 @@ class EventRepository:
         """最新のイベントを取得（アイテム情報付き）.
 
         サムネイル画像は、該当アイテムになければ同じ商品名の他のストアから取得する。
+        URL は events.url（スナップショット）を優先し、なければ items.url（現在値）を使用。
 
         Args:
             limit: 取得件数上限
@@ -143,7 +146,7 @@ class EventRepository:
                     e.notified,
                     i.name as item_name,
                     i.store,
-                    i.url,
+                    COALESCE(e.url, i.url) as url,
                     COALESCE(
                         i.thumb_url,
                         (SELECT thumb_url FROM items WHERE name = i.name AND thumb_url IS NOT NULL LIMIT 1)
@@ -172,6 +175,7 @@ class EventRepository:
         """指定アイテムのイベント履歴を取得（アイテム情報付き）.
 
         サムネイル画像は、該当アイテムになければ同じ商品名の他のストアから取得する。
+        URL は events.url（スナップショット）を優先し、なければ items.url（現在値）を使用。
 
         Args:
             item_key: アイテムキー
@@ -195,7 +199,7 @@ class EventRepository:
                     e.notified,
                     i.name as item_name,
                     i.store,
-                    i.url,
+                    COALESCE(e.url, i.url) as url,
                     COALESCE(
                         i.thumb_url,
                         (SELECT thumb_url FROM items WHERE name = i.name AND thumb_url IS NOT NULL LIMIT 1)

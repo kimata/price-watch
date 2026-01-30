@@ -10,7 +10,7 @@ events テーブルに挿入します。
 - PRICE_DROP: 指定期間内の最安値から一定以上下落した場合
 
 Usage:
-  backfill_events.py [-c CONFIG] [-t TARGET] [--dry-run] [--rebuild] [-D]
+  backfill_events.py [-c CONFIG] [-t TARGET] [--dry-run] [--rebuild] [--backfill-urls] [-D]
 
 Options:
   -c CONFIG         : CONFIG を設定ファイルとして読み込んで実行します。
@@ -20,6 +20,7 @@ Options:
   --dry-run         : DB に書き込まず、検出結果のみ表示します。
   --rebuild         : 価格変動イベント（lowest_price, price_drop）を全削除してから
                       再生成します。再構築できないイベントは削除しません。
+  --backfill-urls   : 既存イベントの url カラムを現在のアイテム URL で埋めます。
   -D                : デバッグモードで動作します。
 """
 
@@ -60,6 +61,7 @@ class BackfillEvent:
     old_price: int
     threshold_days: int | None
     record_time: str
+    url: str | None = None
 
 
 @dataclass
@@ -72,6 +74,7 @@ class BackfillStats:
     already_recorded: int = 0
     inserted: int = 0
     cleared: int = 0
+    urls_backfilled: int = 0
 
 
 @dataclass
@@ -100,7 +103,7 @@ class BackfillContext:
 def get_all_items(conn: sqlite3.Connection) -> list[dict]:
     """全アイテムを取得."""
     cur = conn.cursor()
-    cur.execute("SELECT id, name, store FROM items ORDER BY name, store")
+    cur.execute("SELECT id, name, store, url FROM items ORDER BY name, store")
     return cur.fetchall()
 
 
@@ -333,6 +336,7 @@ def process_item(
     item_id = item["id"]
     item_name = item["name"]
     store = item["store"]
+    item_url = item.get("url")
 
     records = get_price_history_asc(ctx.conn, item_id)
     if len(records) < 2:
@@ -375,6 +379,7 @@ def process_item(
                 old_price=running_min,
                 threshold_days=None,
                 record_time=record_time,
+                url=item_url,
             )
             events_to_insert.append(ev)
             # 挿入予定のイベントも既存とみなす（重複防止）
@@ -406,6 +411,7 @@ def process_item(
                     old_price=drop_event.old_price,
                     threshold_days=drop_event.threshold_days,
                     record_time=drop_event.record_time,
+                    url=item_url,
                 )
                 events_to_insert.append(drop_event)
                 existing_events.append(
@@ -462,10 +468,10 @@ def insert_events(conn: sqlite3.Connection, events: list[BackfillEvent]) -> int:
         cur.execute(
             """
             INSERT INTO events
-                (item_id, event_type, price, old_price, threshold_days, created_at, notified)
-            VALUES (?, ?, ?, ?, ?, ?, 0)
+                (item_id, event_type, price, old_price, threshold_days, url, created_at, notified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
             """,
-            (ev.item_id, ev.event_type, ev.price, ev.old_price, ev.threshold_days, ev.record_time),
+            (ev.item_id, ev.event_type, ev.price, ev.old_price, ev.threshold_days, ev.url, ev.record_time),
         )
     conn.commit()
     return len(events)
@@ -495,12 +501,76 @@ def _build_store_price_units(target_config: price_watch.target.TargetConfig) -> 
     return result
 
 
+def ensure_url_column(conn: sqlite3.Connection) -> bool:
+    """events テーブルに url カラムが存在することを確認し、なければ追加する.
+
+    Args:
+        conn: データベース接続
+
+    Returns:
+        カラムを追加した場合 True
+    """
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(events)")
+    columns = [row["name"] for row in cur.fetchall()]
+
+    if "url" not in columns:
+        logging.info("events テーブルに url カラムを追加します")
+        cur.execute("ALTER TABLE events ADD COLUMN url TEXT")
+        conn.commit()
+        return True
+    return False
+
+
+def backfill_urls(conn: sqlite3.Connection, *, dry_run: bool = False) -> int:
+    """既存イベントの url カラムを現在のアイテム URL で埋める.
+
+    url が NULL のイベントについて、関連するアイテムの現在の URL で更新する。
+    過去のイベント URL のスナップショットとしては不正確だが、NULL よりはマシ。
+
+    Args:
+        conn: データベース接続
+        dry_run: True の場合は DB に書き込まない
+
+    Returns:
+        更新した件数
+    """
+    cur = conn.cursor()
+
+    # url カラムがなければ追加
+    if not dry_run:
+        ensure_url_column(conn)
+
+    # url が NULL のイベントをアイテム URL で更新
+    cur.execute(
+        """
+        SELECT e.id, i.url
+        FROM events e
+        JOIN items i ON e.item_id = i.id
+        WHERE e.url IS NULL AND i.url IS NOT NULL
+        """
+    )
+    events_to_update = cur.fetchall()
+
+    if dry_run:
+        return len(events_to_update)
+
+    for event in events_to_update:
+        event_id = event["id"]
+        item_url = event["url"]
+        cur.execute("UPDATE events SET url = ? WHERE id = ?", (item_url, event_id))
+
+    conn.commit()
+    return len(events_to_update)
+
+
 def main(
     config_file: pathlib.Path,
     target_file: pathlib.Path,
     *,
     dry_run: bool,
     rebuild: bool,
+    backfill_urls_mode: bool = False,
 ) -> None:
     """メイン処理."""
     config = price_watch.config.load(config_file)
@@ -509,6 +579,27 @@ def main(
     if not db_path.exists():
         logging.error("データベースファイルが見つかりません: %s", db_path)
         raise SystemExit(1)
+
+    logging.info("データベース: %s", db_path)
+
+    # URL バックフィルモード
+    if backfill_urls_mode:
+        logging.info("URL バックフィルモード: 既存イベントの url カラムを埋めます")
+        if dry_run:
+            logging.info("ドライランモード: DB への書き込みは行いません")
+
+        with sqlite3.connect(db_path) as conn:
+            conn.row_factory = dict_factory  # type: ignore[assignment]
+            count = backfill_urls(conn, dry_run=dry_run)
+
+        print(f"\n{'=' * 70}")
+        print("URL バックフィル結果")
+        print(f"{'=' * 70}")
+        if dry_run:
+            print(f"[ドライラン] {count} 件のイベントの URL を更新対象（DB 未変更）")
+        else:
+            print(f"{count} 件のイベントの URL を更新しました")
+        return
 
     # ターゲット設定を読み込み（通貨レート解決用）
     try:
@@ -526,7 +617,6 @@ def main(
     lowest_config = config.check.lowest
     currency_rates = list(config.check.currency)
 
-    logging.info("データベース: %s", db_path)
     logging.info("ignore_hours: %d", ignore_hours)
     logging.info("price_drop windows: %d 個", len(windows))
     for w in windows:
@@ -560,6 +650,10 @@ def main(
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = dict_factory  # type: ignore[assignment]
+
+        # url カラムがなければ追加（既存DB対応）
+        if not dry_run:
+            ensure_url_column(conn)
 
         ctx = BackfillContext(
             conn=conn,
@@ -642,8 +736,9 @@ if __name__ == "__main__":
     target_file = pathlib.Path(args["-t"])
     dry_run = args["--dry-run"]
     rebuild = args["--rebuild"]
+    backfill_urls_flag = args["--backfill-urls"]
     debug_mode = args["-D"]
 
     my_lib.logger.init("backfill-events", level=logging.DEBUG if debug_mode else logging.INFO)
 
-    main(config_file, target_file, dry_run=dry_run, rebuild=rebuild)
+    main(config_file, target_file, dry_run=dry_run, rebuild=rebuild, backfill_urls_mode=backfill_urls_flag)

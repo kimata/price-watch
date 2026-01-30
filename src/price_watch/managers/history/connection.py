@@ -67,6 +67,7 @@ class HistoryDBConnection:
         """データベースを初期化.
 
         スキーマファイルからテーブルとインデックスを作成します。
+        既存データベースの場合は、スキーママイグレーションも実行します。
         """
         if self._initialized:
             return
@@ -78,7 +79,17 @@ class HistoryDBConnection:
         with my_lib.sqlite_util.connect(self.db_path) as conn:
             conn.executescript(schema_sql)
 
+        # スキーママイグレーション: events.url カラムの追加（既存DB対応）
+        self._migrate_events_url_column()
+
         self._initialized = True
+
+    def _migrate_events_url_column(self) -> None:
+        """events テーブルに url カラムを追加（既存DB対応）."""
+        if not self.column_exists("events", "url"):
+            with my_lib.sqlite_util.connect(self.db_path) as conn:
+                conn.execute("ALTER TABLE events ADD COLUMN url TEXT")
+                conn.commit()
 
     def table_exists(self, table_name: str) -> bool:
         """テーブルが存在するか確認.
