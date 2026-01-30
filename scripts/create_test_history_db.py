@@ -45,6 +45,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
             thumb_url   TEXT,
             search_keyword TEXT,
             search_cond    TEXT,
+            price_unit  TEXT DEFAULT '円',
             created_at  TIMESTAMP DEFAULT(DATETIME('now','localtime')),
             updated_at  TIMESTAMP DEFAULT(DATETIME('now','localtime'))
         )
@@ -76,6 +77,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
             price          INTEGER,
             old_price      INTEGER,
             threshold_days INTEGER,
+            url            TEXT,
             created_at     TIMESTAMP DEFAULT(DATETIME('now','localtime')),
             notified       INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (item_id) REFERENCES items(id) ON DELETE CASCADE
@@ -85,6 +87,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
 
     # インデックス
     cur.execute("CREATE INDEX IF NOT EXISTS idx_items_item_key ON items(item_key)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_items_name ON items(name)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_item_id ON price_history(item_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_price_history_time ON price_history(time)")
     # 複合インデックス: item_id + time でのクエリを高速化
