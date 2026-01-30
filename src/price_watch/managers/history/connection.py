@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import pathlib
 import sqlite3
 from collections.abc import Iterator
@@ -97,9 +98,17 @@ class HistoryDBConnection:
     def _migrate_items_price_unit_column(self) -> None:
         """items テーブルに price_unit カラムを追加（既存DB対応）."""
         if not self.column_exists("items", "price_unit"):
-            with my_lib.sqlite_util.connect(self.db_path) as conn:
-                conn.execute("ALTER TABLE items ADD COLUMN price_unit TEXT DEFAULT '円'")
-                conn.commit()
+            try:
+                with my_lib.sqlite_util.connect(self.db_path) as conn:
+                    conn.execute("ALTER TABLE items ADD COLUMN price_unit TEXT DEFAULT '円'")
+                    conn.commit()
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e):
+                    logging.warning(
+                        "Database is locked, skipping price_unit migration (will retry on next start)"
+                    )
+                else:
+                    raise
 
     def table_exists(self, table_name: str) -> bool:
         """テーブルが存在するか確認.
