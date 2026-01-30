@@ -96,6 +96,7 @@ class StoreDefinition(BaseSchema):
     point_rate: float
     color: str | None = None
     price_unit: str = "円"  # 価格の通貨単位
+    currency_rate: float = 1.0  # 円への換算レート（例: ドル→円なら 150.0）
 
 
 class ItemsResponse(BaseSchema):

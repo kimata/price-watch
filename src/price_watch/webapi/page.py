@@ -277,12 +277,21 @@ def _get_store_definitions(
     """ストア定義を生成."""
     if not target_config:
         return []
+
+    # 通貨換算レートを取得（price_unit → rate のマッピング）
+    app_config = price_watch.webapi.cache.get_app_config()
+    currency_rates: dict[str, float] = {}
+    if app_config and app_config.check.currency:
+        for cr in app_config.check.currency:
+            currency_rates[cr.label] = cr.rate
+
     return [
         price_watch.webapi.schemas.StoreDefinition(
             name=store.name,
             point_rate=store.point_rate,
             color=store.color,
             price_unit=store.price_unit,
+            currency_rate=currency_rates.get(store.price_unit, 1.0),
         )
         for store in target_config.stores
     ]

@@ -37,6 +37,9 @@ export default function Footer({ storeDefinitions, onMetricsClick }: FooterProps
     // ポイント還元率が設定されているストアのみ表示
     const storesWithPointRate = storeDefinitions.filter((store) => store.point_rate > 0);
 
+    // 通貨換算レートが設定されているストア（円以外の通貨）のみ表示
+    const storesWithCurrencyRate = storeDefinitions.filter((store) => store.currency_rate > 1);
+
     useEffect(() => {
         const fetchSysInfo = async () => {
             try {
@@ -92,6 +95,27 @@ export default function Footer({ storeDefinitions, onMetricsClick }: FooterProps
                                         ))}
                                     </ul>
                                 </div>
+                                {storesWithCurrencyRate.length > 0 && (
+                                    <div>
+                                        <h3 className="text-sm font-medium text-gray-700 mb-1">
+                                            通貨換算について
+                                        </h3>
+                                        <p className="text-xs text-gray-600 mb-2">
+                                            グラフ上の価格は異なる通貨間での比較を容易にするため、全て円に換算して表示しています。
+                                            換算レートは以下の値を使用しています。
+                                        </p>
+                                        <ul className="space-y-1">
+                                            {storesWithCurrencyRate.map((store) => (
+                                                <li key={store.name} className="text-xs text-gray-600">
+                                                    <span className="font-medium">{store.name}</span>:{" "}
+                                                    <span className="font-medium">
+                                                        1{store.price_unit} = {store.currency_rate}円
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

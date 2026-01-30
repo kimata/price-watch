@@ -36,6 +36,7 @@ export interface StoreDefinition {
     point_rate: number;
     color: string | null;
     price_unit: string; // 価格の通貨単位（例: "円", "ドル"）
+    currency_rate: number; // 円への換算レート（例: ドル→円なら 150.0）
 }
 
 export interface ItemsResponse {

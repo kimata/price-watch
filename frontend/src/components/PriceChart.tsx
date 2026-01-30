@@ -255,8 +255,25 @@ export default function PriceChart({
     const chartRef = useRef<Chart<"line"> | null>(null);
     const tooltipRef = useRef<HTMLDivElement | null>(null);
 
-    // 最初のストアの通貨単位を取得（同一アイテムのストアは同じ通貨単位を持つと仮定）
-    const priceUnit = stores[0]?.price_unit ?? "円";
+    // チャートでは常に円表示（異なる通貨のストアも円換算して比較可能にする）
+    const priceUnit = "円";
+
+    // ストア名 → 通貨換算レートのマッピングを作成
+    const currencyRateMap = useMemo(() => {
+        const map = new Map<string, number>();
+        storeDefinitions.forEach((def) => {
+            map.set(def.name, def.currency_rate);
+        });
+        return map;
+    }, [storeDefinitions]);
+
+    // ストアの通貨換算レートを取得
+    const getCurrencyRate = useCallback(
+        (storeName: string): number => {
+            return currencyRateMap.get(storeName) ?? 1.0;
+        },
+        [currencyRateMap]
+    );
 
     // 凡例クリックハンドラ
     const handleLegendClick = useCallback(
@@ -278,17 +295,19 @@ export default function PriceChart({
         setSelectedLabel(null);
     }, []);
 
-    // 各ストアのデータポイントを正確な時刻で構築
+    // 各ストアのデータポイントを正確な時刻で構築（円換算済み）
     const storeDataPoints = useMemo(() => {
         const result: Map<string, StoreDataPoint[]> = new Map();
 
         stores.forEach((store) => {
+            const rate = getCurrencyRate(store.store);
             const points: StoreDataPoint[] = store.history
                 .map((h) => ({
                     storeName: store.store,
                     time: h.time,
                     timestamp: dayjs(h.time).valueOf(),
-                    effectivePrice: h.effective_price,
+                    // 円換算
+                    effectivePrice: h.effective_price !== null ? Math.round(h.effective_price * rate) : null,
                 }))
                 .sort((a, b) => a.timestamp - b.timestamp);
 
@@ -296,7 +315,7 @@ export default function PriceChart({
         });
 
         return result;
-    }, [stores]);
+    }, [stores, getCurrencyRate]);
 
     const { chartData, sortedTimes } = useMemo(() => {
         // 全ストアの履歴から日時を抽出してマージ（正確な時刻を保持）
@@ -335,11 +354,14 @@ export default function PriceChart({
         // ストアごとのデータセットを作成
         const datasets = stores.map((store, index) => {
             const color = getStoreColor(store.store, storeDefinitions, index);
+            const rate = getCurrencyRate(store.store);
 
-            // 時間ごとの effective_price をマップ（正確な時刻で）
+            // 時間ごとの effective_price をマップ（正確な時刻で、円換算済み）
             const priceMap = new Map<string, number | null>();
             store.history.forEach((h) => {
-                priceMap.set(h.time, h.effective_price);
+                // 円換算
+                const convertedPrice = h.effective_price !== null ? Math.round(h.effective_price * rate) : null;
+                priceMap.set(h.time, convertedPrice);
             });
 
             // sortedTimes に沿って値を配列化（データなしは undefined、価格なしは null）
@@ -366,7 +388,7 @@ export default function PriceChart({
         });
 
         return { chartData: { labels, datasets }, sortedTimes };
-    }, [stores, storeDefinitions, selectedLabel]);
+    }, [stores, storeDefinitions, selectedLabel, getCurrencyRate]);
 
     /**
      * ツールチップデータを計算
@@ -532,12 +554,13 @@ export default function PriceChart({
     );
 
     const options: ChartOptions<"line"> = useMemo(() => {
-        // 全ストアの価格から min/max を計算（null は除外）
+        // 全ストアの価格から min/max を計算（null は除外、円換算済み）
         const allPrices: number[] = [];
         stores.forEach((store) => {
+            const rate = getCurrencyRate(store.store);
             store.history.forEach((h) => {
                 if (h.effective_price !== null) {
-                    allPrices.push(h.effective_price);
+                    allPrices.push(Math.round(h.effective_price * rate));
                 }
             });
         });
@@ -649,6 +672,7 @@ export default function PriceChart({
         largeLabels,
         priceUnit,
         externalTooltipHandler,
+        getCurrencyRate,
     ]);
 
     // 有効な価格データがあるかチェック（履歴があっても全て null なら価格情報なし）
