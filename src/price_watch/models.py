@@ -120,7 +120,8 @@ class CheckedItem:
             point_rate=item.point_rate,
             color=item.color,
             asin=item.asin,
-            search_keyword=item.search_keyword,
+            search_keyword=item.search_keyword or item.name,
+            search_cond=item.cond,
         )
 
     def stock_as_int(self) -> int | None:

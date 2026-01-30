@@ -73,6 +73,13 @@ class HistoryDBConnection:
         if self._initialized:
             return
 
+        # テーブルが既に存在する場合はスキーマ作成をスキップ
+        # （読み取り専用DBでの動作を保証するため）
+        if self.table_exists("items"):
+            logging.debug("Database schema already exists, skipping initialization")
+            self._initialized = True
+            return
+
         # ディレクトリが存在しない場合は作成
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
