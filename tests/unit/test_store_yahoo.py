@@ -303,7 +303,8 @@ class TestCheck:
         # 最初の商品（最安値）を選択
         assert result.url == "https://store.yahoo.co.jp/a"
         assert result.price == 2000
-        assert result.thumb_url == "https://example.com/a.jpg"
+        # NOTE: Yahoo 検索結果のサムネイルは使用しない（検索のたびに別商品になる可能性があるため）
+        assert result.thumb_url is None
         assert result.stock == price_watch.models.StockStatus.IN_STOCK
         assert result.crawl_status == price_watch.models.CrawlStatus.SUCCESS
 

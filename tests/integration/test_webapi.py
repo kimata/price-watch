@@ -31,9 +31,9 @@ _BASE_TIME = my_lib.time.now().replace(hour=10, minute=0, second=0, microsecond=
 def mock_history_manager(
     history_manager: "HistoryManager",
 ) -> Iterator["HistoryManager"]:
-    """webapi.page の _get_history_manager をモックしてテスト用の history_manager を返す"""
+    """webapi.cache の get_history_manager をモックしてテスト用の history_manager を返す"""
     with unittest.mock.patch(
-        "price_watch.webapi.page._get_history_manager",
+        "price_watch.webapi.cache.get_history_manager",
         return_value=history_manager,
     ):
         yield history_manager
@@ -46,7 +46,7 @@ class TestItemsEndpoint:
         """アイテムがない場合は空のリストを返す"""
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
-            unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
+            unittest.mock.patch("price_watch.webapi.cache.get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items")
 
@@ -73,7 +73,7 @@ class TestItemsEndpoint:
         # target.yaml がない状態でテスト（全アイテム表示）
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
-            unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
+            unittest.mock.patch("price_watch.webapi.cache.get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items")
 
@@ -105,7 +105,7 @@ class TestItemsEndpoint:
 
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
-            unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
+            unittest.mock.patch("price_watch.webapi.cache.get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items?days=30")
 
@@ -126,7 +126,7 @@ class TestItemsEndpoint:
 
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
-            unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
+            unittest.mock.patch("price_watch.webapi.cache.get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items?days=all")
 
@@ -148,7 +148,7 @@ class TestItemsEndpoint:
 
         with (
             unittest.mock.patch("price_watch.webapi.page._get_target_item_keys", return_value=set()),
-            unittest.mock.patch("price_watch.webapi.page._get_target_config", return_value=None),
+            unittest.mock.patch("price_watch.webapi.cache.get_target_config", return_value=None),
         ):
             response = client.get("/price/api/items")
 
@@ -356,12 +356,12 @@ class TestErrorHandling:
         client: flask.testing.FlaskClient,
     ) -> None:
         """内部エラーが発生した場合は 500 を返す"""
-        # _get_history_manager をモックしてエラーを発生させる
+        # get_history_manager をモックしてエラーを発生させる
         mock_manager = unittest.mock.MagicMock()
         mock_manager.get_all_items.side_effect = Exception("Database error")
 
         with unittest.mock.patch(
-            "price_watch.webapi.page._get_history_manager",
+            "price_watch.webapi.cache.get_history_manager",
             return_value=mock_manager,
         ):
             response = client.get("/price/api/items")
