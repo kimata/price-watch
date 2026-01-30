@@ -2,6 +2,7 @@
 """ブラウザ管理.
 
 WebDriver のライフサイクルを管理します。
+my_lib.browser_manager をラップして price-watch 固有のインターフェースを提供します。
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import my_lib.browser_manager
 import my_lib.chrome_util
 import my_lib.selenium_util
 
@@ -28,13 +30,25 @@ class BrowserManager:
     """ブラウザ管理クラス.
 
     WebDriver の作成、再作成、終了を管理します。
-    遅延初期化により、必要になるまでブラウザを起動しません。
+    内部で my_lib.browser_manager.BrowserManager を使用します。
     """
 
     selenium_data_dir: pathlib.Path
     max_create_retries: int = 2
-    _driver: WebDriver | None = field(default=None, init=False, repr=False)
-    _create_failures: int = field(default=0, init=False)
+
+    # 内部状態
+    _manager: my_lib.browser_manager.BrowserManager | None = field(default=None, init=False, repr=False)
+
+    def _get_or_create_manager(self) -> my_lib.browser_manager.BrowserManager:
+        """内部の BrowserManager を取得（必要に応じて作成）"""
+        if self._manager is None:
+            self._manager = my_lib.browser_manager.BrowserManager(
+                profile_name=PROFILE_NAME,
+                data_dir=self.selenium_data_dir,
+                clear_profile_on_error=True,
+                max_retry_on_error=self.max_create_retries,
+            )
+        return self._manager
 
     @property
     def driver(self) -> WebDriver | None:
@@ -43,7 +57,11 @@ class BrowserManager:
         Returns:
             WebDriver インスタンス、または None
         """
-        return self._driver
+        manager = self._get_or_create_manager()
+        if manager.has_driver():
+            driver, _ = manager.get_driver()
+            return driver
+        return None
 
     @property
     def is_active(self) -> bool:
@@ -52,7 +70,9 @@ class BrowserManager:
         Returns:
             ドライバーが存在し、アクティブな場合 True
         """
-        return self._driver is not None
+        if self._manager is None:
+            return False
+        return self._manager.has_driver()
 
     def ensure_driver(self) -> WebDriver:
         """WebDriver を取得。存在しない場合は作成.
@@ -63,42 +83,12 @@ class BrowserManager:
         Raises:
             BrowserError: ドライバーの作成に失敗した場合
         """
-        if self._driver is None:
-            self._driver = self._create_driver_with_retry()
-            if self._driver is None:
-                raise price_watch.exceptions.BrowserError(
-                    f"Failed to create driver after {self.max_create_retries + 1} attempts"
-                )
-        return self._driver
-
-    def _create_driver_with_retry(self) -> WebDriver | None:
-        """プロファイル削除を伴うリトライ付きでドライバーを作成.
-
-        Returns:
-            成功時は WebDriver、全て失敗時は None
-        """
-        for attempt in range(self.max_create_retries + 1):
-            try:
-                driver = my_lib.selenium_util.create_driver(PROFILE_NAME, self.selenium_data_dir)
-                self._create_failures = 0
-                logging.info("WebDriver created successfully")
-                return driver
-            except Exception as e:
-                self._create_failures += 1
-                logging.warning(
-                    "ドライバー作成失敗（%d/%d）: %s",
-                    attempt + 1,
-                    self.max_create_retries + 1,
-                    e,
-                )
-
-                if attempt < self.max_create_retries:
-                    # プロファイルを削除してリトライ
-                    logging.warning("プロファイルを削除してリトライします")
-                    my_lib.chrome_util.delete_profile(PROFILE_NAME, self.selenium_data_dir)
-
-        logging.error("ドライバー作成に %d 回失敗しました", self.max_create_retries + 1)
-        return None
+        manager = self._get_or_create_manager()
+        try:
+            driver, _ = manager.get_driver()
+            return driver
+        except my_lib.selenium_util.SeleniumError as e:
+            raise price_watch.exceptions.BrowserError(f"Failed to create driver: {e}") from e
 
     def recreate_driver(self) -> bool:
         """ドライバーを再作成.
@@ -116,18 +106,24 @@ class BrowserManager:
         # プロファイルを削除
         my_lib.chrome_util.delete_profile(PROFILE_NAME, self.selenium_data_dir)
 
+        # 内部マネージャーをリセット（新しいドライバー作成のため）
+        self._manager = None
+
         # 新しいドライバーを作成
-        self._driver = self._create_driver_with_retry()
-        return self._driver is not None
+        try:
+            self.ensure_driver()
+            return True
+        except price_watch.exceptions.BrowserError:
+            logging.exception("ドライバーの再作成に失敗しました")
+            return False
 
     def quit(self) -> None:
         """ドライバーを終了.
 
         プロセス終了待機・強制終了も含む graceful な終了を行います。
         """
-        if self._driver is not None:
-            my_lib.selenium_util.quit_driver_gracefully(self._driver)
-            self._driver = None
+        if self._manager is not None:
+            self._manager.quit()
 
     def cleanup_profile_lock(self) -> None:
         """Chrome プロファイルのロックファイルをクリーンアップ."""
