@@ -215,10 +215,6 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                 return price === undefined ? null : price;
             });
 
-            // データポイント数に応じて点のサイズを調整
-            const totalPoints = sortedTimes.length;
-            const pointRadius = totalPoints > 50 ? 0 : totalPoints > 20 ? 2 : 3;
-
             return {
                 label: store.store,
                 data,
@@ -226,8 +222,8 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                 backgroundColor: color.border, // 凡例用（塗りつぶし四角）
                 fill: false,
                 tension: 0.3,
-                pointRadius,
-                pointHoverRadius: 5,
+                pointRadius: 0, // 普段は点を非表示
+                pointHoverRadius: 6, // ホバー時に点を表示
                 spanGaps: true,
                 // 選択された系列以外は非表示
                 hidden: selectedLabel !== null && store.store !== selectedLabel,
