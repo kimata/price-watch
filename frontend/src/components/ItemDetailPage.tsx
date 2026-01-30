@@ -17,6 +17,7 @@ import StoreRow from "./StoreRow";
 import EventHistory from "./EventHistory";
 import LoadingSpinner from "./LoadingSpinner";
 import Footer from "./Footer";
+import PermalinkHeading from "./PermalinkHeading";
 import { fetchItems, fetchItemEvents, fetchItemHistory } from "../services/apiService";
 import { formatPrice } from "../utils/formatPrice";
 
@@ -285,10 +286,13 @@ export default function ItemDetailPage({
 
                 {/* 価格チャート（拡大版） */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <PermalinkHeading
+                        id="price-chart"
+                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                    >
                         <ChartBarIcon className="h-5 w-5" />
                         価格推移
-                    </h2>
+                    </PermalinkHeading>
                     {loadingItem ? (
                         <div className="h-72 flex items-center justify-center">
                             <LoadingSpinner />
@@ -300,10 +304,13 @@ export default function ItemDetailPage({
 
                 {/* 価格統計 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <PermalinkHeading
+                        id="price-stats"
+                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                    >
                         <CalculatorIcon className="h-5 w-5" />
                         価格統計
-                    </h2>
+                    </PermalinkHeading>
                     <div className="grid grid-cols-3 gap-4">
                         <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
                             <div className="text-sm text-gray-600 mb-2">期間内最安値</div>
@@ -332,10 +339,13 @@ export default function ItemDetailPage({
 
                 {/* ストア別情報 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <PermalinkHeading
+                        id="store-prices"
+                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                    >
                         <BuildingStorefrontIcon className="h-5 w-5" />
                         ストア別価格
-                    </h2>
+                    </PermalinkHeading>
                     <div className="space-y-2">
                         {sortedStores.map((store) => (
                             <StoreRow
@@ -350,10 +360,13 @@ export default function ItemDetailPage({
 
                 {/* イベント履歴 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
-                    <h2 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <PermalinkHeading
+                        id="event-history"
+                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                    >
                         <ListBulletIcon className="h-5 w-5" />
                         イベント履歴
-                    </h2>
+                    </PermalinkHeading>
                     {loadingEvents ? (
                         <div className="flex justify-center py-8">
                             <LoadingSpinner />

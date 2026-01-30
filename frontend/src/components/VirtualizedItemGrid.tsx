@@ -1,6 +1,7 @@
 import { useMemo, useCallback } from "react";
 import type { Item, StoreDefinition, Period } from "../types";
 import ItemCard from "./ItemCard";
+import PermalinkHeading from "./PermalinkHeading";
 
 interface VirtualizedItemGridProps {
     items: Item[];
@@ -112,16 +113,14 @@ export default function VirtualizedItemGrid({
             )}
 
             {groupedItems.map(({ category, items: categoryItems }) => (
-                <section key={category} id={categoryToId(category)}>
+                <section key={category}>
                     {showHeaders && (
-                        <h2 className="text-lg font-semibold text-gray-700 mb-4 border-b border-gray-300 pb-2">
-                            <a
-                                href={`#${categoryToId(category)}`}
-                                className="hover:text-blue-600 transition-colors"
-                            >
-                                {category}
-                            </a>
-                        </h2>
+                        <PermalinkHeading
+                            id={categoryToId(category)}
+                            className="text-lg font-semibold text-gray-700 mb-4 border-b border-gray-300 pb-2"
+                        >
+                            {category}
+                        </PermalinkHeading>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {categoryItems.map((item) => (

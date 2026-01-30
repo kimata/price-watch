@@ -8,6 +8,7 @@ import CrawlTimeBoxPlotChart from "./CrawlTimeBoxPlotChart";
 import TotalCrawlTimeBoxPlotChart from "./TotalCrawlTimeBoxPlotChart";
 import FailureTimeseriesChart from "./FailureTimeseriesChart";
 import MetricsFooter from "./MetricsFooter";
+import PermalinkHeading from "./PermalinkHeading";
 
 dayjs.extend(relativeTime);
 dayjs.locale("ja");
@@ -250,7 +251,12 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
                     <>
                         {/* 現在の状態 */}
                         <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-lg font-semibold text-gray-800 mb-4">現在の状態</h2>
+                            <PermalinkHeading
+                                id="current-status"
+                                className="text-lg font-semibold text-gray-800 mb-4"
+                            >
+                                現在の状態
+                            </PermalinkHeading>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                                 {/* 稼働状態 */}
                                 <div className="bg-gray-50 rounded-lg p-4">
@@ -307,7 +313,12 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
                         {/* ヒートマップ */}
                         <div className="bg-white rounded-lg shadow p-6">
                             <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-semibold text-gray-800">稼働率ヒートマップ</h2>
+                                <PermalinkHeading
+                                    id="uptime-heatmap"
+                                    className="text-lg font-semibold text-gray-800"
+                                >
+                                    稼働率ヒートマップ
+                                </PermalinkHeading>
                                 <div className="flex items-center gap-2">
                                     {PERIOD_OPTIONS.map((option) => (
                                         <button
@@ -367,7 +378,12 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
 
                         {/* 巡回統計 */}
                         <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-lg font-semibold text-gray-800 mb-4">巡回統計</h2>
+                            <PermalinkHeading
+                                id="crawl-stats"
+                                className="text-lg font-semibold text-gray-800 mb-4"
+                            >
+                                巡回統計
+                            </PermalinkHeading>
                             <div className="space-y-4">
                                 {/* 全体巡回時間 時系列箱ひげ図 */}
                                 <div className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 p-4">
