@@ -206,7 +206,7 @@ export default function MetricsPage({ onBack }: MetricsPageProps) {
     return (
         <div className="min-h-screen bg-gray-100">
             {/* ヘッダー */}
-            <header className="bg-white shadow">
+            <header className="sticky top-0 z-10 bg-white shadow">
                 <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <button

@@ -58,7 +58,13 @@ export default function PermalinkHeading({
                         e.stopPropagation();
                         handleCopyLink();
                     }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600 cursor-pointer"
+                    className={`
+                        transition-all duration-200 cursor-pointer
+                        ${copied
+                            ? "opacity-100 scale-125"
+                            : "opacity-0 group-hover:opacity-100 scale-100 text-gray-400 hover:text-blue-600"
+                        }
+                    `}
                     title="リンクをコピー"
                     aria-label="リンクをコピー"
                 >
