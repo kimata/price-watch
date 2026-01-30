@@ -288,7 +288,7 @@ export default function ItemDetailPage({
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
                     <PermalinkHeading
                         id="price-chart"
-                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                        className="text-lg font-semibold text-gray-700 mb-4"
                     >
                         <ChartBarIcon className="h-5 w-5" />
                         価格推移
@@ -306,7 +306,7 @@ export default function ItemDetailPage({
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
                     <PermalinkHeading
                         id="price-stats"
-                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                        className="text-lg font-semibold text-gray-700 mb-4"
                     >
                         <CalculatorIcon className="h-5 w-5" />
                         価格統計
@@ -341,7 +341,7 @@ export default function ItemDetailPage({
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
                     <PermalinkHeading
                         id="store-prices"
-                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                        className="text-lg font-semibold text-gray-700 mb-4"
                     >
                         <BuildingStorefrontIcon className="h-5 w-5" />
                         ストア別価格
@@ -362,7 +362,7 @@ export default function ItemDetailPage({
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6">
                     <PermalinkHeading
                         id="event-history"
-                        className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2"
+                        className="text-lg font-semibold text-gray-700 mb-4"
                     >
                         <ListBulletIcon className="h-5 w-5" />
                         イベント履歴

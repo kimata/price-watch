@@ -37,10 +37,10 @@ export default function PermalinkHeading({
     }, [id, showToast]);
 
     return (
-        <Tag id={id} className={`group relative ${className}`}>
+        <Tag id={id} className={`group ${className}`}>
             <a
                 href={`#${id}`}
-                className="hover:text-blue-600 transition-colors"
+                className="inline-flex items-center gap-2 hover:text-blue-600 transition-colors"
                 onClick={(e) => {
                     e.preventDefault();
                     handleCopyLink();
@@ -55,7 +55,7 @@ export default function PermalinkHeading({
             </a>
             <button
                 onClick={handleCopyLink}
-                className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center text-gray-400 hover:text-blue-600"
+                className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity align-middle inline-flex items-center text-gray-400 hover:text-blue-600"
                 title="リンクをコピー"
                 aria-label="リンクをコピー"
             >
