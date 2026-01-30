@@ -161,6 +161,8 @@ def check_lowest_price(
     *,
     lowest_config: price_watch.config.LowestConfig | None = None,
     currency_rate: float = 1.0,
+    item_name: str | None = None,
+    all_currency_rates: dict[str, float] | None = None,
 ) -> EventResult | None:
     """過去最安値更新イベントを判定.
 
@@ -171,11 +173,13 @@ def check_lowest_price(
         ignore_hours: 無視する時間数
         lowest_config: 最安値更新の閾値設定（None の場合は従来通り即発火）
         currency_rate: 通貨換算レート（value 判定用、デフォルト 1.0）
+        item_name: 商品名（全ストア横断判定に使用）
+        all_currency_rates: 全通貨の換算レート（全ストア横断判定に使用）
 
     Returns:
         イベント結果。該当しない場合は None。
     """
-    # 過去全期間の最安値を取得
+    # 過去全期間の最安値を取得（このストアのみ）
     lowest_price = history.get_lowest_in_period(item_id, days=None)
 
     if lowest_price is None:
@@ -184,6 +188,22 @@ def check_lowest_price(
 
     if current_price >= lowest_price:
         return None
+
+    # 全ストア横断で最安値かどうかを判定
+    if item_name is not None and all_currency_rates is not None:
+        current_price_in_yen = int(current_price * currency_rate)
+        cross_store_lowest = history.get_lowest_price_across_stores_in_yen(
+            item_name, all_currency_rates, days=None
+        )
+
+        if cross_store_lowest is not None and current_price_in_yen >= cross_store_lowest:
+            # 他のストアでより安い価格が既にある場合はイベントを発生させない
+            logging.debug(
+                "Skipping lowest_price event: current price %d yen >= cross-store lowest %d yen",
+                current_price_in_yen,
+                cross_store_lowest,
+            )
+            return None
 
     # 閾値判定
     if lowest_config is not None and (lowest_config.rate is not None or lowest_config.value is not None):
@@ -247,6 +267,8 @@ def check_price_drop(
     windows: list[price_watch.config.PriceDropWindow],
     *,
     currency_rate: float = 1.0,
+    item_name: str | None = None,
+    all_currency_rates: dict[str, float] | None = None,
 ) -> EventResult | None:
     """価格下落イベントを判定.
 
@@ -256,6 +278,8 @@ def check_price_drop(
         current_price: 現在の価格
         windows: 価格下落判定ウィンドウのリスト
         currency_rate: 通貨換算レート（value 判定用、デフォルト 1.0）
+        item_name: 商品名（全ストア横断判定に使用）
+        all_currency_rates: 全通貨の換算レート（全ストア横断判定に使用）
 
     Returns:
         イベント結果。該当しない場合は None。
@@ -272,6 +296,24 @@ def check_price_drop(
 
         if drop_amount <= 0:
             continue
+
+        # 全ストア横断で最安値かどうかを判定
+        if item_name is not None and all_currency_rates is not None:
+            current_price_in_yen = int(current_price * currency_rate)
+            cross_store_lowest = history.get_lowest_price_across_stores_in_yen(
+                item_name, all_currency_rates, days=window.days
+            )
+
+            if cross_store_lowest is not None and current_price_in_yen >= cross_store_lowest:
+                # 他のストアでより安い価格が既にある場合はこのウィンドウではイベントを発生させない
+                logging.debug(
+                    "Skipping price_drop event for %d days window: "
+                    "current price %d yen >= cross-store lowest %d yen",
+                    window.days,
+                    current_price_in_yen,
+                    cross_store_lowest,
+                )
+                continue
 
         effective_drop = drop_amount * currency_rate
 

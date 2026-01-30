@@ -40,6 +40,7 @@ class ItemRepository:
         thumb_url: str | None = None,
         search_keyword: str | None = None,
         search_cond: str | None = None,
+        price_unit: str | None = None,
     ) -> int:
         """アイテムを取得または作成し、ID を返す.
 
@@ -51,6 +52,7 @@ class ItemRepository:
             thumb_url: サムネイル URL
             search_keyword: 検索キーワード（メルカリ用）
             search_cond: 検索条件 JSON（メルカリ用）
+            price_unit: 通貨単位
 
         Returns:
             アイテム ID
@@ -59,12 +61,12 @@ class ItemRepository:
             url, search_keyword=search_keyword, search_cond=search_cond, store_name=store
         )
 
-        cur.execute("SELECT id, name, thumb_url, url FROM items WHERE item_key = ?", (item_key,))
+        cur.execute("SELECT id, name, thumb_url, url, price_unit FROM items WHERE item_key = ?", (item_key,))
         row = cur.fetchone()
 
         if row:
             item_id = row["id"]
-            # 名前やサムネイル、URL が更新されていたら更新
+            # 名前やサムネイル、URL、price_unit が更新されていたら更新
             updates = []
             params: list[Any] = []
             if row["name"] != name:
@@ -77,6 +79,10 @@ class ItemRepository:
             if url and row["url"] != url:
                 updates.append("url = ?")
                 params.append(url)
+            # price_unit が指定されていて、異なる場合は更新
+            if price_unit and row.get("price_unit") != price_unit:
+                updates.append("price_unit = ?")
+                params.append(price_unit)
             if updates:
                 updates.append("updated_at = ?")
                 params.append(my_lib.time.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -93,11 +99,22 @@ class ItemRepository:
             """
             INSERT INTO items (
                 item_key, url, name, store, thumb_url,
-                search_keyword, search_cond, created_at, updated_at
+                search_keyword, search_cond, price_unit, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (item_key, url, name, store, thumb_url, search_keyword, search_cond, now, now),
+            (
+                item_key,
+                url,
+                name,
+                store,
+                thumb_url,
+                search_keyword,
+                search_cond,
+                price_unit or "円",
+                now,
+                now,
+            ),
         )
         return cur.lastrowid or 0
 
@@ -115,7 +132,7 @@ class ItemRepository:
             cur.execute(
                 """
                 SELECT id, item_key, url, name, store, thumb_url,
-                       search_keyword, search_cond, created_at, updated_at
+                       search_keyword, search_cond, price_unit, created_at, updated_at
                 FROM items
                 WHERE id = ?
                 """,
@@ -154,9 +171,32 @@ class ItemRepository:
             cur.execute(
                 """
                 SELECT id, item_key, url, name, store, thumb_url,
-                       search_keyword, search_cond, created_at, updated_at
+                       search_keyword, search_cond, price_unit, created_at, updated_at
                 FROM items
                 ORDER BY updated_at DESC
                 """
+            )
+            return [price_watch.models.ItemRecord.from_dict(row) for row in cur.fetchall()]
+
+    def get_by_name(self, name: str) -> list[price_watch.models.ItemRecord]:
+        """同じ商品名のアイテムを全ストアから取得.
+
+        Args:
+            name: 商品名
+
+        Returns:
+            同じ商品名を持つアイテムのリスト
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, item_key, url, name, store, thumb_url,
+                       search_keyword, search_cond, price_unit, created_at, updated_at
+                FROM items
+                WHERE name = ?
+                ORDER BY store
+                """,
+                (name,),
             )
             return [price_watch.models.ItemRecord.from_dict(row) for row in cur.fetchall()]

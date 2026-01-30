@@ -240,6 +240,7 @@ class ItemRecord:
     thumb_url: str | None = None
     search_keyword: str | None = None
     search_cond: str | None = None
+    price_unit: str = "円"
     created_at: str | None = None
     updated_at: str | None = None
 
@@ -255,6 +256,7 @@ class ItemRecord:
             thumb_url=d.get("thumb_url"),
             search_keyword=d.get("search_keyword"),
             search_cond=d.get("search_cond"),
+            price_unit=d.get("price_unit") or "円",
             created_at=d.get("created_at"),
             updated_at=d.get("updated_at"),
         )

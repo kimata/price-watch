@@ -103,7 +103,16 @@ class BackfillContext:
 def get_all_items(conn: sqlite3.Connection) -> list[dict]:
     """全アイテムを取得."""
     cur = conn.cursor()
-    cur.execute("SELECT id, name, store, url FROM items ORDER BY name, store")
+
+    # price_unit カラムが存在するか確認
+    cur.execute("PRAGMA table_info(items)")
+    columns = [row["name"] for row in cur.fetchall()]
+    has_price_unit = "price_unit" in columns
+
+    if has_price_unit:
+        cur.execute("SELECT id, name, store, url, price_unit FROM items ORDER BY name, store")
+    else:
+        cur.execute("SELECT id, name, store, url FROM items ORDER BY name, store")
     return cur.fetchall()
 
 
@@ -203,6 +212,95 @@ def get_lowest_in_period_before(
     return None
 
 
+def get_cross_store_lowest_before(
+    conn: sqlite3.Connection,
+    item_name: str,
+    before_time: str,
+    currency_rates: list[price_watch.config.CurrencyRate],
+    store_price_units: dict[str, str],
+    days: int | None = None,
+) -> int | None:
+    """指定時刻より前の全ストア横断での円換算最安値を取得.
+
+    Args:
+        conn: DB接続
+        item_name: 商品名
+        before_time: 基準時刻
+        currency_rates: 通貨換算レート
+        store_price_units: ストア名 → price_unit のマッピング
+        days: 期間（None の場合は全期間）
+
+    Returns:
+        円換算後の最安値、または None
+    """
+    cur = conn.cursor()
+
+    # 同じ商品名のアイテムを取得
+    cur.execute("SELECT id, store FROM items WHERE name = ?", (item_name,))
+    items = cur.fetchall()
+
+    if not items:
+        return None
+
+    lowest_in_yen: int | None = None
+
+    for item in items:
+        item_id = item["id"]
+        store = item["store"]
+        price_unit = store_price_units.get(store, "円")
+
+        # 通貨レートを解決
+        rate = 1.0
+        if price_unit != "円":
+            for cr in currency_rates:
+                if cr.label == price_unit:
+                    rate = cr.rate
+                    break
+
+        # 期間内の最安値を取得
+        if days is not None and days > 0:
+            before_dt = datetime.fromisoformat(before_time)
+            window_start = before_dt - timedelta(days=days)
+            window_start_str = window_start.strftime("%Y-%m-%d %H:%M:%S")
+            cur.execute(
+                """
+                SELECT MIN(price)
+                FROM price_history
+                WHERE item_id = ?
+                  AND time >= ?
+                  AND time < ?
+                  AND price IS NOT NULL
+                  AND crawl_status = 1
+                  AND stock = 1
+                """,
+                (item_id, window_start_str, before_time),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT MIN(price)
+                FROM price_history
+                WHERE item_id = ?
+                  AND time < ?
+                  AND price IS NOT NULL
+                  AND crawl_status = 1
+                  AND stock = 1
+                """,
+                (item_id, before_time),
+            )
+
+        row = cur.fetchone()
+        if row:
+            values = list(row.values())
+            min_price = values[0] if values and values[0] is not None else None
+            if min_price is not None:
+                price_in_yen = int(min_price * rate)
+                if lowest_in_yen is None or price_in_yen < lowest_in_yen:
+                    lowest_in_yen = price_in_yen
+
+    return lowest_in_yen
+
+
 def check_lowest_price_backfill(
     ctx: BackfillContext,
     current_price: int,
@@ -211,6 +309,7 @@ def check_lowest_price_backfill(
     record_time: str,
     existing_events: list[dict],
     currency_rate: float,
+    item_name: str | None = None,
 ) -> bool:
     """最安値更新イベントを判定（本番 event.check_lowest_price と同等ロジック）.
 
@@ -222,6 +321,7 @@ def check_lowest_price_backfill(
         record_time: レコードの時刻
         existing_events: 既存イベントのリスト
         currency_rate: 通貨換算レート
+        item_name: 商品名（全ストア横断判定に使用）
 
     Returns:
         イベントを検出した場合 True
@@ -229,6 +329,27 @@ def check_lowest_price_backfill(
     # 本番ロジック: current_price >= lowest_price → スキップ
     if current_price >= running_min:
         return False
+
+    # 全ストア横断で最安値かどうかを判定
+    if item_name is not None:
+        current_price_in_yen = int(current_price * currency_rate)
+        cross_store_lowest = get_cross_store_lowest_before(
+            ctx.conn,
+            item_name,
+            record_time,
+            ctx.currency_rates,
+            ctx.store_price_units,
+            days=None,
+        )
+
+        if cross_store_lowest is not None and current_price_in_yen >= cross_store_lowest:
+            # 他のストアでより安い価格が既にある場合はイベントを発生させない
+            logging.debug(
+                "Skipping lowest_price event: current price %d yen >= cross-store lowest %d yen",
+                current_price_in_yen,
+                cross_store_lowest,
+            )
+            return False
 
     # 閾値判定（lowest_config がある場合）
     lowest_config = ctx.lowest_config
@@ -269,6 +390,7 @@ def check_price_drop_backfill(
     record_time: str,
     existing_events: list[dict],
     currency_rate: float,
+    item_name: str | None = None,
 ) -> BackfillEvent | None:
     """価格下落イベントを判定（本番 event.check_price_drop と同等ロジック）.
 
@@ -279,6 +401,7 @@ def check_price_drop_backfill(
         record_time: レコードの時刻
         existing_events: 既存イベントのリスト
         currency_rate: 通貨換算レート
+        item_name: 商品名（全ストア横断判定に使用）
 
     Returns:
         検出したイベント、または None
@@ -292,6 +415,29 @@ def check_price_drop_backfill(
         drop_amount = lowest_in_period - current_price
         if drop_amount <= 0:
             continue
+
+        # 全ストア横断で最安値かどうかを判定
+        if item_name is not None:
+            current_price_in_yen = int(current_price * currency_rate)
+            cross_store_lowest = get_cross_store_lowest_before(
+                ctx.conn,
+                item_name,
+                record_time,
+                ctx.currency_rates,
+                ctx.store_price_units,
+                days=window.days,
+            )
+
+            if cross_store_lowest is not None and current_price_in_yen >= cross_store_lowest:
+                # 他のストアでより安い価格が既にある場合はこのウィンドウではイベントを発生させない
+                logging.debug(
+                    "Skipping price_drop event for %d days window: "
+                    "current price %d yen >= cross-store lowest %d yen",
+                    window.days,
+                    current_price_in_yen,
+                    cross_store_lowest,
+                )
+                continue
 
         effective_drop = drop_amount * currency_rate
 
@@ -369,6 +515,7 @@ def process_item(
             record_time,
             existing_events,
             currency_rate,
+            item_name=item_name,
         ):
             ev = BackfillEvent(
                 item_id=item_id,
@@ -399,7 +546,7 @@ def process_item(
         # PRICE_DROP チェック
         if ctx.windows:
             drop_event = check_price_drop_backfill(
-                ctx, item_id, current_price, record_time, existing_events, currency_rate
+                ctx, item_id, current_price, record_time, existing_events, currency_rate, item_name=item_name
             )
             if drop_event is not None:
                 drop_event = BackfillEvent(
@@ -498,6 +645,37 @@ def _build_store_price_units(target_config: price_watch.target.TargetConfig) -> 
     result: dict[str, str] = {}
     for store in target_config.stores:
         result[store.name] = store.price_unit
+    return result
+
+
+def _build_store_price_units_from_db(conn: sqlite3.Connection) -> dict[str, str]:
+    """DB の items テーブルからストア名 → price_unit のマッピングを構築.
+
+    同じストア名で異なる price_unit がある場合は、最初に見つかったものを使用。
+    price_unit カラムがない（旧 DB）場合は空の辞書を返す。
+    """
+    cur = conn.cursor()
+
+    # price_unit カラムが存在するか確認
+    cur.execute("PRAGMA table_info(items)")
+    columns = [row["name"] for row in cur.fetchall()]
+    if "price_unit" not in columns:
+        logging.debug("items テーブルに price_unit カラムがありません。空の辞書を返します")
+        return {}
+
+    cur.execute(
+        """
+        SELECT DISTINCT store, price_unit
+        FROM items
+        WHERE price_unit IS NOT NULL
+        ORDER BY store
+        """
+    )
+    result: dict[str, str] = {}
+    for row in cur.fetchall():
+        store = row["store"]
+        if store not in result:
+            result[store] = row["price_unit"]
     return result
 
 
@@ -602,12 +780,18 @@ def main(
         return
 
     # ターゲット設定を読み込み（通貨レート解決用）
+    # まず DB から price_unit を取得し、ターゲット設定があればそちらで上書き
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = dict_factory  # type: ignore[assignment]
+        store_price_units = _build_store_price_units_from_db(conn)
+
     try:
         target_config = price_watch.target.load(target_file)
-        store_price_units = _build_store_price_units(target_config)
+        # ターゲット設定の price_unit で上書き
+        target_price_units = _build_store_price_units(target_config)
+        store_price_units.update(target_price_units)
     except Exception:
-        logging.warning("ターゲット設定の読み込みに失敗しました。通貨レートはデフォルト(1.0)を使用します")
-        store_price_units = {}
+        logging.warning("ターゲット設定の読み込みに失敗しました。DB の price_unit を使用します")
 
     # イベント判定設定を取得
     drop_config = config.check.drop

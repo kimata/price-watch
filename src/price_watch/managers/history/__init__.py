@@ -159,6 +159,17 @@ class HistoryManager:
         """
         return self.items.get_all()
 
+    def get_items_by_name(self, name: str) -> list[ItemRecord]:
+        """同じ商品名のアイテムを全ストアから取得.
+
+        Args:
+            name: 商品名
+
+        Returns:
+            同じ商品名を持つアイテムのリスト
+        """
+        return self.items.get_by_name(name)
+
     def insert_event(
         self,
         item_id: int,
@@ -285,6 +296,27 @@ class HistoryManager:
         """
         return self.prices.get_lowest_in_period(item_id, days)
 
+    def get_lowest_price_across_stores_in_yen(
+        self,
+        item_name: str,
+        currency_rates: dict[str, float],
+        days: int | None = None,
+    ) -> int | None:
+        """全ストア横断で円換算後の最安値を取得.
+
+        同じ商品名を持つ全てのアイテム（全ストア）から最安値を取得し、
+        各ストアの通貨単位に応じて円換算した上で最も安い価格を返します。
+
+        Args:
+            item_name: 商品名（items.name）
+            currency_rates: 通貨換算レート（例: {"ドル": 150.0}）
+            days: 期間（日数）。None の場合は全期間。
+
+        Returns:
+            円換算後の最安値、または None
+        """
+        return self.prices.get_lowest_price_across_stores_in_yen(item_name, currency_rates, days)
+
     def has_successful_crawl_in_hours(self, item_id: int, hours: int) -> bool:
         """指定時間内に成功したクロールがあるか確認.
 
@@ -346,6 +378,7 @@ class HistoryManager:
             "thumb_url": item.thumb_url,
             "search_keyword": item.search_keyword,
             "search_cond": item.search_cond,
+            "price_unit": item.price_unit,
         }
         return self.prices.upsert_item(item_dict)
 

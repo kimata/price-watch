@@ -1241,3 +1241,254 @@ class TestPriceRepositoryBranchCoverage:
         last = price_repo.get_last(url="https://example.com/item/1")
         assert last is not None
         assert last.price == 1000
+
+
+# === ItemRepository get_by_name テスト ===
+class TestItemRepositoryGetByName:
+    """ItemRepository.get_by_name のテスト"""
+
+    @pytest.fixture
+    def item_repo(self, temp_data_dir: pathlib.Path) -> ItemRepository:
+        """ItemRepository フィクスチャ"""
+        db = HistoryDBConnection.create(temp_data_dir)
+        db.initialize()
+        return ItemRepository(db=db)
+
+    def test_get_by_name_returns_items_with_same_name(self, item_repo: ItemRepository) -> None:
+        """同じ商品名のアイテムを全て返す"""
+        with item_repo.db.connect() as conn:
+            cur = conn.cursor()
+            item_repo.get_or_create(cur, "共通商品名", "store-a", url="https://store-a.com/item/1")
+            item_repo.get_or_create(cur, "共通商品名", "store-b", url="https://store-b.com/item/1")
+            item_repo.get_or_create(cur, "別の商品", "store-a", url="https://store-a.com/item/2")
+            conn.commit()
+
+        items = item_repo.get_by_name("共通商品名")
+        assert len(items) == 2
+        assert all(item.name == "共通商品名" for item in items)
+
+    def test_get_by_name_returns_empty_for_nonexistent(self, item_repo: ItemRepository) -> None:
+        """存在しない商品名の場合は空リストを返す"""
+        items = item_repo.get_by_name("存在しない商品")
+        assert items == []
+
+    def test_get_by_name_includes_price_unit(self, item_repo: ItemRepository) -> None:
+        """price_unit カラムを含む ItemRecord を返す"""
+        with item_repo.db.connect() as conn:
+            cur = conn.cursor()
+            item_repo.get_or_create(
+                cur, "商品名", "store-a", url="https://store-a.com/item/1", price_unit="ドル"
+            )
+            conn.commit()
+
+        items = item_repo.get_by_name("商品名")
+        assert len(items) == 1
+        assert items[0].price_unit == "ドル"
+
+
+# === PriceRepository get_lowest_price_across_stores_in_yen テスト ===
+class TestPriceRepositoryCrossStoreLowest:
+    """PriceRepository.get_lowest_price_across_stores_in_yen のテスト"""
+
+    @pytest.fixture
+    def price_repo(self, temp_data_dir: pathlib.Path) -> PriceRepository:
+        """PriceRepository フィクスチャ"""
+        db = HistoryDBConnection.create(temp_data_dir)
+        db.initialize()
+        item_repo = ItemRepository(db=db)
+        return PriceRepository(db=db, item_repo=item_repo)
+
+    def test_returns_lowest_across_stores(self, price_repo: PriceRepository) -> None:
+        """全ストア横断で最安値を返す"""
+        # ストアA: 1000円
+        item_a = {
+            "name": "共通商品名",
+            "store": "store-a",
+            "url": "https://store-a.com/item/1",
+            "price": 1000,
+            "stock": 1,
+            "price_unit": "円",
+        }
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_repo.insert(item_a)
+
+        # ストアB: 800円
+        item_b = {
+            "name": "共通商品名",
+            "store": "store-b",
+            "url": "https://store-b.com/item/1",
+            "price": 800,
+            "stock": 1,
+            "price_unit": "円",
+        }
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            price_repo.insert(item_b)
+
+        currency_rates: dict[str, float] = {}
+        lowest = price_repo.get_lowest_price_across_stores_in_yen("共通商品名", currency_rates)
+        assert lowest == 800
+
+    def test_returns_lowest_with_currency_conversion(self, price_repo: PriceRepository) -> None:
+        """通貨換算を考慮して最安値を返す"""
+        # ストアA: 1000円
+        item_a = {
+            "name": "共通商品名",
+            "store": "store-a",
+            "url": "https://store-a.com/item/1",
+            "price": 1000,
+            "stock": 1,
+            "price_unit": "円",
+        }
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_repo.insert(item_a)
+
+        # ストアB: 5ドル（= 750円 @ 150円/ドル）
+        item_b = {
+            "name": "共通商品名",
+            "store": "store-b",
+            "url": "https://store-b.com/item/1",
+            "price": 5,
+            "stock": 1,
+            "price_unit": "ドル",
+        }
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            price_repo.insert(item_b)
+
+        currency_rates = {"ドル": 150.0}
+        lowest = price_repo.get_lowest_price_across_stores_in_yen("共通商品名", currency_rates)
+        assert lowest == 750  # 5ドル * 150 = 750円
+
+    def test_ignores_out_of_stock(self, price_repo: PriceRepository) -> None:
+        """在庫なし商品は除外する"""
+        # ストアA: 1000円（在庫あり）
+        item_a = {
+            "name": "共通商品名",
+            "store": "store-a",
+            "url": "https://store-a.com/item/1",
+            "price": 1000,
+            "stock": 1,
+            "price_unit": "円",
+        }
+        with time_machine.travel(_BASE_TIME, tick=False):
+            price_repo.insert(item_a)
+
+        # ストアB: 500円（在庫なし）
+        item_b = {
+            "name": "共通商品名",
+            "store": "store-b",
+            "url": "https://store-b.com/item/1",
+            "price": 500,
+            "stock": 0,  # 在庫なし
+            "price_unit": "円",
+        }
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            price_repo.insert(item_b)
+
+        currency_rates: dict[str, float] = {}
+        lowest = price_repo.get_lowest_price_across_stores_in_yen("共通商品名", currency_rates)
+        assert lowest == 1000  # 在庫ありの1000円が最安値
+
+    def test_returns_none_for_no_data(self, price_repo: PriceRepository) -> None:
+        """データがない場合は None を返す"""
+        currency_rates: dict[str, float] = {}
+        lowest = price_repo.get_lowest_price_across_stores_in_yen("存在しない商品", currency_rates)
+        assert lowest is None
+
+    def test_respects_days_parameter(self, price_repo: PriceRepository) -> None:
+        """days パラメータで期間を制限できる
+
+        Note: SQLite の datetime('now') は time_machine でモックされないため、
+        このテストでは days=None と days 指定の両方で結果が取得できることを確認する。
+        """
+        # 現在時刻でデータを挿入
+        item = {
+            "name": "共通商品名",
+            "store": "store-a",
+            "url": "https://store-a.com/item/1",
+            "price": 1000,
+            "stock": 1,
+            "price_unit": "円",
+        }
+        price_repo.insert(item)
+
+        # 異なる価格を追加（同じ時間帯なので最小値が保持される場合あり）
+        item["price"] = 800
+        item["url"] = "https://store-a.com/item/2"  # 別のアイテムとして登録
+        price_repo.insert(item)
+
+        currency_rates: dict[str, float] = {}
+
+        # 全期間で最安値を取得
+        lowest_all = price_repo.get_lowest_price_across_stores_in_yen("共通商品名", currency_rates, days=None)
+        assert lowest_all == 800
+
+        # 7日以内でも最安値を取得（現在時刻のデータなので含まれる）
+        lowest_7d = price_repo.get_lowest_price_across_stores_in_yen("共通商品名", currency_rates, days=7)
+        assert lowest_7d == 800
+
+
+# === HistoryManager 全ストア横断機能のテスト ===
+class TestHistoryManagerCrossStoreFunctions:
+    """HistoryManager の全ストア横断機能テスト"""
+
+    @pytest.fixture
+    def manager(self, temp_data_dir: pathlib.Path) -> HistoryManager:
+        """HistoryManager フィクスチャ"""
+        mgr = HistoryManager.create(temp_data_dir)
+        mgr.initialize()
+        return mgr
+
+    def test_get_items_by_name_delegation(self, manager: HistoryManager) -> None:
+        """get_items_by_name の委譲が正しく動作する"""
+        items = [
+            {
+                "name": "共通商品名",
+                "store": "store-a",
+                "url": "https://store-a.com/1",
+                "price": 1000,
+                "stock": 1,
+            },
+            {
+                "name": "共通商品名",
+                "store": "store-b",
+                "url": "https://store-b.com/1",
+                "price": 800,
+                "stock": 1,
+            },
+        ]
+
+        for item in items:
+            manager.insert(item)
+
+        result = manager.get_items_by_name("共通商品名")
+        assert len(result) == 2
+
+    def test_get_lowest_price_across_stores_in_yen_delegation(self, manager: HistoryManager) -> None:
+        """get_lowest_price_across_stores_in_yen の委譲が正しく動作する"""
+        items = [
+            {
+                "name": "共通商品名",
+                "store": "store-a",
+                "url": "https://store-a.com/1",
+                "price": 1000,
+                "stock": 1,
+                "price_unit": "円",
+            },
+            {
+                "name": "共通商品名",
+                "store": "store-b",
+                "url": "https://store-b.com/1",
+                "price": 800,
+                "stock": 1,
+                "price_unit": "円",
+            },
+        ]
+
+        with time_machine.travel(_BASE_TIME, tick=False):
+            manager.insert(items[0])
+        with time_machine.travel(_BASE_TIME + timedelta(hours=1), tick=False):
+            manager.insert(items[1])
+
+        currency_rates: dict[str, float] = {}
+        lowest = manager.get_lowest_price_across_stores_in_yen("共通商品名", currency_rates)
+        assert lowest == 800

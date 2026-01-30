@@ -82,6 +82,9 @@ class HistoryDBConnection:
         # スキーママイグレーション: events.url カラムの追加（既存DB対応）
         self._migrate_events_url_column()
 
+        # スキーママイグレーション: items.price_unit カラムの追加（既存DB対応）
+        self._migrate_items_price_unit_column()
+
         self._initialized = True
 
     def _migrate_events_url_column(self) -> None:
@@ -89,6 +92,13 @@ class HistoryDBConnection:
         if not self.column_exists("events", "url"):
             with my_lib.sqlite_util.connect(self.db_path) as conn:
                 conn.execute("ALTER TABLE events ADD COLUMN url TEXT")
+                conn.commit()
+
+    def _migrate_items_price_unit_column(self) -> None:
+        """items テーブルに price_unit カラムを追加（既存DB対応）."""
+        if not self.column_exists("items", "price_unit"):
+            with my_lib.sqlite_util.connect(self.db_path) as conn:
+                conn.execute("ALTER TABLE items ADD COLUMN price_unit TEXT DEFAULT '円'")
                 conn.commit()
 
     def table_exists(self, table_name: str) -> bool:

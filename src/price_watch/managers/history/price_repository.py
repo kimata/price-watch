@@ -57,6 +57,7 @@ class PriceRepository:
                 thumb_url=item.get("thumb_url"),
                 search_keyword=item.get("search_keyword"),
                 search_cond=item.get("search_cond"),
+                price_unit=item.get("price_unit"),
             )
 
             now = my_lib.time.now()
@@ -157,6 +158,7 @@ class PriceRepository:
                 thumb_url=item.get("thumb_url"),
                 search_keyword=item.get("search_keyword"),
                 search_cond=item.get("search_cond"),
+                price_unit=item.get("price_unit"),
             )
             conn.commit()
             return item_id
@@ -343,7 +345,7 @@ class PriceRepository:
             cur.execute(
                 """
                 SELECT id, item_key, url, name, store, thumb_url,
-                       search_keyword, search_cond, created_at, updated_at
+                       search_keyword, search_cond, price_unit, created_at, updated_at
                 FROM items
                 WHERE item_key = ?
                 """,
@@ -641,3 +643,88 @@ class PriceRepository:
 
             duration_seconds = (now - oldest_time).total_seconds()
             return duration_seconds / 3600
+
+    def get_lowest_price_across_stores_in_yen(
+        self,
+        item_name: str,
+        currency_rates: dict[str, float],
+        days: int | None = None,
+    ) -> int | None:
+        """全ストア横断で円換算後の最安値を取得.
+
+        同じ商品名（item.name）を持つ全てのアイテム（全ストア）から
+        最安値を取得し、各ストアの通貨単位に応じて円換算した上で
+        最も安い価格を返します。
+
+        Args:
+            item_name: 商品名（items.name）
+            currency_rates: 通貨換算レート（例: {"ドル": 150.0}）。
+                           "円" は暗黙的に 1.0 として扱います。
+            days: 期間（日数）。None の場合は全期間。
+
+        Returns:
+            円換算後の最安値、または None（データがない場合）
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+
+            # 同じ商品名を持つアイテムを取得
+            cur.execute(
+                """
+                SELECT id, price_unit
+                FROM items
+                WHERE name = ?
+                """,
+                (item_name,),
+            )
+            items = cur.fetchall()
+
+            if not items:
+                return None
+
+            lowest_in_yen: int | None = None
+
+            for item in items:
+                item_id = item["id"]
+                price_unit = item.get("price_unit") or "円"
+
+                # 通貨レートを解決
+                rate = 1.0 if price_unit == "円" else currency_rates.get(price_unit, 1.0)
+
+                # 指定期間内の最安値を取得
+                if days and days > 0:
+                    cur.execute(
+                        """
+                        SELECT MIN(price)
+                        FROM price_history
+                        WHERE item_id = ?
+                          AND time >= datetime('now', 'localtime', ?)
+                          AND price IS NOT NULL
+                          AND crawl_status = 1
+                          AND stock = 1
+                        """,
+                        (item_id, f"-{days} days"),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT MIN(price)
+                        FROM price_history
+                        WHERE item_id = ?
+                          AND price IS NOT NULL
+                          AND crawl_status = 1
+                          AND stock = 1
+                        """,
+                        (item_id,),
+                    )
+
+                row = cur.fetchone()
+                if row:
+                    values = list(row.values())
+                    min_price = values[0] if values and values[0] is not None else None
+                    if min_price is not None:
+                        price_in_yen = int(min_price * rate)
+                        if lowest_in_yen is None or price_in_yen < lowest_in_yen:
+                            lowest_in_yen = price_in_yen
+
+            return lowest_in_yen

@@ -457,6 +457,17 @@ class ItemProcessor:
                 return cr.rate
         return 1.0
 
+    def _build_all_currency_rates(self) -> dict[str, float]:
+        """全通貨の換算レート辞書を構築.
+
+        Returns:
+            通貨ラベルをキー、レートを値とする辞書
+        """
+        rates: dict[str, float] = {}
+        for cr in self.config.check.currency:
+            rates[cr.label] = cr.rate
+        return rates
+
     def _check_and_notify_events(
         self,
         item: price_watch.models.CheckedItem,
@@ -476,6 +487,7 @@ class ItemProcessor:
         last_stock = last.stock
 
         currency_rate = self._resolve_currency_rate(item.price_unit)
+        all_currency_rates = self._build_all_currency_rates()
 
         if crawl_status == 1:
             # 在庫復活判定
@@ -495,13 +507,21 @@ class ItemProcessor:
                     ignore_hours,
                     lowest_config=lowest_config,
                     currency_rate=currency_rate,
+                    item_name=item.name,
+                    all_currency_rates=all_currency_rates,
                 )
                 if result is not None and result.should_notify:
                     self._notify_and_record_event(result, item, item_id)
 
                 if windows:
                     result = price_watch.event.check_price_drop(
-                        history, item_id, current_price, windows, currency_rate=currency_rate
+                        history,
+                        item_id,
+                        current_price,
+                        windows,
+                        currency_rate=currency_rate,
+                        item_name=item.name,
+                        all_currency_rates=all_currency_rates,
                     )
                     if result is not None and result.should_notify:
                         self._notify_and_record_event(result, item, item_id)

@@ -475,6 +475,106 @@ class TestCheckLowestPrice:
         assert result is not None
         assert result.should_notify is True
 
+    def test_cross_store_event_suppressed_when_other_store_cheaper(
+        self, mock_history: mock.MagicMock
+    ) -> None:
+        """他のストアでより安い価格がある場合はイベントを発生させない（全ストア横断判定）"""
+        # このストアでは最安値更新
+        mock_history.get_lowest_in_period.return_value = 1000
+        # 他のストアでは 700 円で販売中（円換算後）
+        mock_history.get_lowest_price_across_stores_in_yen.return_value = 700
+
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=800,  # このストアでは最安値だが全ストアでは最安ではない
+            ignore_hours=24,
+            item_name="テスト商品",
+            all_currency_rates={"ドル": 150.0},
+        )
+
+        assert result is None
+        mock_history.get_lowest_price_across_stores_in_yen.assert_called_once_with(
+            "テスト商品", {"ドル": 150.0}, days=None
+        )
+
+    def test_cross_store_event_fires_when_cheapest_overall(self, mock_history: mock.MagicMock) -> None:
+        """全ストアで最も安い場合はイベントを発生させる（全ストア横断判定）"""
+        mock_history.get_lowest_in_period.return_value = 1000
+        # 他のストアでの最安値は 900 円
+        mock_history.get_lowest_price_across_stores_in_yen.return_value = 900
+        mock_history.has_event_in_hours.return_value = False
+
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=800,  # 全ストアで最安値
+            ignore_hours=24,
+            item_name="テスト商品",
+            all_currency_rates={"ドル": 150.0},
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
+    def test_cross_store_with_currency_conversion(self, mock_history: mock.MagicMock) -> None:
+        """通貨換算を考慮した全ストア横断判定"""
+        mock_history.get_lowest_in_period.return_value = 100  # $100
+        # 他のストアでの最安値は 15000 円
+        mock_history.get_lowest_price_across_stores_in_yen.return_value = 15000
+        mock_history.has_event_in_hours.return_value = False
+
+        # $90 * 150 = 13500 円 < 15000 円 なのでイベント発生
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=90,  # $90
+            ignore_hours=24,
+            currency_rate=150.0,  # ドルレート
+            item_name="テスト商品",
+            all_currency_rates={"ドル": 150.0},
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+
+    def test_cross_store_suppressed_with_currency_conversion(self, mock_history: mock.MagicMock) -> None:
+        """通貨換算後、他のストアが安い場合はイベント抑制"""
+        mock_history.get_lowest_in_period.return_value = 100  # $100
+        # 他のストアでの最安値は 10000 円
+        mock_history.get_lowest_price_across_stores_in_yen.return_value = 10000
+
+        # $90 * 150 = 13500 円 > 10000 円 なのでイベント抑制
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=90,  # $90
+            ignore_hours=24,
+            currency_rate=150.0,  # ドルレート
+            item_name="テスト商品",
+            all_currency_rates={"ドル": 150.0},
+        )
+
+        assert result is None
+
+    def test_backward_compatible_without_cross_store_params(self, mock_history: mock.MagicMock) -> None:
+        """全ストア横断パラメータなしの場合は従来どおり動作（後方互換）"""
+        mock_history.get_lowest_in_period.return_value = 1000
+        mock_history.has_event_in_hours.return_value = False
+
+        result = check_lowest_price(
+            mock_history,
+            item_id=1,
+            current_price=800,
+            ignore_hours=24,
+            # item_name と all_currency_rates を指定しない
+        )
+
+        assert result is not None
+        assert result.should_notify is True
+        # get_lowest_price_across_stores_in_yen は呼ばれない
+        mock_history.get_lowest_price_across_stores_in_yen.assert_not_called()
+
 
 # === check_price_drop テスト ===
 class TestCheckPriceDrop:
