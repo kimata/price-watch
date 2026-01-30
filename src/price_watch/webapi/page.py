@@ -517,10 +517,15 @@ def get_items(
             for name, store_data_list in items_by_name.items()
         ]
 
+        # 設定から監視間隔を取得
+        app_config = price_watch.webapi.cache.get_app_config()
+        check_interval_sec = app_config.check.interval_sec if app_config else 1800
+
         response = price_watch.webapi.schemas.ItemsResponse(
             items=result_items,
             store_definitions=_get_store_definitions(target_config),
             categories=categories,
+            check_interval_sec=check_interval_sec,
         )
 
         return flask.jsonify(response.model_dump())

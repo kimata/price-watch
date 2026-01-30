@@ -43,18 +43,49 @@ function getPageFromUrl(): "list" | "item" | "metrics" {
     return "list";
 }
 
+// 有効な期間の値
+const VALID_PERIODS: Period[] = ["30", "90", "180", "365", "all"];
+
+// URL から期間を取得
+function getPeriodFromUrl(): Period {
+    const params = new URLSearchParams(window.location.search);
+    const periodParam = params.get("period");
+    if (periodParam && VALID_PERIODS.includes(periodParam as Period)) {
+        return periodParam as Period;
+    }
+    return "30"; // デフォルト値
+}
+
+// URL を更新（期間パラメータを含む）
+function updateUrlWithPeriod(period: Period, replace: boolean = false): void {
+    const url = new URL(window.location.href);
+    if (period === "30") {
+        url.searchParams.delete("period"); // デフォルト値の場合はパラメータを削除
+    } else {
+        url.searchParams.set("period", period);
+    }
+    if (replace) {
+        window.history.replaceState(window.history.state, "", url.toString());
+    } else {
+        window.history.pushState(window.history.state, "", url.toString());
+    }
+}
+
 export default function App() {
     const [items, setItems] = useState<Item[]>([]);
     const [storeDefinitions, setStoreDefinitions] = useState<StoreDefinition[]>([]);
     const [categories, setCategories] = useState<string[]>([]);
+    const [checkIntervalSec, setCheckIntervalSec] = useState<number>(1800);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [period, setPeriod] = useState<Period>("30");
+    const [period, setPeriod] = useState<Period>(getPeriodFromUrl);
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     const [showMetrics, setShowMetrics] = useState(getPageFromUrl() === "metrics");
 
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
+    // ハッシュスクロール済みフラグ
+    const hashScrollDone = useRef(false);
 
     // SSE 接続用 refs
     const eventSourceRef = useRef<EventSource | null>(null);
@@ -68,6 +99,7 @@ export default function App() {
             setItems(response.items);
             setStoreDefinitions(response.store_definitions || []);
             setCategories(response.categories || []);
+            setCheckIntervalSec(response.check_interval_sec || 1800);
         } catch (err) {
             setError("データの取得に失敗しました");
             console.error(err);
@@ -154,10 +186,32 @@ export default function App() {
         }
     }, [items, loading, findItemByKey]);
 
+    // URL のハッシュに対応するカテゴリにスクロール（初回のみ）
+    useEffect(() => {
+        if (hashScrollDone.current || loading || items.length === 0 || selectedItem) {
+            return;
+        }
+
+        const hash = window.location.hash;
+        if (hash) {
+            // 少し遅延させてDOMのレンダリングを待つ
+            setTimeout(() => {
+                const el = document.getElementById(hash.slice(1));
+                if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+            }, 100);
+            hashScrollDone.current = true;
+        }
+    }, [items, loading, selectedItem]);
+
     // ブラウザの戻る/進むボタン対応
     useEffect(() => {
         const handlePopState = () => {
             const page = getPageFromUrl();
+            const urlPeriod = getPeriodFromUrl();
+            setPeriod(urlPeriod);
+
             if (page === "metrics") {
                 setShowMetrics(true);
                 setSelectedItem(null);
@@ -180,15 +234,25 @@ export default function App() {
 
     const handlePeriodChange = (newPeriod: Period) => {
         setPeriod(newPeriod);
+        updateUrlWithPeriod(newPeriod, true); // replaceState で履歴を増やさない
+    };
+
+    // 期間パラメータを含む URL を生成
+    const buildUrlWithPeriod = (basePath: string): string => {
+        const url = new URL(basePath, window.location.origin);
+        if (period !== "30") {
+            url.searchParams.set("period", period);
+        }
+        return url.pathname + url.search + url.hash;
     };
 
     const handleItemClick = (item: Item) => {
         setSelectedItem(item);
 
-        // URL を変更（履歴に追加）
+        // URL を変更（履歴に追加、期間パラメータを保持）
         const itemKey = getItemKey(item);
         if (itemKey) {
-            const newUrl = `/price/items/${encodeURIComponent(itemKey)}`;
+            const newUrl = buildUrlWithPeriod(`/price/items/${encodeURIComponent(itemKey)}`);
             window.history.pushState({ itemKey }, "", newUrl);
         }
 
@@ -199,20 +263,23 @@ export default function App() {
     const handleBackToList = () => {
         setSelectedItem(null);
 
-        // URL を一覧ページに戻す（履歴に追加）
-        window.history.pushState(null, "", "/price/");
+        // URL を一覧ページに戻す（履歴に追加、期間パラメータを保持）
+        const newUrl = buildUrlWithPeriod("/price/");
+        window.history.pushState(null, "", newUrl);
     };
 
     const handleMetricsClick = () => {
         setShowMetrics(true);
         setSelectedItem(null);
-        window.history.pushState(null, "", "/price/metrics");
+        const newUrl = buildUrlWithPeriod("/price/metrics");
+        window.history.pushState(null, "", newUrl);
         window.scrollTo(0, 0);
     };
 
     const handleBackFromMetrics = () => {
         setShowMetrics(false);
-        window.history.pushState(null, "", "/price/");
+        const newUrl = buildUrlWithPeriod("/price/");
+        window.history.pushState(null, "", newUrl);
     };
 
     // メトリクスページを表示
@@ -229,6 +296,7 @@ export default function App() {
                 period={period}
                 onBack={handleBackToList}
                 onPeriodChange={handlePeriodChange}
+                checkIntervalSec={checkIntervalSec}
             />
         );
     }
@@ -263,6 +331,7 @@ export default function App() {
                         onItemClick={handleItemClick}
                         period={period}
                         categories={categories}
+                        checkIntervalSec={checkIntervalSec}
                     />
                 )}
 

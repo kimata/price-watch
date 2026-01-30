@@ -1,4 +1,11 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
+
+// カスタムツールチップポジショナーの型宣言
+declare module "chart.js" {
+    interface TooltipPositionerMap {
+        fixedBottom: TooltipPositionerFunction<ChartType>;
+    }
+}
 import { Line } from "react-chartjs-2";
 import {
     Chart as ChartJS,
@@ -11,7 +18,7 @@ import {
     Legend,
     Filler,
 } from "chart.js";
-import type { ChartOptions, LegendItem, ChartEvent } from "chart.js";
+import type { ChartOptions, LegendItem, ChartEvent, Chart, Plugin, ChartType, TooltipPositionerFunction } from "chart.js";
 import annotationPlugin from "chartjs-plugin-annotation";
 import type { AnnotationOptions } from "chartjs-plugin-annotation";
 import dayjs from "dayjs";
@@ -19,6 +26,26 @@ import type { StoreEntry, StoreDefinition } from "../types";
 import { formatPriceForChart, formatPriceForYAxis } from "../utils/formatPrice";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin);
+
+// カスタムツールチップポジショナーを登録（縦線の位置にキャレットを向ける）
+Tooltip.positioners.fixedBottom = function (elements, _eventPosition) {
+    if (!elements.length) {
+        return false;
+    }
+
+    const chart = this.chart;
+    const chartArea = chart.chartArea;
+
+    // データポイントの x 座標（縦線の位置）を取得
+    const dataPointX = elements[0].element.x;
+
+    // キャレットが縦線を指すように、データポイントの位置を返す
+    // y は下部に固定
+    return {
+        x: dataPointX,
+        y: chartArea.bottom - 10,
+    };
+};
 
 // デフォルトの色（target.yaml で color が指定されていない場合）
 const DEFAULT_COLORS = [
@@ -85,6 +112,7 @@ function findOutOfStockPeriods(
 
     for (let i = 0; i < sortedTimes.length; i++) {
         const time = sortedTimes[i];
+        const timeHour = dayjs(time).format("YYYY-MM-DD HH:00");
 
         // この時間でデータがあるストアのうち、全て在庫なしかどうかをチェック
         let hasDataForTime = false;
@@ -93,7 +121,7 @@ function findOutOfStockPeriods(
         for (const store of stores) {
             // 同じ時間帯の全てのエントリをチェック（1つでも在庫ありなら在庫ありとみなす）
             const historyItems = store.history.filter(
-                (h) => dayjs(h.time).format("YYYY-MM-DD HH:00") === time
+                (h) => dayjs(h.time).format("YYYY-MM-DD HH:00") === timeHour
             );
             if (historyItems.length > 0) {
                 hasDataForTime = true;
@@ -126,17 +154,105 @@ function findOutOfStockPeriods(
     return periods;
 }
 
+/**
+ * 各ストアのデータポイント（正確な時刻と価格のマッピング）
+ */
+interface StoreDataPoint {
+    storeName: string;
+    time: string; // ISO 8601 形式
+    timestamp: number; // Unix timestamp (ms)
+    effectivePrice: number | null;
+}
+
+/**
+ * 二分探索で指定時刻以前の最も近いデータポイントを検索
+ */
+function findNearestPastPoint(
+    sortedPoints: StoreDataPoint[],
+    targetTimestamp: number
+): StoreDataPoint | null {
+    if (sortedPoints.length === 0) return null;
+
+    let left = 0;
+    let right = sortedPoints.length - 1;
+    let result: StoreDataPoint | null = null;
+
+    while (left <= right) {
+        const mid = Math.floor((left + right) / 2);
+        if (sortedPoints[mid].timestamp <= targetTimestamp) {
+            result = sortedPoints[mid];
+            left = mid + 1;
+        } else {
+            right = mid - 1;
+        }
+    }
+
+    return result;
+}
+
+/**
+ * ツールチップに表示するデータを構築
+ */
+interface TooltipData {
+    baseTime: string; // 基準時刻（表示用）
+    entries: Array<{
+        storeName: string;
+        effectivePrice: number | null;
+        color: string;
+        hasData: boolean; // interval 以内にデータがあるか
+    }>;
+}
+
+/**
+ * 縦線描画用のプラグイン
+ * マウス位置に基づいて選択されたデータポイントの位置に縦線を描画
+ */
+const verticalLinePlugin: Plugin<"line"> = {
+    id: "verticalLine",
+    afterDraw: (chart) => {
+        const tooltip = chart.tooltip;
+        if (!tooltip || !tooltip.getActiveElements().length) {
+            return;
+        }
+
+        const activeElements = tooltip.getActiveElements();
+        if (activeElements.length === 0) return;
+
+        const { ctx, chartArea } = chart;
+        const x = activeElements[0].element.x;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(x, chartArea.top);
+        ctx.lineTo(x, chartArea.bottom);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(100, 100, 100, 0.5)";
+        ctx.setLineDash([4, 4]);
+        ctx.stroke();
+        ctx.restore();
+    },
+};
+
 interface PriceChartProps {
     stores: StoreEntry[];
     storeDefinitions: StoreDefinition[];
     className?: string;
     period?: string; // "30", "90", "180", "365", "all"
     largeLabels?: boolean; // 個別ページ用の大きめラベル
+    checkIntervalSec?: number; // 監視間隔（秒）- ツールチップ表示用
 }
 
-export default function PriceChart({ stores, storeDefinitions, className = "h-40", period: _period = "30", largeLabels = false }: PriceChartProps) {
+export default function PriceChart({
+    stores,
+    storeDefinitions,
+    className = "h-40",
+    period: _period = "30",
+    largeLabels = false,
+    checkIntervalSec = 1800,
+}: PriceChartProps) {
     // 選択された系列（null の場合は全て表示）
     const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
+    const chartRef = useRef<Chart<"line"> | null>(null);
 
     // 最初のストアの通貨単位を取得（同一アイテムのストアは同じ通貨単位を持つと仮定）
     const priceUnit = stores[0]?.price_unit ?? "円";
@@ -161,19 +277,38 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         setSelectedLabel(null);
     }, []);
 
+    // 各ストアのデータポイントを正確な時刻で構築
+    const storeDataPoints = useMemo(() => {
+        const result: Map<string, StoreDataPoint[]> = new Map();
+
+        stores.forEach((store) => {
+            const points: StoreDataPoint[] = store.history
+                .map((h) => ({
+                    storeName: store.store,
+                    time: h.time,
+                    timestamp: dayjs(h.time).valueOf(),
+                    effectivePrice: h.effective_price,
+                }))
+                .sort((a, b) => a.timestamp - b.timestamp);
+
+            result.set(store.store, points);
+        });
+
+        return result;
+    }, [stores]);
+
     const { chartData, sortedTimes } = useMemo(() => {
-        // 全ストアの履歴から日時を抽出してマージ
+        // 全ストアの履歴から日時を抽出してマージ（正確な時刻を保持）
         const allTimes = new Set<string>();
         stores.forEach((store) => {
             store.history.forEach((h) => {
-                // 時間単位でグルーピング（分は切り捨て）
-                allTimes.add(dayjs(h.time).format("YYYY-MM-DD HH:00"));
+                allTimes.add(h.time);
             });
         });
 
         // 現在時刻も追加（グラフの終点を現在時刻にする）
         const now = dayjs();
-        allTimes.add(now.format("YYYY-MM-DD HH:00"));
+        allTimes.add(now.toISOString());
 
         // 日時をソート
         const sortedTimes = Array.from(allTimes).sort();
@@ -200,11 +335,10 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         const datasets = stores.map((store, index) => {
             const color = getStoreColor(store.store, storeDefinitions, index);
 
-            // 時間ごとの effective_price をマップ（null も保持）
+            // 時間ごとの effective_price をマップ（正確な時刻で）
             const priceMap = new Map<string, number | null>();
             store.history.forEach((h) => {
-                const time = dayjs(h.time).format("YYYY-MM-DD HH:00");
-                priceMap.set(time, h.effective_price);
+                priceMap.set(h.time, h.effective_price);
             });
 
             // sortedTimes に沿って値を配列化（データなしは undefined、価格なしは null）
@@ -233,6 +367,62 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         return { chartData: { labels, datasets }, sortedTimes };
     }, [stores, storeDefinitions, selectedLabel]);
 
+    /**
+     * ツールチップデータを計算
+     * マウス位置の時間から各ストアの最近傍データを検索
+     */
+    const calculateTooltipData = useCallback(
+        (mouseTimestamp: number): TooltipData | null => {
+            // 各ストアで最も近い過去のデータポイントを検索
+            let basePoint: StoreDataPoint | null = null;
+
+            for (const [, points] of storeDataPoints) {
+                const point = findNearestPastPoint(points, mouseTimestamp);
+                if (point) {
+                    if (!basePoint || point.timestamp > basePoint.timestamp) {
+                        basePoint = point;
+                    }
+                }
+            }
+
+            if (!basePoint) return null;
+
+            const intervalMs = checkIntervalSec * 1000;
+            const entries: TooltipData["entries"] = [];
+
+            // 各ストアについて、基準時刻から interval 以内のデータを検索
+            stores.forEach((store, index) => {
+                const points = storeDataPoints.get(store.store) || [];
+                const color = getStoreColor(store.store, storeDefinitions, index);
+
+                // 基準時刻から interval 以内で最も近いデータを探す
+                let nearestPoint: StoreDataPoint | null = null;
+                let minDistance = Infinity;
+
+                for (const point of points) {
+                    const distance = Math.abs(point.timestamp - basePoint!.timestamp);
+                    if (distance <= intervalMs && distance < minDistance) {
+                        minDistance = distance;
+                        nearestPoint = point;
+                    }
+                }
+
+                entries.push({
+                    storeName: store.store,
+                    effectivePrice: nearestPoint?.effectivePrice ?? null,
+                    color: color.border,
+                    hasData: nearestPoint !== null,
+                });
+            });
+
+            return {
+                baseTime: basePoint.time,
+                entries,
+            };
+        },
+        [storeDataPoints, stores, storeDefinitions, checkIntervalSec]
+    );
+
     const options: ChartOptions<"line"> = useMemo(() => {
         // 全ストアの価格から min/max を計算（null は除外）
         const allPrices: number[] = [];
@@ -248,7 +438,10 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         const outOfStockPeriods = findOutOfStockPeriods(stores, sortedTimes);
         const annotations: Record<string, AnnotationOptions> = {};
 
+        const totalPoints = sortedTimes.length;
         outOfStockPeriods.forEach((period, index) => {
+            const periodLength = period.end - period.start + 1;
+            const isMoreThanHalf = periodLength > totalPoints / 2;
             annotations[`outOfStock${index}`] = {
                 type: "box",
                 xMin: period.start - 0.5,
@@ -256,7 +449,7 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                 backgroundColor: "rgba(200, 200, 200, 0.3)",
                 borderWidth: 0,
                 label: {
-                    display: period.end - period.start >= 2, // 3ポイント以上の期間のみラベル表示
+                    display: isMoreThanHalf, // 全期間の半分以上の場合のみラベル表示
                     content: "在庫なし",
                     position: "center",
                     color: "rgba(120, 120, 120, 0.8)",
@@ -273,6 +466,11 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
         return {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false, // ちらつき抑制のためアニメーションを無効化
+            interaction: {
+                mode: "index",
+                intersect: false,
+            },
             plugins: {
                 legend: {
                     display: true,
@@ -305,22 +503,85 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     },
                 },
                 tooltip: {
+                    enabled: true,
+                    position: "fixedBottom" as const,
+                    yAlign: "center" as const, // キャレットを横方向に出す
+                    animation: {
+                        duration: 0, // ちらつき抑制のためアニメーションを無効化
+                    },
                     titleFont: { size: largeLabels ? 13 : 11 },
                     bodyFont: { size: largeLabels ? 13 : 11 },
                     padding: largeLabels ? 10 : 6,
                     callbacks: {
                         title: (tooltipItems) => {
                             if (tooltipItems.length === 0) return "";
+
+                            // tooltipItems からインデックスを取得し、対応する時刻を取得
                             const index = tooltipItems[0].dataIndex;
                             const time = sortedTimes[index];
-                            return time ? dayjs(time).format("YYYY年M月D日 H:00") : "";
+                            if (!time) return "";
+
+                            const mouseTimestamp = dayjs(time).valueOf();
+                            const tooltipData = calculateTooltipData(mouseTimestamp);
+
+                            if (!tooltipData) return "";
+
+                            return dayjs(tooltipData.baseTime).format("YYYY年M月D日 H:mm");
                         },
-                        label: (context) => {
-                            const value = context.parsed.y;
-                            const storeName = context.dataset.label || "";
-                            return value !== null ? `${storeName}: ${formatPriceForChart(value, priceUnit)}` : "";
+                        label: () => {
+                            // 個別ラベルは使用しない（afterBody で全ストアを表示）
+                            return "";
+                        },
+                        afterBody: (tooltipItems) => {
+                            if (tooltipItems.length === 0) return [];
+
+                            const index = tooltipItems[0].dataIndex;
+                            const time = sortedTimes[index];
+                            if (!time) return [];
+
+                            const mouseTimestamp = dayjs(time).valueOf();
+                            const tooltipData = calculateTooltipData(mouseTimestamp);
+
+                            if (!tooltipData) return [];
+
+                            // 最安価格を特定
+                            const validPrices = tooltipData.entries
+                                .filter((e) => e.hasData && e.effectivePrice !== null)
+                                .map((e) => e.effectivePrice as number);
+                            const lowestPrice = validPrices.length > 0 ? Math.min(...validPrices) : null;
+
+                            // 価格の安い順にソート（価格なしは末尾）
+                            const sortedEntries = [...tooltipData.entries].sort((a, b) => {
+                                // データなしは末尾
+                                if (!a.hasData && !b.hasData) return 0;
+                                if (!a.hasData) return 1;
+                                if (!b.hasData) return -1;
+                                // 在庫なし（価格null）は末尾
+                                if (a.effectivePrice === null && b.effectivePrice === null) return 0;
+                                if (a.effectivePrice === null) return 1;
+                                if (b.effectivePrice === null) return -1;
+                                // 価格の昇順
+                                return a.effectivePrice - b.effectivePrice;
+                            });
+
+                            return sortedEntries.map((entry) => {
+                                if (!entry.hasData) {
+                                    return `${entry.storeName}: -`;
+                                }
+                                if (entry.effectivePrice === null) {
+                                    return `${entry.storeName}: 在庫なし`;
+                                }
+                                // 最安価格は絶対値、それ以外は差額を表示
+                                if (lowestPrice !== null && entry.effectivePrice === lowestPrice) {
+                                    return `${entry.storeName}: ${formatPriceForChart(entry.effectivePrice, priceUnit)}`;
+                                }
+                                const diff = lowestPrice !== null ? entry.effectivePrice - lowestPrice : 0;
+                                return `${entry.storeName}: +${formatPriceForChart(diff, priceUnit)}`;
+                            });
                         },
                     },
+                    // フィルタで空のラベルを除外
+                    filter: () => true,
                 },
                 annotation: {
                     annotations,
@@ -349,7 +610,15 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                 },
             },
         };
-    }, [stores, sortedTimes, selectedLabel, handleLegendClick, largeLabels]);
+    }, [
+        stores,
+        sortedTimes,
+        selectedLabel,
+        handleLegendClick,
+        largeLabels,
+        priceUnit,
+        calculateTooltipData,
+    ]);
 
     // 有効な価格データがあるかチェック（履歴があっても全て null なら価格情報なし）
     const hasValidPriceData = stores.some((s) =>
@@ -374,7 +643,7 @@ export default function PriceChart({ stores, storeDefinitions, className = "h-40
                     全て表示
                 </button>
             )}
-            <Line data={chartData} options={options} />
+            <Line ref={chartRef} data={chartData} options={options} plugins={[verticalLinePlugin]} />
         </div>
     );
 }

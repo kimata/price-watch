@@ -8,6 +8,7 @@ interface VirtualizedItemGridProps {
     onItemClick: (item: Item) => void;
     period: Period;
     categories: string[];
+    checkIntervalSec?: number;
 }
 
 /** カテゴリー名からアンカーIDを生成 */
@@ -28,6 +29,7 @@ export default function VirtualizedItemGrid({
     onItemClick,
     period,
     categories,
+    checkIntervalSec = 1800,
 }: VirtualizedItemGridProps) {
     const groupedItems = useMemo(() => {
         // アイテムをカテゴリーでグルーピング
@@ -78,8 +80,14 @@ export default function VirtualizedItemGrid({
     }, [items, categories]);
 
     const handleCategoryClick = useCallback((category: string) => {
-        const el = document.getElementById(categoryToId(category));
+        const categoryId = categoryToId(category);
+        const el = document.getElementById(categoryId);
         if (el) {
+            // URL にハッシュを追加（履歴に追加しない）
+            const url = new URL(window.location.href);
+            url.hash = categoryId;
+            window.history.replaceState(window.history.state, "", url.toString());
+
             el.scrollIntoView({ behavior: "smooth", block: "start" });
         }
     }, []);
@@ -123,6 +131,7 @@ export default function VirtualizedItemGrid({
                                 storeDefinitions={storeDefinitions}
                                 onClick={onItemClick}
                                 period={period}
+                                checkIntervalSec={checkIntervalSec}
                             />
                         ))}
                     </div>

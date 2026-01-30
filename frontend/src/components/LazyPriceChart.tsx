@@ -9,6 +9,7 @@ interface LazyPriceChartProps {
     className?: string;
     period?: Period;
     largeLabels?: boolean;
+    checkIntervalSec?: number;
 }
 
 /**
@@ -23,6 +24,7 @@ export default function LazyPriceChart({
     className = "h-40",
     period = "30",
     largeLabels = false,
+    checkIntervalSec = 1800,
 }: LazyPriceChartProps) {
     const [isVisible, setIsVisible] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -163,6 +165,7 @@ export default function LazyPriceChart({
                 className={className}
                 period={period}
                 largeLabels={largeLabels}
+                checkIntervalSec={checkIntervalSec}
             />
         </div>
     );

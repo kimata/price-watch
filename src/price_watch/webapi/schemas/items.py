@@ -107,6 +107,7 @@ class ItemsResponse(BaseSchema):
     items: list[ResultItem]
     store_definitions: list[StoreDefinition]
     categories: list[str] = Field(default_factory=list)  # カテゴリー表示順
+    check_interval_sec: int = 1800  # 監視間隔（秒）- ツールチップ表示用
 
 
 class HistoryResponse(BaseSchema):

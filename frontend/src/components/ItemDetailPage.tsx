@@ -29,6 +29,7 @@ interface ItemDetailPageProps {
     period: Period;
     onBack: () => void;
     onPeriodChange: (period: Period) => void;
+    checkIntervalSec?: number;
 }
 
 export default function ItemDetailPage({
@@ -37,6 +38,7 @@ export default function ItemDetailPage({
     period,
     onBack,
     onPeriodChange,
+    checkIntervalSec = 1800,
 }: ItemDetailPageProps) {
     const [item, setItem] = useState<Item>(initialItem);
     const [events, setEvents] = useState<Event[]>([]);
@@ -292,7 +294,7 @@ export default function ItemDetailPage({
                             <LoadingSpinner />
                         </div>
                     ) : (
-                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} largeLabels />
+                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} largeLabels checkIntervalSec={checkIntervalSec} />
                     )}
                 </div>
 

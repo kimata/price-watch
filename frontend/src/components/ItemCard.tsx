@@ -10,9 +10,10 @@ interface ItemCardProps {
     storeDefinitions: StoreDefinition[];
     onClick?: (item: Item) => void;
     period?: Period;
+    checkIntervalSec?: number;
 }
 
-export default function ItemCard({ item, storeDefinitions, onClick, period = "30" }: ItemCardProps) {
+export default function ItemCard({ item, storeDefinitions, onClick, period = "30", checkIntervalSec = 1800 }: ItemCardProps) {
     // ストアを実質価格の安い順にソート（価格nullのものは後ろに）
     const sortedStores = [...item.stores].sort((a, b) => {
         const aPrice = a.effective_price;
@@ -93,7 +94,7 @@ export default function ItemCard({ item, storeDefinitions, onClick, period = "30
             {/* グラフと最終更新を下部に配置 */}
             <div className="mt-auto">
                 <div className="px-4 pb-4">
-                    <LazyPriceChart stores={item.stores} storeDefinitions={storeDefinitions} period={period} />
+                    <LazyPriceChart stores={item.stores} storeDefinitions={storeDefinitions} period={period} checkIntervalSec={checkIntervalSec} />
                 </div>
 
                 <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">

@@ -42,6 +42,7 @@ export interface ItemsResponse {
     items: Item[];
     store_definitions: StoreDefinition[];
     categories: string[]; // カテゴリー表示順
+    check_interval_sec: number; // 監視間隔（秒）- ツールチップ表示用
 }
 
 export interface HistoryResponse {
