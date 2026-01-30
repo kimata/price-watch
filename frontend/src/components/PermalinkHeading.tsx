@@ -37,7 +37,7 @@ export default function PermalinkHeading({
     }, [id, showToast]);
 
     return (
-        <Tag id={id} className={`group ${className}`}>
+        <Tag id={id} className={`group scroll-mt-16 ${className}`}>
             <a
                 href={`#${id}`}
                 className="inline-flex items-center gap-2 hover:text-blue-600 transition-colors"
@@ -52,19 +52,23 @@ export default function PermalinkHeading({
                 }}
             >
                 {children}
+                <span
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleCopyLink();
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-blue-600 cursor-pointer"
+                    title="リンクをコピー"
+                    aria-label="リンクをコピー"
+                >
+                    {copied ? (
+                        <CheckIcon className="h-4 w-4 text-green-500" />
+                    ) : (
+                        <LinkIcon className="h-4 w-4" />
+                    )}
+                </span>
             </a>
-            <button
-                onClick={handleCopyLink}
-                className="ml-2 opacity-0 group-hover:opacity-100 transition-opacity align-middle inline-flex items-center text-gray-400 hover:text-blue-600"
-                title="リンクをコピー"
-                aria-label="リンクをコピー"
-            >
-                {copied ? (
-                    <CheckIcon className="h-4 w-4 text-green-500" />
-                ) : (
-                    <LinkIcon className="h-4 w-4" />
-                )}
-            </button>
         </Tag>
     );
 }
