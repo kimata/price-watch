@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { LinkIcon, CheckIcon } from "@heroicons/react/24/outline";
+import { useToast } from "../contexts/ToastContext";
 
 interface PermalinkHeadingProps {
     id: string;
@@ -20,6 +21,7 @@ export default function PermalinkHeading({
     className = "",
 }: PermalinkHeadingProps) {
     const [copied, setCopied] = useState(false);
+    const { showToast } = useToast();
 
     const handleCopyLink = useCallback(async () => {
         const url = new URL(window.location.href);
@@ -27,11 +29,12 @@ export default function PermalinkHeading({
         try {
             await navigator.clipboard.writeText(url.toString());
             setCopied(true);
+            showToast("リンクをコピーしました");
             setTimeout(() => setCopied(false), 2000);
         } catch (err) {
             console.error("Failed to copy link:", err);
         }
-    }, [id]);
+    }, [id, showToast]);
 
     return (
         <Tag id={id} className={`group relative ${className}`}>
