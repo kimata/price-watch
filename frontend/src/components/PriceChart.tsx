@@ -253,6 +253,7 @@ export default function PriceChart({
     // 選択された系列（null の場合は全て表示）
     const [selectedLabel, setSelectedLabel] = useState<string | null>(null);
     const chartRef = useRef<Chart<"line"> | null>(null);
+    const tooltipRef = useRef<HTMLDivElement | null>(null);
 
     // 最初のストアの通貨単位を取得（同一アイテムのストアは同じ通貨単位を持つと仮定）
     const priceUnit = stores[0]?.price_unit ?? "円";
@@ -423,6 +424,113 @@ export default function PriceChart({
         [storeDataPoints, stores, storeDefinitions, checkIntervalSec]
     );
 
+    /**
+     * 外部 HTML ツールチップのハンドラ
+     */
+    const externalTooltipHandler = useCallback(
+        (context: { chart: Chart; tooltip: { opacity: number; dataPoints?: Array<{ dataIndex: number }> } }) => {
+            const { chart, tooltip } = context;
+            const tooltipEl = tooltipRef.current;
+            if (!tooltipEl) return;
+
+            // ツールチップを非表示
+            if (tooltip.opacity === 0) {
+                tooltipEl.style.opacity = "0";
+                return;
+            }
+
+            // データがない場合
+            if (!tooltip.dataPoints || tooltip.dataPoints.length === 0) {
+                tooltipEl.style.opacity = "0";
+                return;
+            }
+
+            const dataIndex = tooltip.dataPoints[0].dataIndex;
+            const time = sortedTimes[dataIndex];
+            if (!time) {
+                tooltipEl.style.opacity = "0";
+                return;
+            }
+
+            const mouseTimestamp = dayjs(time).valueOf();
+            const tooltipData = calculateTooltipData(mouseTimestamp);
+            if (!tooltipData) {
+                tooltipEl.style.opacity = "0";
+                return;
+            }
+
+            // 最安価格を特定
+            const validPrices = tooltipData.entries
+                .filter((e) => e.hasData && e.effectivePrice !== null)
+                .map((e) => e.effectivePrice as number);
+            const lowestPrice = validPrices.length > 0 ? Math.min(...validPrices) : null;
+
+            // 価格の安い順にソート
+            const sortedEntries = [...tooltipData.entries].sort((a, b) => {
+                if (!a.hasData && !b.hasData) return 0;
+                if (!a.hasData) return 1;
+                if (!b.hasData) return -1;
+                if (a.effectivePrice === null && b.effectivePrice === null) return 0;
+                if (a.effectivePrice === null) return 1;
+                if (b.effectivePrice === null) return -1;
+                return a.effectivePrice - b.effectivePrice;
+            });
+
+            // HTML を構築
+            const titleHtml = `<div style="font-weight: bold; margin-bottom: 4px; font-size: ${largeLabels ? "13px" : "11px"};">${dayjs(tooltipData.baseTime).format("YYYY年M月D日 H:mm")}</div>`;
+
+            const rowsHtml = sortedEntries
+                .map((entry) => {
+                    let priceText: string;
+                    if (!entry.hasData) {
+                        priceText = "-";
+                    } else if (entry.effectivePrice === null) {
+                        priceText = "在庫なし";
+                    } else if (lowestPrice !== null && entry.effectivePrice === lowestPrice) {
+                        priceText = formatPriceForChart(entry.effectivePrice, priceUnit);
+                    } else {
+                        const diff = lowestPrice !== null ? entry.effectivePrice - lowestPrice : 0;
+                        priceText = `+${formatPriceForChart(diff, priceUnit)}`;
+                    }
+                    return `<div style="display: flex; justify-content: space-between; gap: 12px; font-size: ${largeLabels ? "12px" : "10px"};">
+                        <span>${entry.storeName}</span>
+                        <span style="text-align: right;">${priceText}</span>
+                    </div>`;
+                })
+                .join("");
+
+            tooltipEl.innerHTML = titleHtml + rowsHtml;
+
+            // 位置を計算
+            const chartArea = chart.chartArea;
+            const dataPointX = chart.tooltip?.caretX ?? 0;
+            const chartCenterX = (chartArea.left + chartArea.right) / 2;
+
+            // ツールチップの幅を取得
+            tooltipEl.style.opacity = "1";
+            tooltipEl.style.visibility = "hidden";
+            tooltipEl.style.display = "block";
+            const tooltipWidth = tooltipEl.offsetWidth;
+            tooltipEl.style.visibility = "visible";
+
+            // 縦線の左右どちらに表示するか決定
+            const offset = 12;
+            let left: number;
+            if (dataPointX < chartCenterX) {
+                // 左側にカーソル → 右側にツールチップ
+                left = dataPointX + offset;
+            } else {
+                // 右側にカーソル → 左側にツールチップ
+                left = dataPointX - tooltipWidth - offset;
+            }
+
+            tooltipEl.style.left = `${left}px`;
+            tooltipEl.style.top = `${chartArea.bottom - 10}px`;
+            tooltipEl.style.transform = "translateY(-100%)";
+        },
+        [sortedTimes, calculateTooltipData, largeLabels, priceUnit]
+    );
+
     const options: ChartOptions<"line"> = useMemo(() => {
         // 全ストアの価格から min/max を計算（null は除外）
         const allPrices: number[] = [];
@@ -503,85 +611,8 @@ export default function PriceChart({
                     },
                 },
                 tooltip: {
-                    enabled: true,
-                    position: "fixedBottom" as const,
-                    yAlign: "center" as const, // キャレットを横方向に出す
-                    animation: {
-                        duration: 0, // ちらつき抑制のためアニメーションを無効化
-                    },
-                    titleFont: { size: largeLabels ? 13 : 11 },
-                    bodyFont: { size: largeLabels ? 13 : 11 },
-                    padding: largeLabels ? 10 : 6,
-                    callbacks: {
-                        title: (tooltipItems) => {
-                            if (tooltipItems.length === 0) return "";
-
-                            // tooltipItems からインデックスを取得し、対応する時刻を取得
-                            const index = tooltipItems[0].dataIndex;
-                            const time = sortedTimes[index];
-                            if (!time) return "";
-
-                            const mouseTimestamp = dayjs(time).valueOf();
-                            const tooltipData = calculateTooltipData(mouseTimestamp);
-
-                            if (!tooltipData) return "";
-
-                            return dayjs(tooltipData.baseTime).format("YYYY年M月D日 H:mm");
-                        },
-                        label: () => {
-                            // 個別ラベルは使用しない（afterBody で全ストアを表示）
-                            return "";
-                        },
-                        afterBody: (tooltipItems) => {
-                            if (tooltipItems.length === 0) return [];
-
-                            const index = tooltipItems[0].dataIndex;
-                            const time = sortedTimes[index];
-                            if (!time) return [];
-
-                            const mouseTimestamp = dayjs(time).valueOf();
-                            const tooltipData = calculateTooltipData(mouseTimestamp);
-
-                            if (!tooltipData) return [];
-
-                            // 最安価格を特定
-                            const validPrices = tooltipData.entries
-                                .filter((e) => e.hasData && e.effectivePrice !== null)
-                                .map((e) => e.effectivePrice as number);
-                            const lowestPrice = validPrices.length > 0 ? Math.min(...validPrices) : null;
-
-                            // 価格の安い順にソート（価格なしは末尾）
-                            const sortedEntries = [...tooltipData.entries].sort((a, b) => {
-                                // データなしは末尾
-                                if (!a.hasData && !b.hasData) return 0;
-                                if (!a.hasData) return 1;
-                                if (!b.hasData) return -1;
-                                // 在庫なし（価格null）は末尾
-                                if (a.effectivePrice === null && b.effectivePrice === null) return 0;
-                                if (a.effectivePrice === null) return 1;
-                                if (b.effectivePrice === null) return -1;
-                                // 価格の昇順
-                                return a.effectivePrice - b.effectivePrice;
-                            });
-
-                            return sortedEntries.map((entry) => {
-                                if (!entry.hasData) {
-                                    return `${entry.storeName}: -`;
-                                }
-                                if (entry.effectivePrice === null) {
-                                    return `${entry.storeName}: 在庫なし`;
-                                }
-                                // 最安価格は絶対値、それ以外は差額を表示
-                                if (lowestPrice !== null && entry.effectivePrice === lowestPrice) {
-                                    return `${entry.storeName}: ${formatPriceForChart(entry.effectivePrice, priceUnit)}`;
-                                }
-                                const diff = lowestPrice !== null ? entry.effectivePrice - lowestPrice : 0;
-                                return `${entry.storeName}: +${formatPriceForChart(diff, priceUnit)}`;
-                            });
-                        },
-                    },
-                    // フィルタで空のラベルを除外
-                    filter: () => true,
+                    enabled: false, // 組み込みツールチップを無効化
+                    external: externalTooltipHandler,
                 },
                 annotation: {
                     annotations,
@@ -617,7 +648,7 @@ export default function PriceChart({
         handleLegendClick,
         largeLabels,
         priceUnit,
-        calculateTooltipData,
+        externalTooltipHandler,
     ]);
 
     // 有効な価格データがあるかチェック（履歴があっても全て null なら価格情報なし）
@@ -644,6 +675,22 @@ export default function PriceChart({
                 </button>
             )}
             <Line ref={chartRef} data={chartData} options={options} plugins={[verticalLinePlugin]} />
+            {/* カスタム HTML ツールチップ */}
+            <div
+                ref={tooltipRef}
+                style={{
+                    position: "absolute",
+                    opacity: 0,
+                    pointerEvents: "none",
+                    backgroundColor: "rgba(0, 0, 0, 0.8)",
+                    color: "white",
+                    borderRadius: "4px",
+                    padding: "8px 12px",
+                    whiteSpace: "nowrap",
+                    zIndex: 100,
+                    transition: "opacity 0.1s ease",
+                }}
+            />
         </div>
     );
 }
