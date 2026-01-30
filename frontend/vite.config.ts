@@ -10,6 +10,23 @@ export default defineConfig({
     define: {
         "import.meta.env.VITE_BUILD_DATE": JSON.stringify(new Date().toISOString()),
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    // Chart.js と関連ライブラリを分離
+                    charts: [
+                        "chart.js",
+                        "react-chartjs-2",
+                        "@sgratzl/chartjs-chart-boxplot",
+                        "chartjs-plugin-annotation",
+                    ],
+                    // React コアを分離
+                    react: ["react", "react-dom"],
+                },
+            },
+        },
+    },
     server: {
         proxy: {
             "/price/api": {
