@@ -75,20 +75,42 @@ export default function ItemDetailPage({
     const priceStats = useMemo(() => {
         const allPrices: number[] = [];
         let dataCount = 0;
+        const minByTime = new Map<string, number>();
         item.stores.forEach((store) => {
             store.history.forEach((h) => {
                 dataCount++;
                 if (h.effective_price !== null) {
                     allPrices.push(h.effective_price);
+                    const existing = minByTime.get(h.time);
+                    if (existing === undefined || h.effective_price < existing) {
+                        minByTime.set(h.time, h.effective_price);
+                    }
                 }
             });
         });
+        const minValues = Array.from(minByTime.values());
+        const averagePrice =
+            minValues.length > 0
+                ? Math.round(minValues.reduce((sum, price) => sum + price, 0) / minValues.length)
+                : null;
         return {
             lowestPrice: allPrices.length > 0 ? Math.min(...allPrices) : null,
             highestPrice: allPrices.length > 0 ? Math.max(...allPrices) : null,
+            averagePrice,
             dataCount,
         };
     }, [item.stores]);
+
+    const lastUpdatedRelative = useMemo(() => {
+        if (!lastUpdated) return "未取得";
+        const diffMinutes = dayjs().diff(dayjs(lastUpdated), "minute");
+        if (diffMinutes < 60) return `${diffMinutes}分前`;
+        const diffHours = dayjs().diff(dayjs(lastUpdated), "hour");
+        if (diffHours < 24) return `${diffHours}時間前`;
+        const diffDays = dayjs().diff(dayjs(lastUpdated), "day");
+        if (diffDays < 30) return `${diffDays}日前`;
+        return dayjs(lastUpdated).format("YYYY年M月D日");
+    }, [lastUpdated]);
 
     // アイテム情報を期間変更時に再取得（履歴も含む）
     const loadItemData = useCallback(async () => {
@@ -255,10 +277,11 @@ export default function ItemDetailPage({
                             </div>
                             <div className="flex-1" />
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-1 text-sm text-gray-500">
-                                    <ClockIcon className="h-4 w-4" />
-                                    <span>
+                            <div className="flex items-center gap-1 text-sm text-gray-500">
+                                <ClockIcon className="h-4 w-4" />
+                                <span>
                                         最終更新: {lastUpdated ? dayjs(lastUpdated).format("YYYY年M月D日 HH:mm") : "未取得"}
+                                        {lastUpdated ? ` (${lastUpdatedRelative})` : ""}
                                     </span>
                                 </div>
                                 <a
@@ -329,11 +352,16 @@ export default function ItemDetailPage({
                             </div>
                         </div>
                         <div className="text-center p-4 bg-gray-50 rounded-lg">
-                            <div className="text-sm text-gray-600 mb-2">データポイント数</div>
+                            <div className="text-sm text-gray-600 mb-2">期間内最安値平均</div>
                             <div className="text-xl font-semibold text-gray-600">
-                                {priceStats.dataCount}
+                                {priceStats.averagePrice !== null
+                                    ? formatPrice(priceStats.averagePrice, priceUnit)
+                                    : "-"}
                             </div>
                         </div>
+                    </div>
+                    <div className="mt-4 text-sm text-gray-500">
+                        データポイント数: {priceStats.dataCount}
                     </div>
                 </div>
 
