@@ -13,7 +13,8 @@
     - [全体構成](#全体構成)
     - [データフロー](#データフロー)
     - [モジュール構成](#モジュール構成)
-- [セットアップ](#セットアップ)
+- [クイックスタート](#クイックスタート)
+- [ローカル開発環境のセットアップ](#ローカル開発環境のセットアップ)
 - [実行方法](#実行方法)
 - [設定ファイル](#設定ファイル)
 - [Web UI](#web-ui)
@@ -172,14 +173,80 @@ frontend/                       # React フロントエンド
         └── apiService.ts       # API 通信
 ```
 
-## セットアップ
+## クイックスタート
+
+Docker を使って最短で price-watch を動かす手順を説明します。
+
+### 1. 設定ファイルの準備
+
+```bash
+# 設定ファイルのテンプレートをコピー
+cp config.example.yaml config.yaml
+cp target.example.yaml target.yaml
+```
+
+### 2. パスワードの設定（必須）
+
+Web UI から監視対象を編集する際に必要なパスワードを設定します。
+
+```bash
+# パスワードハッシュを生成
+echo "your_password" | docker run --rm -i ghcr.io/kimata/price-watch:latest \
+    uv run python -m price_watch.webapi.password
+```
+
+出力された `$argon2id$...` 形式のハッシュを `config.yaml` の `edit.password_hash` に設定してください。
+
+```yaml
+edit:
+    password_hash: "$argon2id$v=19$m=65536,t=3,p=4$..." # 生成したハッシュ
+```
+
+### 3. API キーの設定（任意）
+
+使用する機能に応じて `config.yaml` に API キーを設定します。
+
+| 機能               | 必要な設定                                 |
+| ------------------ | ------------------------------------------ |
+| Slack 通知         | `slack.bot_token`                          |
+| Amazon PA-API      | `store.amazon.access_key`, `secret_key` 等 |
+| Yahoo!ショッピング | `store.yahoo.client_id`, `secret`          |
+
+API キーがない場合でも、スクレイピングやフリマ検索は利用可能です。
+
+### 4. コンテナの起動
+
+```bash
+# データディレクトリを作成
+mkdir -p data
+
+# コンテナを起動
+docker compose up -d
+```
+
+### 5. 動作確認
+
+ブラウザで `http://localhost:5000` にアクセスすると Web UI が表示されます。
+
+右上の「設定」ボタンから監視対象の商品を追加できます（手順2で設定したパスワードが必要）。
+
+```bash
+# ログを確認
+docker compose logs -f
+
+# 停止
+docker compose down
+```
+
+---
+
+## ローカル開発環境のセットアップ
 
 ### 必要な環境
 
 - Python 3.11+（推奨: 3.13）
 - Node.js 18.x+
 - Chrome / Chromium
-- Docker（オプション）
 
 ### 1. 依存パッケージのインストール
 
@@ -199,8 +266,15 @@ cd frontend && npm ci && npm run build && cd ..
 ```bash
 cp config.example.yaml config.yaml
 cp target.example.yaml target.yaml
-# 各ファイルを環境に合わせて編集
 ```
+
+パスワードハッシュの生成:
+
+```bash
+echo "your_password" | uv run python -m price_watch.webapi.password
+```
+
+出力されたハッシュを `config.yaml` の `edit.password_hash` に設定してください。
 
 ## 実行方法
 
@@ -247,56 +321,7 @@ uv run price-watch-webui
 uv run price-watch-healthz
 ```
 
-### Docker Compose で実行
-
-Docker イメージは GitHub Container Registry で公開されています。
-`compose.yaml` を使って手軽に起動できます。
-
-#### 1. 設定ファイルの準備
-
-```bash
-cp config.example.yaml config.yaml
-cp target.example.yaml target.yaml
-```
-
-`config.yaml` に Slack Bot トークンや API キーを、`target.yaml` に監視対象の商品を設定します。
-詳細は[設定ファイル](#設定ファイル)を参照してください。
-
-#### 2. データディレクトリの作成
-
-```bash
-mkdir -p data
-```
-
-価格履歴 DB・サムネイル画像・メトリクス等の永続データが保存されます。
-
-#### 3. コンテナの起動
-
-```bash
-docker compose up -d
-```
-
-#### 4. 動作確認
-
-Web UI に `http://localhost:5000` でアクセスできます。
-
-ログを確認するには:
-
-```bash
-docker compose logs -f
-```
-
-#### 5. 停止・再起動
-
-```bash
-# 停止
-docker compose down
-
-# 設定変更後の再起動
-docker compose up -d
-```
-
-#### compose.yaml の構成
+### compose.yaml の構成
 
 ```yaml
 services:
@@ -442,17 +467,56 @@ item_list:
 - 📈 価格変動イベント履歴
 - 🔍 商品詳細ページ
 - 📉 メトリクス（巡回状況モニタリング）
+- ✏️ 監視対象の編集
+
+### 監視対象の編集機能
+
+Web UI から監視対象（target.yaml）を直接編集できます。
+
+**主な機能:**
+
+| 機能                          | 説明                                                  |
+| ----------------------------- | ----------------------------------------------------- |
+| 🏪 **ストア管理**             | 監視対象のストア定義（XPath、チェック方法など）を編集 |
+| 📦 **アイテム管理**           | 監視対象の商品を追加・編集・削除                      |
+| 📁 **カテゴリー管理**         | カテゴリーの表示順を設定                              |
+| 🔍 **Amazon 検索**            | ASIN をキーワードや URL から検索（PA-API 使用）       |
+| 💾 **バックアップ**           | 保存時に自動でバックアップを作成                      |
+| 🔄 **Git 同期（オプション）** | 変更を Git リポジトリに自動プッシュ                   |
+
+**使い方:**
+
+1. 画面右上の「設定」ボタンをクリック
+2. パスワードを入力してログイン
+3. 「アイテム」「ストア」「カテゴリー」タブで編集
+4. 「保存」ボタンで変更を保存
+
+**Git 同期の設定（オプション）:**
+
+変更内容を Git リポジトリに自動でプッシュできます。`config.yaml` に以下を追加:
+
+```yaml
+edit:
+    password_hash: "$argon2id$..."
+    git:
+        remote_url: "https://gitlab.example.com/user/repo.git"
+        file_path: "config/target.yaml" # リポジトリ内のファイルパス
+        access_token: "glpat-xxx" # GitLab: glpat-*, GitHub: ghp_*
+        branch: "main"
+```
 
 ### API エンドポイント
 
-| エンドポイント                           | 説明           |
-| ---------------------------------------- | -------------- |
-| `GET /price-watch/api/item`              | アイテム一覧   |
-| `GET /price-watch/api/item/<id>`         | アイテム詳細   |
-| `GET /price-watch/api/item/<id>/history` | 価格履歴       |
-| `GET /price-watch/api/event`             | イベント一覧   |
-| `GET /price-watch/api/metrics`           | メトリクス     |
-| `GET /price-watch/api/thumb/<id>`        | サムネイル画像 |
+| エンドポイント                           | 説明               |
+| ---------------------------------------- | ------------------ |
+| `GET /price-watch/api/item`              | アイテム一覧       |
+| `GET /price-watch/api/item/<id>`         | アイテム詳細       |
+| `GET /price-watch/api/item/<id>/history` | 価格履歴           |
+| `GET /price-watch/api/event`             | イベント一覧       |
+| `GET /price-watch/api/metrics`           | メトリクス         |
+| `GET /price-watch/api/thumb/<id>`        | サムネイル画像     |
+| `GET /price-watch/api/target`            | 監視対象設定の取得 |
+| `PUT /price-watch/api/target`            | 監視対象設定の更新 |
 
 ## テスト
 
