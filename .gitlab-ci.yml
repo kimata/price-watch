@@ -40,7 +40,7 @@ build-react:
 
     script:
         - cd frontend
-        - npm ci --cache .npm --prefer-offline
+        - npm ci --cache .npm --prefer-offline --no-audit --no-fund
         - npm run build
     artifacts:
         paths:
@@ -114,6 +114,7 @@ test-typecheck:
               - uv-cache-${CI_PROJECT_ID}
           paths:
               - ${UV_CACHE_DIR}
+              - .mypy_cache/
 
 test-pytest:
     stage: test
