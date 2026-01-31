@@ -122,7 +122,9 @@ def create_app(
         config_file: 設定ファイルパス（指定時にキャッシュパスを更新）
         target_file: ターゲット設定ファイルパス（指定時にキャッシュパスを更新）
     """
+    import price_watch.webapi.check_job
     import price_watch.webapi.page
+    import price_watch.webapi.target_editor
 
     # CLI 引数で指定されたファイルパスをキャッシュに反映
     if config_file is not None and target_file is not None:
@@ -144,6 +146,10 @@ def create_app(
     # ブループリント登録
     # API エンドポイント（OGP 対応ルートを含むため、静的ファイルより先に登録）
     app.register_blueprint(price_watch.webapi.page.blueprint, url_prefix=URL_PREFIX)
+    # target.yaml エディタ API
+    app.register_blueprint(price_watch.webapi.target_editor.blueprint, url_prefix=URL_PREFIX)
+    # 動作確認ジョブ API
+    app.register_blueprint(price_watch.webapi.check_job.check_job_bp, url_prefix=URL_PREFIX)
 
     # フロントエンド静的ファイル（React アプリ）
     if static_dir_path.exists():

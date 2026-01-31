@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { version as reactVersion } from "react";
-import { InformationCircleIcon, ChartBarIcon } from "@heroicons/react/24/outline";
+import { InformationCircleIcon, ChartBarIcon, Cog6ToothIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 import "dayjs/locale/ja";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -19,6 +19,7 @@ interface SysInfo {
 interface FooterProps {
     storeDefinitions: StoreDefinition[];
     onMetricsClick?: () => void;
+    onConfigClick?: () => void;
 }
 
 // GitHub アイコン SVG
@@ -30,7 +31,7 @@ function GitHubIcon({ className }: { className?: string }) {
     );
 }
 
-export default function Footer({ storeDefinitions, onMetricsClick }: FooterProps) {
+export default function Footer({ storeDefinitions, onMetricsClick, onConfigClick }: FooterProps) {
     const [sysInfo, setSysInfo] = useState<SysInfo | null>(null);
     const buildDate = dayjs(import.meta.env.VITE_BUILD_DATE || new Date());
 
@@ -130,6 +131,16 @@ export default function Footer({ storeDefinitions, onMetricsClick }: FooterProps
                     </p>
                     <p>React バージョン: {reactVersion}</p>
                     <p className="pt-2 flex items-center justify-end gap-3">
+                        {/* 設定リンク（onConfigClick が指定されている場合のみ） */}
+                        {onConfigClick && (
+                            <button
+                                onClick={onConfigClick}
+                                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                title="設定エディタ"
+                            >
+                                <Cog6ToothIcon className="w-6 h-6" />
+                            </button>
+                        )}
                         {/* メトリクスリンク（onMetricsClick が指定されている場合のみ） */}
                         {onMetricsClick && (
                             <button

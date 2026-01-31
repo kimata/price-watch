@@ -5,6 +5,7 @@ import PeriodSelector from "./components/PeriodSelector";
 import VirtualizedItemGrid from "./components/VirtualizedItemGrid";
 import ItemDetailPage from "./components/ItemDetailPage";
 import MetricsPage from "./components/MetricsPage";
+import ConfigEditorPage from "./components/config/ConfigEditorPage";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Footer from "./components/Footer";
 import { fetchItems } from "./services/apiService";
@@ -32,10 +33,13 @@ function getItemKey(item: Item): string | null {
 }
 
 // URL からページタイプを判定
-function getPageFromUrl(): "list" | "item" | "metrics" {
+function getPageFromUrl(): "list" | "item" | "metrics" | "config" {
     const pathname = window.location.pathname;
     if (pathname.match(/\/price\/metrics\/?$/)) {
         return "metrics";
+    }
+    if (pathname.match(/\/price\/config\/?$/)) {
+        return "config";
     }
     if (pathname.match(/\/price\/items\/[^/]+/)) {
         return "item";
@@ -81,6 +85,7 @@ export default function App() {
     const [period, setPeriod] = useState<Period>(getPeriodFromUrl);
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     const [showMetrics, setShowMetrics] = useState(getPageFromUrl() === "metrics");
+    const [showConfig, setShowConfig] = useState(getPageFromUrl() === "config");
 
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
@@ -214,9 +219,15 @@ export default function App() {
 
             if (page === "metrics") {
                 setShowMetrics(true);
+                setShowConfig(false);
+                setSelectedItem(null);
+            } else if (page === "config") {
+                setShowConfig(true);
+                setShowMetrics(false);
                 setSelectedItem(null);
             } else if (page === "item") {
                 setShowMetrics(false);
+                setShowConfig(false);
                 const itemKey = getItemKeyFromUrl();
                 if (itemKey) {
                     const matchedItem = findItemByKey(itemKey);
@@ -224,6 +235,7 @@ export default function App() {
                 }
             } else {
                 setShowMetrics(false);
+                setShowConfig(false);
                 setSelectedItem(null);
             }
         };
@@ -270,6 +282,7 @@ export default function App() {
 
     const handleMetricsClick = () => {
         setShowMetrics(true);
+        setShowConfig(false);
         setSelectedItem(null);
         const newUrl = buildUrlWithPeriod("/price/metrics");
         window.history.pushState(null, "", newUrl);
@@ -282,9 +295,29 @@ export default function App() {
         window.history.pushState(null, "", newUrl);
     };
 
+    const handleConfigClick = () => {
+        setShowConfig(true);
+        setShowMetrics(false);
+        setSelectedItem(null);
+        const newUrl = buildUrlWithPeriod("/price/config");
+        window.history.pushState(null, "", newUrl);
+        window.scrollTo(0, 0);
+    };
+
+    const handleBackFromConfig = () => {
+        setShowConfig(false);
+        const newUrl = buildUrlWithPeriod("/price/");
+        window.history.pushState(null, "", newUrl);
+    };
+
     // メトリクスページを表示
     if (showMetrics) {
         return <MetricsPage onBack={handleBackFromMetrics} />;
+    }
+
+    // 設定エディタページを表示
+    if (showConfig) {
+        return <ConfigEditorPage onBack={handleBackFromConfig} />;
     }
 
     // 詳細ページを表示
@@ -337,7 +370,7 @@ export default function App() {
 
                 <EventBanner />
             </main>
-            <Footer storeDefinitions={storeDefinitions} onMetricsClick={handleMetricsClick} />
+            <Footer storeDefinitions={storeDefinitions} onMetricsClick={handleMetricsClick} onConfigClick={handleConfigClick} />
         </div>
     );
 }

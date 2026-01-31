@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback } from "react";
-import Toast from "../components/Toast";
+import Toast, { ToastType } from "../components/Toast";
 
 interface ToastContextType {
-    showToast: (message: string) => void;
+    showToast: (message: string, type?: ToastType) => void;
 }
 
 const ToastContext = createContext<ToastContextType | null>(null);
@@ -21,10 +21,12 @@ interface ToastProviderProps {
 
 export function ToastProvider({ children }: ToastProviderProps) {
     const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [toastType, setToastType] = useState<ToastType>("success");
     const [toastVisible, setToastVisible] = useState(false);
 
-    const showToast = useCallback((message: string) => {
+    const showToast = useCallback((message: string, type: ToastType = "success") => {
         setToastMessage(message);
+        setToastType(type);
         setToastVisible(true);
     }, []);
 
@@ -39,6 +41,7 @@ export function ToastProvider({ children }: ToastProviderProps) {
                 message={toastMessage || ""}
                 visible={toastVisible}
                 onClose={handleClose}
+                type={toastType}
             />
         </ToastContext.Provider>
     );
