@@ -119,8 +119,7 @@ test-typecheck:
 test-pytest:
     stage: test
 
-    needs:
-        - build-image
+    needs: []
 
     before_script:
         - uv sync --locked --no-editable
@@ -151,7 +150,6 @@ test-docker:
     needs:
         - generate-tag
         - build-image
-        - test-pytest
 
     script:
         - 'echo "Testing: ${CI_REGISTRY_IMAGE}:${TAG}"'
