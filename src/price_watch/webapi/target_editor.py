@@ -15,6 +15,7 @@ import my_lib.time
 from flask_pydantic import validate
 from ruamel.yaml import YAML
 
+import price_watch.webapi.auth_rate_limiter
 import price_watch.webapi.cache
 import price_watch.webapi.git_sync
 import price_watch.webapi.password
@@ -22,6 +23,17 @@ import price_watch.webapi.schemas
 from price_watch.security.url_guard import UnsafeUrlError, validate_public_url
 
 blueprint = flask.Blueprint("target_editor", __name__)
+
+
+def _get_client_ip() -> str:
+    """クライアントIPアドレスを取得（プロキシ対応）."""
+    # X-Forwarded-For ヘッダーがある場合は最初のIPを使用
+    forwarded_for = flask.request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # カンマ区切りの場合、最初のIPが元のクライアント
+        return forwarded_for.split(",")[0].strip()
+    return flask.request.remote_addr or "unknown"
+
 
 # ruamel.yaml の設定
 _yaml = YAML()
@@ -428,10 +440,29 @@ def update_target(
             )
             return flask.jsonify(error.model_dump()), 500
 
+        # レート制限チェック
+        client_ip = _get_client_ip()
+        if price_watch.webapi.auth_rate_limiter.is_locked_out(client_ip):
+            remaining = price_watch.webapi.auth_rate_limiter.get_lockout_remaining_sec(client_ip)
+            remaining_min = remaining // 60
+            logging.warning("認証ロックアウト中: IP=%s, 残り%d分", client_ip, remaining_min)
+            error = price_watch.webapi.schemas.ErrorResponse(
+                error=f"認証試行回数の上限を超えました。{remaining_min}分後に再試行してください。"
+            )
+            return flask.jsonify(error.model_dump()), 429
+
         # パスワード認証（ハッシュ検証）- edit.password_hash は必須
         if not body.password or not price_watch.webapi.password.verify_password(
             body.password, app_config.edit.password_hash
         ):
+            locked_out = price_watch.webapi.auth_rate_limiter.record_failure(client_ip)
+            if locked_out:
+                logging.warning("認証失敗上限到達、ロックアウト開始: IP=%s", client_ip)
+                error = price_watch.webapi.schemas.ErrorResponse(
+                    error="認証試行回数の上限を超えました。3時間後に再試行してください。"
+                )
+                return flask.jsonify(error.model_dump()), 429
+            logging.warning("認証失敗: IP=%s", client_ip)
             error = price_watch.webapi.schemas.ErrorResponse(error="パスワードが正しくありません")
             return flask.jsonify(error.model_dump()), 401
 
