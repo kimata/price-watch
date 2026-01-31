@@ -17,7 +17,9 @@ from ruamel.yaml import YAML
 
 import price_watch.webapi.cache
 import price_watch.webapi.git_sync
+import price_watch.webapi.password
 import price_watch.webapi.schemas
+from price_watch.security.url_guard import UnsafeUrlError, validate_public_url
 
 blueprint = flask.Blueprint("target_editor", __name__)
 
@@ -359,6 +361,26 @@ def _validate_config(
                         message=f"ストア '{store_entry.name}' には url または asin が必要です",
                     )
                 )
+            if store_entry.url:
+                try:
+                    validate_public_url(store_entry.url)
+                except UnsafeUrlError as exc:
+                    errors.append(
+                        price_watch.webapi.schemas.ValidationError(
+                            path=f"item_list[{i}].store[{j}].url",
+                            message=f"url が公開アドレスではありません: {exc}",
+                        )
+                    )
+            if store_entry.preload:
+                try:
+                    validate_public_url(store_entry.preload.url)
+                except UnsafeUrlError as exc:
+                    errors.append(
+                        price_watch.webapi.schemas.ValidationError(
+                            path=f"item_list[{i}].store[{j}].preload.url",
+                            message=f"preload.url が公開アドレスではありません: {exc}",
+                        )
+                    )
 
     return errors
 
@@ -373,7 +395,7 @@ def get_target() -> flask.Response | tuple[flask.Response, int]:
         # パスワード認証が必要かどうかを判定
         app_config = price_watch.webapi.cache.get_app_config()
         require_password = False
-        if app_config and app_config.edit and app_config.edit.password:
+        if app_config and app_config.edit and app_config.edit.password_hash:
             require_password = True
 
         response = price_watch.webapi.schemas.TargetConfigResponse(
@@ -402,8 +424,15 @@ def update_target(
         app_config = price_watch.webapi.cache.get_app_config()
         edit_config = app_config.edit if app_config else None
 
-        # パスワード認証
-        if edit_config and edit_config.password and body.password != edit_config.password:
+        # パスワード認証（ハッシュ検証）
+        if (
+            edit_config
+            and edit_config.password_hash
+            and (
+                not body.password
+                or not price_watch.webapi.password.verify_password(body.password, edit_config.password_hash)
+            )
+        ):
             error = price_watch.webapi.schemas.ErrorResponse(error="パスワードが正しくありません")
             return flask.jsonify(error.model_dump()), 401
 

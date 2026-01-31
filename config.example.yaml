@@ -46,7 +46,10 @@ liveness:
 
 # エディタ設定（オプション）
 # edit:
-#     password: "secret123"  # 保存時に必要なパスワード
+#     # パスワードハッシュ（SHA-256）
+#     # 生成方法: echo "your_password" | uv run python -m price_watch.webapi.password
+#     # 以下は "password" のハッシュ
+#     password_hash: "65b7beb0b5d271f87729a00bf91f7d096fe08a6786083d6af33ff789f74d52ea"
 #     git:
 #         remote_url: "https://gitlab.example.com/user/repo.git"  # リモートリポジトリURL
 #         file_path: "config/target.yaml"  # リポジトリ内のファイルパス

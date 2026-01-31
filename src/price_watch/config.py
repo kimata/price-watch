@@ -293,7 +293,7 @@ class GitSyncConfig:
 class EditConfig:
     """エディタ設定"""
 
-    password: str | None = None
+    password_hash: str | None = None
     git: GitSyncConfig | None = None
 
     @classmethod
@@ -303,7 +303,7 @@ class EditConfig:
         if "git" in data:
             git = GitSyncConfig.parse(data["git"])
         return cls(
-            password=data.get("password"),
+            password_hash=data.get("password_hash"),
             git=git,
         )
 
