@@ -307,24 +307,6 @@ export default function ItemDetailPage({
                     <PeriodSelector selected={period} onChange={onPeriodChange} />
                 </div>
 
-                {/* 価格チャート（拡大版） */}
-                <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
-                    <PermalinkHeading
-                        id="price-chart"
-                        className="text-lg font-semibold text-gray-700 mb-4"
-                    >
-                        <ChartBarIcon className="h-5 w-5" />
-                        価格推移
-                    </PermalinkHeading>
-                    {loadingItem ? (
-                        <div className="h-72 flex items-center justify-center">
-                            <LoadingSpinner />
-                        </div>
-                    ) : (
-                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} largeLabels checkIntervalSec={checkIntervalSec} />
-                    )}
-                </div>
-
                 {/* 価格統計 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
                     <PermalinkHeading
@@ -365,14 +347,32 @@ export default function ItemDetailPage({
                     </div>
                 </div>
 
-                {/* ストア別情報 */}
+                {/* 価格チャート（拡大版） */}
+                <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
+                    <PermalinkHeading
+                        id="price-chart"
+                        className="text-lg font-semibold text-gray-700 mb-4"
+                    >
+                        <ChartBarIcon className="h-5 w-5" />
+                        価格推移
+                    </PermalinkHeading>
+                    {loadingItem ? (
+                        <div className="h-72 flex items-center justify-center">
+                            <LoadingSpinner />
+                        </div>
+                    ) : (
+                        <PriceChart stores={item.stores} storeDefinitions={storeDefinitions} className="h-72" period={period} largeLabels checkIntervalSec={checkIntervalSec} />
+                    )}
+                </div>
+
+                {/* ストア別現在価格 */}
                 <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
                     <PermalinkHeading
                         id="store-prices"
                         className="text-lg font-semibold text-gray-700 mb-4"
                     >
                         <BuildingStorefrontIcon className="h-5 w-5" />
-                        ストア別価格
+                        ストア別現在価格
                     </PermalinkHeading>
                     <div className="space-y-2">
                         {sortedStores.map((store) => (
