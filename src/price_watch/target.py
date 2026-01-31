@@ -176,6 +176,7 @@ class StoreDefinition:
     point_rate: float = 0.0  # ポイント還元率（%）
     color: str | None = None  # ストアの色（hex形式, 例: "#3b82f6"）
     actions: list[ActionStep] = field(default_factory=list)
+    affiliate_id: str | None = None  # アフィリエイトID（メルカリ: afid, Amazon: tag）
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> StoreDefinition:
@@ -212,6 +213,7 @@ class StoreDefinition:
             point_rate=point_rate,
             color=data.get("color"),
             actions=actions,
+            affiliate_id=data.get("affiliate_id"),
         )
 
 
@@ -346,6 +348,7 @@ class ResolvedItem:
     cond: str | None = None
     jan_code: str | None = None  # Yahoo検索用
     category: str | None = None  # カテゴリー名
+    affiliate_id: str | None = None  # アフィリエイトID（メルカリ: afid, Amazon: tag）
 
     @classmethod
     def from_item_and_store(cls, item: ItemDefinition, store: StoreDefinition | None) -> ResolvedItem:
@@ -359,6 +362,7 @@ class ResolvedItem:
         store_point_rate = 0.0
         store_color: str | None = None
         store_actions: list[ActionStep] = []
+        store_affiliate_id: str | None = None
 
         if store is not None:
             store_check_method = store.check_method
@@ -369,6 +373,7 @@ class ResolvedItem:
             store_point_rate = store.point_rate
             store_color = store.color
             store_actions = store.actions
+            store_affiliate_id = store.affiliate_id
 
         # URL の決定
         url = item.url
@@ -380,6 +385,12 @@ class ResolvedItem:
             url = ""  # 空文字列（後から検索結果で更新）
         elif url is None:
             raise ValueError(f"Item '{item.name}' has no url or asin")
+
+        # Amazon PA-API の URL にアフィリエイトタグを付与
+        if store_affiliate_id and store_check_method == CheckMethod.AMAZON_PAAPI and url:
+            import price_watch.affiliate
+
+            url = price_watch.affiliate.append_affiliate_id(url, store_affiliate_id, store_check_method)
 
         # アイテム定義で上書き
         return cls(
@@ -402,6 +413,7 @@ class ResolvedItem:
             cond=item.cond,
             jan_code=item.jan_code,
             category=item.category,
+            affiliate_id=store_affiliate_id,
         )
 
 

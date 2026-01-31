@@ -222,6 +222,24 @@ class TestStoreDefinition:
         assert store.price_unit == "ドル"
         assert store.color == "#ff9900"
 
+    def test_parse_with_affiliate_id(self):
+        """アフィリエイトID付きパース"""
+        data = {
+            "name": "mercari",
+            "check_method": "my_lib.store.mercari.search",
+            "affiliate_id": "my_mercari_affiliate",
+        }
+        store = StoreDefinition.parse(data)
+
+        assert store.affiliate_id == "my_mercari_affiliate"
+
+    def test_parse_without_affiliate_id(self):
+        """アフィリエイトIDなしパース（デフォルトはNone）"""
+        data = {"name": "test-store.com"}
+        store = StoreDefinition.parse(data)
+
+        assert store.affiliate_id is None
+
 
 class TestItemDefinition:
     """ItemDefinition のテスト"""
@@ -554,6 +572,70 @@ class TestResolvedItem:
         # メルカリの場合は空文字列
         assert resolved.url == ""
         assert resolved.check_method == CheckMethod.MERCARI_SEARCH
+
+    def test_from_item_with_affiliate_id(self):
+        """アフィリエイトID付きストアからのマージ"""
+        item = ItemDefinition.parse(
+            {
+                "name": "Mercari Item",
+                "store": "mercari",
+                "search_keyword": "キーワード",
+            }
+        )
+        store = StoreDefinition.parse(
+            {
+                "name": "mercari",
+                "check_method": "my_lib.store.mercari.search",
+                "affiliate_id": "my_mercari_affiliate",
+            }
+        )
+
+        resolved = ResolvedItem.from_item_and_store(item, store)
+
+        assert resolved.affiliate_id == "my_mercari_affiliate"
+
+    def test_amazon_url_with_affiliate_tag(self):
+        """Amazon ASIN からURLを生成し、アフィリエイトタグを付与"""
+        item = ItemDefinition.parse(
+            {
+                "name": "Amazon Item",
+                "store": "amazon.co.jp",
+                "asin": "B0123456789",
+            }
+        )
+        store = StoreDefinition.parse(
+            {
+                "name": "amazon.co.jp",
+                "check_method": "my_lib.store.amazon.api",
+                "affiliate_id": "my-tag-22",
+            }
+        )
+
+        resolved = ResolvedItem.from_item_and_store(item, store)
+
+        assert resolved.url == "https://www.amazon.co.jp/dp/B0123456789?tag=my-tag-22"
+        assert resolved.affiliate_id == "my-tag-22"
+
+    def test_amazon_url_without_affiliate_tag(self):
+        """Amazon ASIN からURLを生成（アフィリエイトIDなし）"""
+        item = ItemDefinition.parse(
+            {
+                "name": "Amazon Item",
+                "store": "amazon.co.jp",
+                "asin": "B0123456789",
+            }
+        )
+        store = StoreDefinition.parse(
+            {
+                "name": "amazon.co.jp",
+                "check_method": "my_lib.store.amazon.api",
+            }
+        )
+
+        resolved = ResolvedItem.from_item_and_store(item, store)
+
+        assert resolved.url == "https://www.amazon.co.jp/dp/B0123456789"
+        assert resolved.affiliate_id is None
 
 
 class TestTargetConfig:

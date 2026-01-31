@@ -19,6 +19,7 @@
                     "price_unit": { "type": "string" },
                     "point_rate": { "type": "number" },
                     "color": { "type": "string" },
+                    "affiliate_id": { "type": "string" },
                     "action": {
                         "type": "array",
                         "items": {

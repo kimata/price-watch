@@ -13,6 +13,7 @@ import my_lib.store.paypay.search
 import my_lib.store.rakuma.search
 import selenium.webdriver.support.wait
 
+import price_watch.affiliate
 import price_watch.history
 import price_watch.models
 import price_watch.store.search_filter
@@ -254,8 +255,8 @@ def check(
         cheapest.title,
     )
 
-    # 結果を設定
-    result.url = cheapest.url
+    # 結果を設定（アフィリエイトID付与）
+    result.url = price_watch.affiliate.append_affiliate_id(cheapest.url, item.affiliate_id, item.check_method)
     result.price = cheapest.price
     result.stock = price_watch.models.StockStatus.IN_STOCK
     result.crawl_status = price_watch.models.CrawlStatus.SUCCESS

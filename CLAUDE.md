@@ -398,15 +398,19 @@ store_list:
 
     - name: Amazon
       check_method: my_lib.store.amazon.api
+      affiliate_id: "my-tag-22" # アフィリエイトタグ（URLに ?tag=... を付与）
 
     - name: メルカリ
       check_method: my_lib.store.mercari.search
+      affiliate_id: "my_mercari_affiliate" # アフィリエイトID（URLに ?afid=... を付与）
 
     - name: ラクマ
       check_method: my_lib.store.rakuma.search
+      affiliate_id: "my_rakuma_affiliate" # アフィリエイトID（URLに ?afid=... を付与）
 
     - name: PayPayフリマ
       check_method: my_lib.store.paypay.search
+      affiliate_id: "my_paypay_affiliate" # アフィリエイトID（URLに ?afid=... を付与）
 
     - name: Yahoo
       check_method: my_lib.store.yahoo.api
