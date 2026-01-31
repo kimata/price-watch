@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from flask import Blueprint, Response, current_app, jsonify, request
 
 import price_watch.webapi.cache
+from price_watch.security.url_guard import validate_public_url
 
 if TYPE_CHECKING:
     from price_watch.app_context import PriceWatchApp
@@ -150,6 +151,11 @@ def _run_check_job(
                 data={"message": f"URL: {item_def.url or '(なし)'}, ASIN: {item_def.asin or '(なし)'}"},
             )
         )
+
+        if item_def.url:
+            validate_public_url(item_def.url)
+        if item_def.preload:
+            validate_public_url(item_def.preload.url)
 
         # ResolvedItem を構築（アイテム定義とストア定義をマージ）
         resolved_item = ResolvedItem(

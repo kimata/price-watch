@@ -22,6 +22,7 @@ import price_watch.const
 import price_watch.models
 import price_watch.notify
 import price_watch.thumbnail
+from price_watch.security.url_guard import validate_public_url
 
 if TYPE_CHECKING:
     from selenium.webdriver.remote.webdriver import WebDriver
@@ -131,6 +132,7 @@ def _process_preload(
         logging.info("skip preload. (loop=%d)", loop)
         return
 
+    validate_public_url(item.preload.url)
     driver.get(item.preload.url)
     time.sleep(2)
 
@@ -162,6 +164,7 @@ def _check_impl(
 
     logging.info("fetch: %s", item.url)
 
+    validate_public_url(item.url)
     driver.get(item.url)
     time.sleep(2)
 

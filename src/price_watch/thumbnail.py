@@ -12,6 +12,7 @@ import PIL.Image
 import requests
 
 import price_watch.const
+from price_watch.security.url_guard import UnsafeUrlError, validate_public_url
 
 REQUEST_TIMEOUT = 10
 MIN_FILE_SIZE_BYTES = 3 * 1024  # 3KB未満はエラー画像とみなす
@@ -107,6 +108,8 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
         return get_thumb_url(item_name)
 
     try:
+        validate_public_url(source_url)
+
         # ディレクトリ作成
         _thumb_path.mkdir(parents=True, exist_ok=True)
 
@@ -143,6 +146,9 @@ def save_thumb(item_name: str, source_url: str) -> str | None:
 
     except requests.RequestException as e:
         logging.warning("Failed to download thumbnail for %s: %s", item_name, e)
+        return None
+    except UnsafeUrlError as e:
+        logging.warning("Blocked thumbnail URL for %s: %s", item_name, e)
         return None
     except Exception as e:
         logging.warning("Failed to save thumbnail for %s: %s", item_name, e)
