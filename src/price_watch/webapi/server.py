@@ -181,6 +181,14 @@ def create_app(
 
     app.json.compat = True  # type: ignore[attr-defined]
 
+    @app.after_request
+    def add_cache_control_headers(response: flask.Response) -> flask.Response:
+        """API レスポンスにキャッシュ制御ヘッダーを追加."""
+        # API エンドポイントは1時間キャッシュ
+        if flask.request.path.startswith(f"{URL_PREFIX}/api/"):
+            response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+
     # ブループリント登録
     # API エンドポイント（OGP 対応ルートを含むため、静的ファイルより先に登録）
     app.register_blueprint(price_watch.webapi.page.blueprint, url_prefix=URL_PREFIX)
