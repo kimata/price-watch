@@ -112,6 +112,15 @@ class CheckedItem:
         Returns:
             初期状態の CheckedItem
         """
+        # 検索系ストアの場合のみ search_keyword を設定
+        # （Amazon PA-API やスクレイピングでは URL から item_key を生成するため）
+        import price_watch.target
+
+        if item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
+            search_keyword = item.search_keyword or item.name
+        else:
+            search_keyword = None
+
         return cls(
             name=item.name,
             store=item.store,
@@ -120,7 +129,7 @@ class CheckedItem:
             point_rate=item.point_rate,
             color=item.color,
             asin=item.asin,
-            search_keyword=item.search_keyword or item.name,
+            search_keyword=search_keyword,
             search_cond=item.cond,
         )
 

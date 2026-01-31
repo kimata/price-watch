@@ -54,12 +54,12 @@ def generate_item_key(
     """
     del search_cond  # 未使用（後方互換性のため引数として保持）
 
-    if url is not None:
-        # 通常ストア: URL からキーを生成（URL がある場合は URL を優先）
-        return url_hash(url)
-    elif search_keyword is not None:
+    if search_keyword is not None:
         # 検索系ストア: ストア名 + キーワードからキーを生成
         seed = f"{store_name}:{search_keyword}" if store_name else search_keyword
         return hashlib.sha256(seed.encode()).hexdigest()[:12]
+    elif url is not None:
+        # 通常ストア: URL からキーを生成
+        return url_hash(url)
     else:
         raise ValueError("Either url or search_keyword must be provided")

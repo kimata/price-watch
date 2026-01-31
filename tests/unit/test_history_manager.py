@@ -61,11 +61,11 @@ class TestGenerateItemKey:
         key = generate_item_key(search_keyword="テストキーワード")
         assert len(key) == 12
 
-    def test_url_priority_over_search_keyword(self) -> None:
-        """URL が指定されている場合、search_keyword より優先（Amazon PA-API 対応）"""
-        key_with_url = generate_item_key(url="https://example.com", search_keyword="テストキーワード")
-        key_url_only = generate_item_key(url="https://example.com")
-        assert key_with_url == key_url_only
+    def test_search_keyword_priority_over_url(self) -> None:
+        """search_keyword が指定されている場合、URL より優先"""
+        key_with_keyword = generate_item_key(url="https://example.com", search_keyword="テストキーワード")
+        key_keyword_only = generate_item_key(search_keyword="テストキーワード")
+        assert key_with_keyword == key_keyword_only
 
     def test_search_cond_ignored(self) -> None:
         """search_cond は無視される（同じキーワードなら同じキー）"""
