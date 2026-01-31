@@ -349,6 +349,71 @@ def _build_event_message(
     return "\n".join(parts)
 
 
+# --- 認証失敗通知 ---
+
+AUTH_FAILURE_TMPL = """\
+[
+    {{
+        "type": "header",
+        "text": {{
+            "type": "plain_text",
+            "text": ":warning: 認証失敗アラート",
+            "emoji": true
+        }}
+    }},
+    {{
+        "type": "section",
+        "text": {{
+            "type": "mrkdwn",
+            "text": {message}
+        }}
+    }}
+]
+"""
+
+
+def auth_failure(
+    slack_config: my_lib.notify.slack.SlackConfigTypes,
+    client_ip: str,
+    failure_count: int,
+) -> str | None:
+    """認証失敗を通知.
+
+    1時間に5回失敗するごとに error チャンネルに通知します。
+
+    Args:
+        slack_config: Slack 設定
+        client_ip: クライアントIPアドレス
+        failure_count: 1時間以内の失敗回数
+
+    Returns:
+        スレッドのタイムスタンプ、または通知失敗時は None
+    """
+    if isinstance(slack_config, my_lib.notify.slack.SlackEmptyConfig):
+        return None
+
+    message_text = (
+        f"*1時間に{failure_count}回の認証失敗を検出しました*\n"
+        f"IP: `{client_ip}`\n"
+        "ブルートフォース攻撃の可能性があります。"
+    )
+
+    message_json = AUTH_FAILURE_TMPL.format(
+        message=json.dumps(message_text),
+    )
+
+    formatted = my_lib.notify.slack.FormattedMessage(
+        text=f"認証失敗: {client_ip} ({failure_count}回)",
+        json=json.loads(message_json),
+    )
+
+    try:
+        return my_lib.notify.slack.send(slack_config, slack_config.error.channel.name, formatted)  # type: ignore[union-attr, return-value]
+    except Exception:
+        logging.exception("Failed to send auth failure notification")
+        return None
+
+
 # --- target.yaml 変更通知 ---
 
 TARGET_CHANGED_TMPL = """\

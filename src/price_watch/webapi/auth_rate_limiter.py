@@ -2,6 +2,7 @@
 
 IPベースのブルートフォース攻撃対策を提供します。
 過去10分間に5回認証失敗したIPは3時間ロックアウトされます。
+また、1時間に5回失敗するごとにSlack通知を送信できます。
 """
 
 import threading
@@ -9,20 +10,26 @@ from dataclasses import dataclass, field
 
 import my_lib.time
 
-# 設定値
+# 設定値（ロックアウト用）
 FAILURE_WINDOW_SEC = 10 * 60  # 10分間
 MAX_FAILURES = 5  # 最大失敗回数
 LOCKOUT_DURATION_SEC = 3 * 60 * 60  # 3時間
+
+# 設定値（Slack通知用）
+NOTIFY_WINDOW_SEC = 60 * 60  # 1時間
+NOTIFY_THRESHOLD = 5  # 通知閾値（5回ごとに通知）
 
 
 @dataclass
 class _RateLimitState:
     """レート制限の状態（スレッドセーフ）."""
 
-    # IP -> 失敗タイムスタンプのリスト
+    # IP -> 失敗タイムスタンプのリスト（ロックアウト用：10分ウィンドウ）
     failures: dict[str, list[float]] = field(default_factory=dict)
     # IP -> ロックアウト終了時刻
     lockouts: dict[str, float] = field(default_factory=dict)
+    # IP -> 失敗タイムスタンプのリスト（通知用：1時間ウィンドウ）
+    notify_failures: dict[str, list[float]] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -111,8 +118,62 @@ def get_lockout_remaining_sec(ip: str) -> int:
         return max(0, int(remaining))
 
 
+def record_failure_for_notify(ip: str) -> int | None:
+    """認証失敗を記録し、5回ごとに到達した場合は失敗回数を返す.
+
+    1時間ウィンドウで失敗をカウントし、5回、10回、15回...と
+    5の倍数に達した場合にその回数を返します。
+
+    Args:
+        ip: クライアントIPアドレス
+
+    Returns:
+        5の倍数に達した場合はその回数（5, 10, 15...）、それ以外は None
+    """
+    now = my_lib.time.now().timestamp()
+
+    with _state.lock:
+        # 失敗履歴を取得（なければ作成）
+        if ip not in _state.notify_failures:
+            _state.notify_failures[ip] = []
+
+        failures = _state.notify_failures[ip]
+
+        # 古いエントリを削除（過去1時間以内のみ保持）
+        cutoff = now - NOTIFY_WINDOW_SEC
+        _state.notify_failures[ip] = [t for t in failures if t > cutoff]
+
+        # 新しい失敗を記録
+        _state.notify_failures[ip].append(now)
+
+        # 5の倍数に達したかチェック
+        count = len(_state.notify_failures[ip])
+        if count > 0 and count % NOTIFY_THRESHOLD == 0:
+            return count
+
+        return None
+
+
+def get_hourly_failure_count(ip: str) -> int:
+    """1時間以内の失敗回数を取得.
+
+    Args:
+        ip: クライアントIPアドレス
+
+    Returns:
+        過去1時間以内の失敗回数
+    """
+    now = my_lib.time.now().timestamp()
+
+    with _state.lock:
+        failures = _state.notify_failures.get(ip, [])
+        cutoff = now - NOTIFY_WINDOW_SEC
+        return len([t for t in failures if t > cutoff])
+
+
 def clear_state() -> None:
     """全状態をクリア（テスト用）."""
     with _state.lock:
         _state.failures.clear()
         _state.lockouts.clear()
+        _state.notify_failures.clear()

@@ -15,6 +15,7 @@ import my_lib.time
 from flask_pydantic import validate
 from ruamel.yaml import YAML
 
+import price_watch.notify
 import price_watch.webapi.auth_rate_limiter
 import price_watch.webapi.cache
 import price_watch.webapi.git_sync
@@ -456,6 +457,13 @@ def update_target(
             body.password, app_config.edit.password_hash
         ):
             locked_out = price_watch.webapi.auth_rate_limiter.record_failure(client_ip)
+
+            # 1時間ウィンドウで5回ごとにSlack通知
+            notify_count = price_watch.webapi.auth_rate_limiter.record_failure_for_notify(client_ip)
+            if notify_count is not None:
+                logging.warning("認証失敗通知閾値到達: IP=%s, 回数=%d", client_ip, notify_count)
+                price_watch.notify.auth_failure(app_config.slack, client_ip, notify_count)
+
             if locked_out:
                 logging.warning("認証失敗上限到達、ロックアウト開始: IP=%s", client_ip)
                 error = price_watch.webapi.schemas.ErrorResponse(
