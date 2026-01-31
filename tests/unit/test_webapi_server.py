@@ -248,9 +248,13 @@ edit:
         mock_thread = MagicMock(spec=threading.Thread)
         mock_thread.join.side_effect = KeyboardInterrupt
 
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
+
         with (
             patch("docopt.docopt", return_value=mock_args),
             patch("my_lib.logger.init"),
+            patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread),
             patch.object(price_watch.webapi.server, "term") as mock_term,
@@ -285,9 +289,13 @@ edit:
         mock_thread = MagicMock(spec=threading.Thread)
         mock_thread.join.side_effect = KeyboardInterrupt
 
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
+
         with (
             patch("docopt.docopt", return_value=mock_args),
             patch("my_lib.logger.init") as mock_logger_init,
+            patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread),
             patch.object(price_watch.webapi.server, "term"),
@@ -328,10 +336,14 @@ edit:
         mock_thread = MagicMock(spec=threading.Thread)
         mock_thread.join.side_effect = KeyboardInterrupt
 
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
+
         with (
             patch("docopt.docopt", return_value=mock_args),
             patch("my_lib.logger.init"),
             patch("logging.warning") as mock_warning,
+            patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread),
             patch.object(price_watch.webapi.server, "term"),
