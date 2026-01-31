@@ -317,7 +317,8 @@ class TestGetResolvedItems:
         """解決済みアイテムを返す"""
         mock_config_manager = MagicMock()
         mock_items = [MagicMock(), MagicMock()]
-        mock_config_manager.get_resolved_items.return_value = mock_items
+        mock_diff = MagicMock()
+        mock_config_manager.get_resolved_items.return_value = (mock_items, mock_diff)
 
         app = price_watch.app_context.PriceWatchApp(
             config_manager=mock_config_manager,
@@ -326,9 +327,10 @@ class TestGetResolvedItems:
             metrics_manager=MagicMock(),
         )
 
-        result = app.get_resolved_items()
+        items, diff = app.get_resolved_items()
 
-        assert result == mock_items
+        assert items == mock_items
+        assert diff == mock_diff
 
 
 class TestShutdown:

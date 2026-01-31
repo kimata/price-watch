@@ -186,7 +186,7 @@ class TestAppRunnerLoadItemList:
             check_method=CheckMethod.SCRAPE,
             url="http://example.com",
         )
-        mock_app.get_resolved_items.return_value = [mock_item]
+        mock_app.get_resolved_items.return_value = ([mock_item], None)
 
         mock_processor = MagicMock()
         mock_processor.error_count = {}
@@ -208,7 +208,7 @@ class TestAppRunnerLoadItemList:
             search_keyword="keyword",
             url="",
         )
-        mock_app.get_resolved_items.return_value = [mock_item]
+        mock_app.get_resolved_items.return_value = ([mock_item], None)
 
         mock_processor = MagicMock()
         mock_processor.error_count = {}
