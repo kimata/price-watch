@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from price_watch.app_context import PriceWatchApp
     from price_watch.target import ItemDefinition, StoreDefinition
 
-check_job_bp = Blueprint("check_job", __name__, url_prefix="/api/target")
+check_job_bp = Blueprint("check_job", __name__)
 
 
 class JobStatus(str, Enum):
@@ -277,7 +277,7 @@ def _run_check_job(
             _running_job = None
 
 
-@check_job_bp.route("/check-item", methods=["POST"])
+@check_job_bp.route("/api/target/check-item", methods=["POST"])
 def start_check_item():
     """特定アイテムの価格チェックを開始.
 
@@ -358,7 +358,7 @@ def start_check_item():
     return jsonify({"job_id": job_id})
 
 
-@check_job_bp.route("/check-item/<job_id>/stream", methods=["GET"])
+@check_job_bp.route("/api/target/check-item/<job_id>/stream", methods=["GET"])
 def stream_check_item_progress(job_id: str):
     """価格チェックの進捗を SSE でストリーミング."""
     with _jobs_lock:
@@ -395,7 +395,7 @@ def stream_check_item_progress(job_id: str):
     )
 
 
-@check_job_bp.route("/check-item/<job_id>", methods=["GET"])
+@check_job_bp.route("/api/target/check-item/<job_id>", methods=["GET"])
 def get_check_item_status(job_id: str):
     """ジョブのステータスを取得."""
     with _jobs_lock:
