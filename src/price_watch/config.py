@@ -291,19 +291,27 @@ class GitSyncConfig:
 
 @dataclass(frozen=True)
 class EditConfig:
-    """エディタ設定"""
+    """エディタ設定.
 
-    password_hash: str | None = None
+    password_hash は必須。git はオプションだが、指定する場合は
+    remote_url, file_path, access_token, branch の全てが必須。
+    """
+
+    password_hash: str
     git: GitSyncConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> EditConfig:
-        """dict から EditConfig を生成"""
+        """dict から EditConfig を生成.
+
+        Raises:
+            KeyError: password_hash が存在しない場合
+        """
         git = None
         if "git" in data:
             git = GitSyncConfig.parse(data["git"])
         return cls(
-            password_hash=data.get("password_hash"),
+            password_hash=data["password_hash"],
             git=git,
         )
 
@@ -353,8 +361,8 @@ class AppConfig:
     webapp: my_lib.webapp.config.WebappConfig
     target: TargetConfig
     liveness: LivenessConfig
+    edit: EditConfig
     font: FontConfig | None = None
-    edit: EditConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> AppConfig:
@@ -384,15 +392,13 @@ class AppConfig:
         # Liveness 設定
         liveness = LivenessConfig.parse(data.get("liveness", {}))
 
+        # Edit 設定（必須）
+        edit = EditConfig.parse(data["edit"])
+
         # Font 設定
         font = None
         if "font" in data:
             font = FontConfig.parse(data["font"])
-
-        # Edit 設定
-        edit = None
-        if "edit" in data:
-            edit = EditConfig.parse(data["edit"])
 
         return cls(
             check=check,
@@ -402,8 +408,8 @@ class AppConfig:
             webapp=webapp,
             target=target,
             liveness=liveness,
-            font=font,
             edit=edit,
+            font=font,
         )
 
 

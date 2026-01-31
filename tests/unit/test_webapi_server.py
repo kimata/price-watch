@@ -17,6 +17,58 @@ import flask
 import price_watch.webapi.server
 
 
+class TestGetCorsOrigins:
+    """_get_cors_origins 関数のテスト"""
+
+    def test_with_valid_external_url(self):
+        """有効な external_url から正しいオリジンを抽出"""
+        result = price_watch.webapi.server._get_cors_origins("https://example.com/price/")
+
+        assert result == ["https://example.com"]
+
+    def test_with_external_url_no_path(self):
+        """パスなしの external_url"""
+        result = price_watch.webapi.server._get_cors_origins("https://example.com")
+
+        assert result == ["https://example.com"]
+
+    def test_with_external_url_with_port(self):
+        """ポート指定付きの external_url"""
+        result = price_watch.webapi.server._get_cors_origins("https://example.com:8443/app/")
+
+        assert result == ["https://example.com:8443"]
+
+    def test_with_http_url(self):
+        """HTTP スキームの external_url"""
+        result = price_watch.webapi.server._get_cors_origins("http://localhost:5000/price/")
+
+        assert result == ["http://localhost:5000"]
+
+    def test_with_none(self):
+        """external_url が None の場合は全許可"""
+        result = price_watch.webapi.server._get_cors_origins(None)
+
+        assert result == "*"
+
+    def test_with_empty_string(self):
+        """external_url が空文字の場合は全許可"""
+        result = price_watch.webapi.server._get_cors_origins("")
+
+        assert result == "*"
+
+    def test_with_invalid_url_no_scheme(self):
+        """スキームなしの不正な URL"""
+        result = price_watch.webapi.server._get_cors_origins("example.com/price/")
+
+        assert result == "*"
+
+    def test_with_invalid_url_no_netloc(self):
+        """ホストなしの不正な URL"""
+        result = price_watch.webapi.server._get_cors_origins("/price/")
+
+        assert result == "*"
+
+
 class TestCreateApp:
     """create_app 関数のテスト"""
 

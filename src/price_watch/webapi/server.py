@@ -15,6 +15,7 @@ import logging
 import pathlib
 import sqlite3
 import threading
+import urllib.parse
 from dataclasses import dataclass
 
 import flask
@@ -26,6 +27,28 @@ import my_lib.webapp.util
 import werkzeug.serving
 
 URL_PREFIX = "/price"
+
+
+def _get_cors_origins(external_url: str | None) -> list[str] | str:
+    """external_url から CORS 許可オリジンを抽出.
+
+    Args:
+        external_url: アプリケーションの外部 URL（例: https://example.com/price/）
+
+    Returns:
+        CORS 許可オリジンのリスト、または "*"（全許可）
+    """
+    if not external_url:
+        return "*"  # 未設定時は全許可（後方互換）
+
+    parsed = urllib.parse.urlparse(external_url)
+    if not parsed.scheme or not parsed.netloc:
+        logging.warning("Invalid external_url format: %s, allowing all origins", external_url)
+        return "*"
+
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    logging.info("CORS origin restricted to: %s", origin)
+    return [origin]
 
 
 @dataclass(frozen=True)
@@ -139,7 +162,11 @@ def create_app(
 
     app = flask.Flask("price_watch_webui")
 
-    flask_cors.CORS(app)
+    # CORS 設定: external_url が設定されていればそのオリジンのみ許可
+    app_config = price_watch.webapi.cache.get_app_config()
+    external_url = app_config.webapp.external_url if app_config else None
+    cors_origins = _get_cors_origins(external_url)
+    flask_cors.CORS(app, origins=cors_origins)
 
     app.json.compat = True  # type: ignore[attr-defined]
 

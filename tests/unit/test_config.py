@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# ruff: noqa: S101, S108
+# ruff: noqa: S101, S105, S108
 """
 config モジュールのユニットテスト
 
@@ -382,21 +382,70 @@ class TestLivenessConfig:
         assert result.interval_sec == 300
 
 
+class TestEditConfig:
+    """EditConfig のテスト"""
+
+    def test_parse_with_password_only(self) -> None:
+        """パスワードハッシュのみ"""
+        from price_watch.config import EditConfig
+
+        data = {"password_hash": "$argon2id$v=19$m=65536,t=3,p=4$test$hash"}
+        result = EditConfig.parse(data)
+        assert result.password_hash == "$argon2id$v=19$m=65536,t=3,p=4$test$hash"
+        assert result.git is None
+
+    def test_parse_with_git(self) -> None:
+        """Git 設定あり"""
+        from price_watch.config import EditConfig
+
+        data = {
+            "password_hash": "$argon2id$v=19$m=65536,t=3,p=4$test$hash",
+            "git": {
+                "remote_url": "https://gitlab.example.com/user/repo.git",
+                "file_path": "config/target.yaml",
+                "access_token": "glpat-xxx",
+                "branch": "main",
+            },
+        }
+        result = EditConfig.parse(data)
+        assert result.password_hash == "$argon2id$v=19$m=65536,t=3,p=4$test$hash"
+        assert result.git is not None
+        assert result.git.remote_url == "https://gitlab.example.com/user/repo.git"
+        assert result.git.file_path == "config/target.yaml"
+        assert result.git.access_token == "glpat-xxx"
+        assert result.git.branch == "main"
+
+    def test_parse_missing_password_hash_raises(self) -> None:
+        """password_hash が欠けている場合は KeyError"""
+        import pytest
+
+        from price_watch.config import EditConfig
+
+        data: dict[str, str] = {}
+        with pytest.raises(KeyError):
+            EditConfig.parse(data)
+
+
 class TestAppConfig:
     """AppConfig のテスト"""
 
     def test_parse_minimal(self) -> None:
         """最小構成"""
-        data = {"webapp": {"static_dir_path": "frontend/dist"}}
+        data = {
+            "webapp": {"static_dir_path": "frontend/dist"},
+            "edit": {"password_hash": "$argon2id$v=19$m=65536,t=3,p=4$test$hash"},
+        }
         result = AppConfig.parse(data)
         assert result.check.interval_sec == 1800
         assert result.store.amazon_api is None
         assert result.font is None
+        assert result.edit.password_hash.startswith("$argon2id$")
 
     def test_parse_with_font(self) -> None:
         """フォント設定あり"""
         data = {
             "webapp": {"static_dir_path": "frontend/dist"},
+            "edit": {"password_hash": "$argon2id$v=19$m=65536,t=3,p=4$test$hash"},
             "font": {"path": "/fonts", "map": {"jp_regular": "jp.ttf"}},
         }
         result = AppConfig.parse(data)
@@ -407,6 +456,7 @@ class TestAppConfig:
         """ストア設定あり"""
         data = {
             "webapp": {"static_dir_path": "frontend/dist"},
+            "edit": {"password_hash": "$argon2id$v=19$m=65536,t=3,p=4$test$hash"},
             "store": {
                 "amazon": {
                     "associate": "test-22",
@@ -431,6 +481,8 @@ class TestLoad:
             """
 webapp:
     static_dir_path: frontend/dist
+edit:
+    password_hash: "$argon2id$v=19$m=65536,t=3,p=4$test$hash"
 check:
     interval_sec: 900
 """
@@ -441,7 +493,10 @@ check:
 
     def test_load_with_none_uses_default(self) -> None:
         """None の場合はデフォルトパスを使用"""
-        mock_data = {"webapp": {"static_dir_path": "dist"}}
+        mock_data = {
+            "webapp": {"static_dir_path": "dist"},
+            "edit": {"password_hash": "$argon2id$v=19$m=65536,t=3,p=4$test$hash"},
+        }
 
         with patch("my_lib.config.load", return_value=mock_data):
             result = load(None)

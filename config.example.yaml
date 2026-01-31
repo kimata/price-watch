@@ -43,15 +43,17 @@ liveness:
         crawler: /dev/shm/healthz # ヘルスチェック用ファイル
     interval_sec: 300 # ヘルスチェック間隔（秒）
 
+# エディタ設定（必須）
+edit:
+    # パスワードハッシュ（Argon2id）- 必須
+    # 生成方法: echo "your_password" | uv run python -m price_watch.webapi.password
+    # 以下は "password" のハッシュ値
+    password_hash: "$argon2id$v=19$m=65536,t=3,p=4$G3sQ/+Jkh/ufAWCJDUTaPw$8wl44G3QrQysWT9mIDLD3bf0fLn0o/RO1EnYVVovyLs"
 
-# エディタ設定（オプション）
-# edit:
-#     # パスワードハッシュ（SHA-256）
-#     # 生成方法: echo "your_password" | uv run python -m price_watch.webapi.password
-#     # 以下は "password" のハッシュ
-#     password_hash: "65b7beb0b5d271f87729a00bf91f7d096fe08a6786083d6af33ff789f74d52ea"
-#     git:
-#         remote_url: "https://gitlab.example.com/user/repo.git"  # リモートリポジトリURL
-#         file_path: "config/target.yaml"  # リポジトリ内のファイルパス
-#         access_token: "glpat-xxx"  # GitLab: glpat-*, GitHub: ghp_*
-#         branch: "main"  # ブランチ名（省略時: main）
+    # Git 同期設定（オプション）
+    # 指定する場合、以下の4項目は全て必須
+    # git:
+    #     remote_url: "https://gitlab.example.com/user/repo.git"
+    #     file_path: "config/target.yaml"
+    #     access_token: "glpat-xxx"  # GitLab: glpat-*, GitHub: ghp_*
+    #     branch: "main"

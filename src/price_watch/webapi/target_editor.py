@@ -393,10 +393,9 @@ def get_target() -> flask.Response | tuple[flask.Response, int]:
         config = _convert_raw_to_schema(raw_data)
 
         # パスワード認証が必要かどうかを判定
+        # edit.password_hash は必須のため、app_config があれば常に True
         app_config = price_watch.webapi.cache.get_app_config()
-        require_password = False
-        if app_config and app_config.edit and app_config.edit.password_hash:
-            require_password = True
+        require_password = app_config is not None
 
         response = price_watch.webapi.schemas.TargetConfigResponse(
             config=config,
@@ -422,16 +421,11 @@ def update_target(
     try:
         # アプリ設定を取得
         app_config = price_watch.webapi.cache.get_app_config()
-        edit_config = app_config.edit if app_config else None
 
-        # パスワード認証（ハッシュ検証）
-        if (
-            edit_config
-            and edit_config.password_hash
-            and (
-                not body.password
-                or not price_watch.webapi.password.verify_password(body.password, edit_config.password_hash)
-            )
+        # パスワード認証（ハッシュ検証）- edit.password_hash は必須
+        if app_config and (
+            not body.password
+            or not price_watch.webapi.password.verify_password(body.password, app_config.edit.password_hash)
         ):
             error = price_watch.webapi.schemas.ErrorResponse(error="パスワードが正しくありません")
             return flask.jsonify(error.model_dump()), 401
@@ -449,7 +443,7 @@ def update_target(
         # Git push（設定されている場合）
         git_pushed = False
         git_commit_url: str | None = None
-        if edit_config and edit_config.git:
+        if app_config and app_config.edit.git:
             # YAML 文字列を生成
             yaml_output = io.StringIO()
             _yaml.dump(raw_data, yaml_output)
@@ -460,7 +454,7 @@ def update_target(
             commit_message = f"fix: {target_file_name} via price-watch Web UI"
 
             result = price_watch.webapi.git_sync.sync_to_remote(
-                config=edit_config.git,
+                config=app_config.edit.git,
                 content=content,
                 commit_message=commit_message,
             )
