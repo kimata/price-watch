@@ -17,6 +17,8 @@ interface ItemFormProps {
     stores: StoreDefinitionConfig[];
     categories: string[];
     isNew: boolean;
+    /** target.yaml に保存済みのアイテムかどうか（動作確認ボタンの有効化に使用） */
+    isSaved: boolean;
 }
 
 export default function ItemForm({
@@ -26,6 +28,7 @@ export default function ItemForm({
     stores,
     categories,
     isNew,
+    isSaved,
 }: ItemFormProps) {
     const [item, setItem] = useState<ItemDefinitionConfig>(initialItem);
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -513,13 +516,26 @@ export default function ItemForm({
                                                     <button
                                                         type="button"
                                                         onClick={() =>
-                                                            setCheckModalStore({
-                                                                storeName: storeEntry.name,
-                                                                storeConfig: storeDef,
-                                                            })
+                                                            isSaved
+                                                                ? setCheckModalStore({
+                                                                      storeName: storeEntry.name,
+                                                                      storeConfig: storeDef,
+                                                                  })
+                                                                : alert(
+                                                                      "動作確認を行うには、先にアイテムを保存してください。\n\n" +
+                                                                          "セキュリティ上の理由により、保存済みのアイテムのみ動作確認できます。"
+                                                                  )
                                                         }
-                                                        className="p-2 text-blue-600 hover:text-blue-800"
-                                                        title="動作確認"
+                                                        className={`p-2 ${
+                                                            isSaved
+                                                                ? "text-blue-600 hover:text-blue-800"
+                                                                : "text-gray-400 cursor-not-allowed"
+                                                        }`}
+                                                        title={
+                                                            isSaved
+                                                                ? "動作確認"
+                                                                : "動作確認するには先にアイテムを保存してください"
+                                                        }
                                                     >
                                                         <PlayIcon className="w-4 h-4" />
                                                     </button>
@@ -562,7 +578,7 @@ export default function ItemForm({
             {/* 動作確認モーダル */}
             {checkModalStore && (
                 <CheckItemModal
-                    item={item}
+                    itemName={item.name}
                     storeName={checkModalStore.storeName}
                     storeConfig={checkModalStore.storeConfig}
                     onClose={() => setCheckModalStore(null)}

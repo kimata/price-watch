@@ -19,6 +19,7 @@
 - Lenovo
 
 ## 重要な注意事項
+
 ### 共通運用ルール
 
 - 変更前に意図と影響範囲を説明し、ユーザー確認を取る
@@ -29,7 +30,6 @@
 - Union 型が 3 箇所以上で出現する場合は `TypeAlias` を定義
 - `except Exception` は避け、具体的な例外型を指定する
 - ミラー運用がある場合は primary リポジトリにのみ push する
-
 
 ### コード変更時のドキュメント更新
 
@@ -771,3 +771,269 @@ GitLab にプッシュすると、自動的に GitHub にミラーリングさ�
     git tag -a v1.x.x -m "バージョン説明"
     git push origin v1.x.x
     ```
+
+## セキュリティ監査レポート
+
+**監査実施日**: 2026-01-31
+**対象バージョン**: main ブランチ (cbabc74)
+**セキュリティ成熟度**: 2/5（要改善）
+
+### 概要
+
+本プロジェクトの Web UI を一般公開した場合のセキュリティリスクを評価しました。読み取り専用 API は比較的安全ですが、設定編集機能（target.yaml エディタ）および関連 API には複数の深刻な脆弱性が存在します。
+
+---
+
+### 発見された脆弱性
+
+#### 1. CORS 設定の不備（深刻度: 高）
+
+**場所**: `src/price_watch/webapi/server.py:142`
+
+```python
+flask_cors.CORS(app)
+```
+
+**問題**: 引数なしで CORS を有効化しているため、**全オリジンからのリクエストが許可**されます。これにより、攻撃者が管理する悪意あるサイトから API を呼び出すことが可能になります。
+
+**影響**: CSRF 攻撃、データ漏洩
+
+---
+
+#### 2. 認証なしの check-item API（深刻度: 高）
+
+**場所**: `src/price_watch/webapi/check_job.py:257-317`
+
+**問題**: `/api/target/check-item` エンドポイントは**認証なし**で、リクエストボディに含まれる任意の URL・XPath 設定でアイテムチェックを実行できます。
+
+**影響**:
+
+- **SSRF (Server-Side Request Forgery)**: 攻撃者が任意の URL を指定し、サーバー内部の Chrome WebDriver でアクセスさせることが可能
+- 内部ネットワーク（`localhost`、プライベート IP）へのアクセス
+- クラウドメタデータエンドポイント（`169.254.169.254`）への攻撃
+
+**PoC 例**:
+
+```bash
+curl -X POST http://target:5000/price/api/target/check-item \
+  -H "Content-Type: application/json" \
+  -d '{
+    "item": {"name": "test", "store": [{"name": "悪意ストア", "url": "http://169.254.169.254/latest/meta-data/"}]},
+    "store_name": "悪意ストア",
+    "store_config": {"name": "悪意ストア", "check_method": "scrape", "price_xpath": "//body"}
+  }'
+```
+
+---
+
+#### 3. パスワード認証の脆弱性（深刻度: 中）
+
+**場所**: `src/price_watch/webapi/target_editor.py:406`
+
+```python
+if edit_config and edit_config.password and body.password != edit_config.password:
+```
+
+**問題**:
+
+- パスワードが `config.yaml` に**平文保存**
+- 直接的な文字列比較で**タイミング攻撃に脆弱**
+- bcrypt 等のスローハッシュ関数を使用していない
+
+---
+
+#### 4. Git アクセストークンの平文保存（深刻度: 高）
+
+**場所**: `src/price_watch/config.py:273-289`
+
+**問題**: Git 同期用の `access_token` が `config.yaml` に平文で保存されます。
+
+**影響**:
+
+- config.yaml がリポジトリにコミットされると、トークンが履歴に残る
+- トークン漏洩時、攻撃者がリポジトリに任意のコードをプッシュ可能
+
+---
+
+#### 5. SSL 証明書検証の無効化（深刻度: 中）
+
+**場所**: `src/price_watch/webapi/git_sync.py:114, 128, 131`
+
+```python
+response = requests.get(..., verify=False)
+```
+
+**問題**: GitLab への API リクエストで SSL 証明書検証が無効化されており、**中間者攻撃 (MITM)** に対して脆弱です。
+
+---
+
+#### 6. パストラバーサルの潜在的リスク（深刻度: 低）
+
+**場所**: `src/price_watch/webapi/page.py:550-565`
+
+```python
+if not filename.endswith(".png") or "/" in filename or "\\" in filename:
+```
+
+**問題**: `..` を含むファイル名のチェックが不完全です。`resolve()` による正規化が推奨されます。
+
+---
+
+#### 7. 詳細なエラーメッセージの露出（深刻度: 低）
+
+**場所**: `src/price_watch/webapi/page.py:544-547`
+
+**問題**: 例外発生時に詳細なエラーメッセージ（クラス名、メッセージ）がレスポンスに含まれます。
+
+---
+
+#### 8. フロントエンドの dangerouslySetInnerHTML（深刻度: 低）
+
+**場所**: `frontend/src/components/UptimeHeatmap.tsx:173`
+
+```tsx
+<div dangerouslySetInnerHTML={{ __html: svgContent }} />
+```
+
+**問題**: バックエンドで生成された SVG を直接 HTML として挿入しています。バックエンド側で適切に生成されているため実質的リスクは低いですが、DOMPurify によるサニタイズが推奨されます。
+
+---
+
+### パスワード漏洩時の追加被害
+
+編集パスワードが漏洩した場合、**target.yaml の書き換え以上の被害**が発生し得ます：
+
+#### A. SSRF による内部ネットワーク攻撃
+
+target.yaml に任意の URL を設定することで、サーバーの Chrome WebDriver を使って**内部ネットワーク上のリソースにアクセス**させることができます。
+
+```yaml
+item_list:
+    - name: 内部攻撃
+      store:
+          - name: 内部ストア
+            url: http://192.168.1.1/admin # 内部ネットワーク
+```
+
+**想定される被害**:
+
+- 内部システムの管理画面へのアクセス
+- クラウドメタデータ（AWS IAM 認証情報等）の窃取
+- 内部 API の不正利用
+
+#### B. ブラウザ操作による悪用
+
+`actions` フィールドを使って、Chrome WebDriver に任意の操作を行わせることができます。
+
+```yaml
+store_list:
+    - name: 悪意ストア
+      action:
+          - type: input
+            xpath: '//input[@name="username"]'
+            value: "admin"
+          - type: input
+            xpath: '//input[@name="password"]'
+            value: "password123"
+          - type: click
+            xpath: '//button[@type="submit"]'
+```
+
+**想定される被害**:
+
+- フィッシングサイトへの自動ログイン
+- Selenium セッションの Cookie/認証情報の悪用
+
+#### C. Git リポジトリへの不正アクセス
+
+Git 同期機能が有効な場合、target.yaml の変更が自動的にリポジトリにプッシュされます。
+
+**想定される被害**:
+
+- リポジトリへの悪意あるコードの注入
+- CI/CD パイプライン経由での本番環境への影響
+- `access_token` の権限によっては他ファイルの改ざんも可能
+
+#### D. check-item API 経由の攻撃（パスワード不要）
+
+**重要**: `/api/target/check-item` は**認証なし**のため、パスワードがなくても SSRF 攻撃が可能です。
+
+---
+
+### 認証なしで公開される情報
+
+以下のエンドポイントは認証なしでアクセス可能です：
+
+| エンドポイント      | 公開情報                                     |
+| ------------------- | -------------------------------------------- |
+| `/api/items`        | 監視対象アイテムの名前、価格、在庫、URL      |
+| `/api/events`       | 価格変動イベント履歴                         |
+| `/api/metrics/*`    | クローラーの稼働状況、成功/失敗率            |
+| `/api/sysinfo`      | システム情報（ビルド日、ロードアベレージ等） |
+| `/api/target` (GET) | store_list, item_list の全定義               |
+
+---
+
+### 推奨される改善策
+
+#### 緊急度: 高（公開前に必須）
+
+1. **check-item API に認証を追加**
+    - 最低限、編集パスワードによる認証を適用
+    - または、API 自体を無効化するオプションを追加
+
+2. **CORS を制限**
+
+    ```python
+    flask_cors.CORS(app, resources={
+        r"/price/api/*": {"origins": ["https://your-domain.com"]}
+    })
+    ```
+
+3. **URL のホワイトリスト/ブラックリスト**
+    - SSRF 対策として、アクセス先 URL を制限
+    - プライベート IP、localhost、メタデータエンドポイントをブロック
+
+4. **パスワードのハッシュ化**
+    ```python
+    from werkzeug.security import check_password_hash
+    if not check_password_hash(stored_hash, body.password):
+        return error_response
+    ```
+
+#### 緊急度: 中
+
+5. **Git アクセストークンの環境変数化**
+    - config.yaml から除外し、環境変数から読み込む
+
+6. **SSL 証明書検証の有効化**
+    - 自己署名証明書の場合は CA バンドルを指定
+
+7. **読み取り API への認証オプション追加**
+    - 監視対象情報を非公開にしたい場合のオプション
+
+#### 緊急度: 低
+
+8. **エラーメッセージの汎用化**
+    - 本番環境では詳細エラーを非表示
+
+9. **レート制限の実装**
+
+    ```python
+    from flask_limiter import Limiter
+    limiter.limit("5 per minute")(update_target)
+    ```
+
+10. **DOMPurify によるフロントエンド XSS 対策**
+
+---
+
+### 結論
+
+**一般公開は推奨しません**。特に以下の問題を解決するまでは、信頼できるネットワーク内でのみ運用してください：
+
+1. check-item API の認証なし SSRF 脆弱性
+2. 無制限の CORS 設定
+3. パスワード平文保存
+
+内部ネットワークでの運用でも、check-item API 経由の SSRF リスクは存在するため、URL フィルタリングの実装を強く推奨します。

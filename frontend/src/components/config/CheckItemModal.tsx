@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { XMarkIcon, PlayIcon, CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
-import type { ItemDefinitionConfig, StoreDefinitionConfig } from "../../types/config";
+import type { StoreDefinitionConfig } from "../../types/config";
 import { API_BASE_URL } from "../../services/configService";
 
 interface CheckItemModalProps {
-    item: ItemDefinitionConfig;
+    itemName: string;
     storeName: string;
     storeConfig: StoreDefinitionConfig;
     onClose: () => void;
@@ -27,7 +27,7 @@ interface CheckResult {
 type JobStatus = "idle" | "running" | "completed" | "failed";
 
 export default function CheckItemModal({
-    item,
+    itemName,
     storeName,
     storeConfig,
     onClose,
@@ -77,16 +77,15 @@ export default function CheckItemModal({
         addLog("log", "チェックを開始しています...");
 
         try {
-            // ジョブを開始
+            // ジョブを開始（target.yaml に保存されているアイテムのみチェック可能）
             const response = await fetch(`${API_BASE_URL}/api/target/check-item`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    item: item,
+                    item_name: itemName,
                     store_name: storeName,
-                    store_config: storeConfig,
                 }),
             });
 
@@ -157,7 +156,7 @@ export default function CheckItemModal({
             setError(message);
             addLog("error", message);
         }
-    }, [item, storeName, storeConfig, addLog]);
+    }, [itemName, storeName, addLog]);
 
     // 価格フォーマット
     const formatPrice = (price: number | null): string => {
@@ -188,7 +187,7 @@ export default function CheckItemModal({
                             動作確認
                         </h2>
                         <p className="text-sm text-gray-500">
-                            {item.name} @ {storeName}
+                            {itemName} @ {storeName}
                         </p>
                     </div>
                     <button

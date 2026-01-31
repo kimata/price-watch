@@ -18,8 +18,11 @@ from typing import TYPE_CHECKING
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
+import price_watch.webapi.cache
+
 if TYPE_CHECKING:
     from price_watch.app_context import PriceWatchApp
+    from price_watch.target import ItemDefinition, StoreDefinition
 
 check_job_bp = Blueprint("check_job", __name__, url_prefix="/api/target")
 
@@ -76,19 +79,56 @@ def _cleanup_old_jobs() -> None:
             del _jobs[job_id]
 
 
+def _find_item_in_target(
+    item_name: str,
+    store_name: str,
+) -> tuple[ItemDefinition, StoreDefinition] | None:
+    """target.yaml から保存済みアイテムとストア定義を検索.
+
+    Args:
+        item_name: アイテム名
+        store_name: ストア名
+
+    Returns:
+        (ItemDefinition, StoreDefinition) のタプル。見つからない場合は None。
+    """
+    target_config = price_watch.webapi.cache.get_target_config()
+    if target_config is None:
+        return None
+
+    # ストア定義を検索
+    store_def = target_config.get_store(store_name)
+    if store_def is None:
+        return None
+
+    # アイテムを検索（名前とストアの組み合わせで一致）
+    for item in target_config.items:
+        if item.name == item_name and item.store == store_name:
+            return item, store_def
+
+    return None
+
+
 def _run_check_job(
     app: PriceWatchApp,
     job: CheckJob,
-    item_config: dict,
-    store_config: dict,
+    item_def: ItemDefinition,
+    store_def: StoreDefinition,
 ) -> None:
-    """価格チェックを実行するワーカー."""
+    """価格チェックを実行するワーカー.
+
+    Args:
+        app: アプリケーションコンテキスト
+        job: チェックジョブ
+        item_def: target.yaml から取得したアイテム定義
+        store_def: target.yaml から取得したストア定義
+    """
     import price_watch.store.amazon.paapi as paapi
     import price_watch.store.flea_market as flea_market
     import price_watch.store.scrape as scrape
     import price_watch.store.yahoo as yahoo
     from price_watch.models import CrawlStatus, StockStatus
-    from price_watch.target import CheckMethod, ResolvedItem, StoreDefinition
+    from price_watch.target import CheckMethod, ResolvedItem
 
     global _running_job
 
@@ -100,61 +140,38 @@ def _run_check_job(
             JobMessage(type="log", data={"message": f"チェック開始: {job.item_name} @ {job.store_name}"})
         )
 
-        # ストア定義を構築
-        store_def = StoreDefinition.parse(store_config)
         job.message_queue.put(
             JobMessage(type="log", data={"message": f"ストア設定: check_method={store_def.check_method}"})
         )
 
-        # アイテム URL を取得
-        store_entry = next(
-            (s for s in item_config.get("store", []) if s.get("name") == job.store_name),
-            None,
-        )
-        if not store_entry:
-            raise ValueError(f"ストアエントリが見つかりません: {job.store_name}")
-
-        url = store_entry.get("url", "")
-        asin = store_entry.get("asin")
-        search_keyword = store_entry.get("search_keyword") or item_config.get("name", "")
-        exclude_keyword = store_entry.get("exclude_keyword")
-        jan_code = store_entry.get("jan_code")
-        cond = store_entry.get("cond") or item_config.get("cond")
-        price_range = store_entry.get("price") or item_config.get("price")
-
-        # preload 設定の取得
-        preload = None
-        preload_data = store_entry.get("preload")
-        if preload_data:
-            from price_watch.target import PreloadConfig
-
-            preload = PreloadConfig.parse(preload_data)
-
         job.message_queue.put(
-            JobMessage(type="log", data={"message": f"URL: {url or '(なし)'}, ASIN: {asin or '(なし)'}"})
+            JobMessage(
+                type="log",
+                data={"message": f"URL: {item_def.url or '(なし)'}, ASIN: {item_def.asin or '(なし)'}"},
+            )
         )
 
-        # ResolvedItem を構築
+        # ResolvedItem を構築（アイテム定義とストア定義をマージ）
         resolved_item = ResolvedItem(
-            name=item_config.get("name", ""),
+            name=item_def.name,
             store=store_def.name,
-            url=url or "",
-            asin=asin,
+            url=item_def.url or "",
+            asin=item_def.asin,
             check_method=store_def.check_method,
-            price_xpath=store_entry.get("price_xpath") or store_def.price_xpath,
-            thumb_img_xpath=store_entry.get("thumb_img_xpath") or store_def.thumb_img_xpath,
-            unavailable_xpath=store_entry.get("unavailable_xpath") or store_def.unavailable_xpath,
+            price_xpath=item_def.price_xpath or store_def.price_xpath,
+            thumb_img_xpath=item_def.thumb_img_xpath or store_def.thumb_img_xpath,
+            unavailable_xpath=item_def.unavailable_xpath or store_def.unavailable_xpath,
             price_unit=store_def.price_unit,
             point_rate=store_def.point_rate,
             color=store_def.color,
             actions=store_def.actions,
-            preload=preload,
-            search_keyword=search_keyword,
-            exclude_keyword=exclude_keyword,
-            price_range=price_range,
-            cond=cond,
-            jan_code=jan_code,
-            category=item_config.get("category"),
+            preload=item_def.preload,
+            search_keyword=item_def.search_keyword or item_def.name,
+            exclude_keyword=item_def.exclude_keyword,
+            price_range=item_def.price_range,
+            cond=item_def.cond,
+            jan_code=item_def.jan_code,
+            category=item_def.category,
         )
 
         job.message_queue.put(
@@ -256,7 +273,11 @@ def _run_check_job(
 
 @check_job_bp.route("/check-item", methods=["POST"])
 def start_check_item():
-    """特定アイテムの価格チェックを開始."""
+    """特定アイテムの価格チェックを開始.
+
+    セキュリティ対策として、target.yaml に保存されているアイテムのみ
+    チェックを実行できます。任意の URL を指定した SSRF 攻撃を防止します。
+    """
     global _running_job
 
     _cleanup_old_jobs()
@@ -278,18 +299,32 @@ def start_check_item():
     if not data:
         return jsonify({"error": "リクエストボディが必要です"}), 400
 
-    item_config = data.get("item")
+    item_name = data.get("item_name")
     store_name = data.get("store_name")
-    store_config = data.get("store_config")
 
-    if not item_config or not store_name or not store_config:
-        return jsonify({"error": "item, store_name, store_config が必要です"}), 400
+    if not item_name or not store_name:
+        return jsonify({"error": "item_name と store_name が必要です"}), 400
+
+    # target.yaml から保存済みアイテムを検索（SSRF 対策）
+    result = _find_item_in_target(item_name, store_name)
+    if result is None:
+        return (
+            jsonify(
+                {
+                    "error": "指定されたアイテムは target.yaml に保存されていません。"
+                    "動作確認を行うには、先に設定を保存してください。",
+                }
+            ),
+            404,
+        )
+
+    item_def, store_def = result
 
     # ジョブ作成
     job_id = str(uuid.uuid4())
     job = CheckJob(
         job_id=job_id,
-        item_name=item_config.get("name", ""),
+        item_name=item_name,
         store_name=store_name,
     )
 
@@ -309,7 +344,7 @@ def start_check_item():
     # ワーカースレッドで実行
     thread = threading.Thread(
         target=_run_check_job,
-        args=(price_watch_app, job, item_config, store_config),
+        args=(price_watch_app, job, item_def, store_def),
         daemon=True,
     )
     thread.start()

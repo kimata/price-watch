@@ -117,6 +117,7 @@ export default function ItemsTab({ config, onChange }: ItemsTabProps) {
                 stores={config.store_list}
                 categories={config.category_list}
                 isNew={isCreating}
+                isSaved={!isCreating}
             />
         );
     }
