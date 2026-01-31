@@ -97,7 +97,17 @@ def app(
     """Flask アプリケーションフィクスチャ"""
     # テスト用のダミー静的ディレクトリ（存在しないパスでも可）
     static_dir = tmp_path / "static"
-    app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
+
+    # get_app_config をモック
+    mock_config = unittest.mock.MagicMock()
+    mock_config.webapp.external_url = None
+
+    with unittest.mock.patch(
+        "price_watch.webapi.cache.get_app_config",
+        return_value=mock_config,
+    ):
+        app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
+
     # テスト用の HistoryManager をアプリケーションコンテキストに保存
     app.config["history_manager"] = history_manager
     return app

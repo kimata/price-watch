@@ -77,7 +77,11 @@ class TestCreateApp:
         static_dir = tmp_path / "static"
         static_dir.mkdir()
 
-        app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
+
+        with patch("price_watch.webapi.cache.get_app_config", return_value=mock_config):
+            app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
 
         assert app is not None
         assert isinstance(app, flask.Flask)
@@ -87,7 +91,11 @@ class TestCreateApp:
         """静的ディレクトリが存在しない場合"""
         static_dir = tmp_path / "nonexistent"
 
-        app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
+
+        with patch("price_watch.webapi.cache.get_app_config", return_value=mock_config):
+            app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
 
         assert app is not None
         assert isinstance(app, flask.Flask)
@@ -98,7 +106,11 @@ class TestCreateApp:
         static_dir.mkdir()
         (static_dir / "index.html").write_text("<html></html>")
 
-        app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
+
+        with patch("price_watch.webapi.cache.get_app_config", return_value=mock_config):
+            app = price_watch.webapi.server.create_app(static_dir_path=static_dir)
 
         assert app is not None
         # 静的ファイルのブループリントが登録されていることを確認
@@ -132,8 +144,11 @@ class TestServerStart:
 
         mock_server = MagicMock()
         mock_thread = MagicMock(spec=threading.Thread)
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
 
         with (
+            patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread) as mock_thread_class,
         ):
@@ -151,8 +166,11 @@ class TestServerStart:
 
         mock_server = MagicMock()
         mock_thread = MagicMock(spec=threading.Thread)
+        mock_config = MagicMock()
+        mock_config.webapp.external_url = None
 
         with (
+            patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
             patch("werkzeug.serving.make_server", return_value=mock_server) as mock_make_server,
             patch("threading.Thread", return_value=mock_thread),
         ):
