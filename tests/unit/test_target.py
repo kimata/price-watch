@@ -176,6 +176,24 @@ class TestStoreDefinition:
         assert store.actions[0].type == ActionType.CLICK
         assert store.actions[1].type == ActionType.RECAPTCHA
 
+    def test_parse_raises_error_when_too_many_actions(self):
+        """action が最大個数を超えたらエラー"""
+        data = {
+            "name": "store.com",
+            "action": [{"type": "click", "xpath": f"//button{i}"} for i in range(11)],
+        }
+        with pytest.raises(ValueError, match="too many actions"):
+            StoreDefinition.parse(data)
+
+    def test_parse_with_max_actions(self):
+        """action が最大個数ちょうどなら OK"""
+        data = {
+            "name": "store.com",
+            "action": [{"type": "click", "xpath": f"//button{i}"} for i in range(10)],
+        }
+        store = StoreDefinition.parse(data)
+        assert len(store.actions) == 10
+
     def test_parse_with_assumption_point_rate(self):
         """assumption.point_rate からポイント還元率を取得"""
         data = {

@@ -183,6 +183,12 @@ class StoreDefinition:
         actions = []
         if "action" in data:
             actions = [ActionStep.parse(a) for a in data["action"]]
+            # action の最大個数を制限
+            if len(actions) > price_watch.const.STORE_ACTION_MAX_COUNT:
+                raise ValueError(
+                    f"Store '{data.get('name', 'unknown')}' has too many actions: "
+                    f"{len(actions)} (max: {price_watch.const.STORE_ACTION_MAX_COUNT})"
+                )
 
         check_method = CheckMethod.SCRAPE
         if "check_method" in data:
