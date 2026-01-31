@@ -78,12 +78,21 @@ export interface TargetConfigResponse {
     config: TargetConfig;
     check_methods: string[];
     action_types: string[];
+    require_password: boolean;
 }
 
 // API リクエスト: PUT /api/target
 export interface TargetUpdateRequest {
     config: TargetConfig;
     create_backup: boolean;
+    password?: string | null;
+}
+
+// API レスポンス: PUT /api/target
+export interface TargetUpdateResponse {
+    success: boolean;
+    git_pushed: boolean;
+    git_commit_url?: string | null;
 }
 
 // バリデーションエラー

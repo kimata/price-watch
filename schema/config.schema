@@ -154,6 +154,22 @@
                     "minimum": 1
                 }
             }
+        },
+        "edit": {
+            "type": "object",
+            "properties": {
+                "password": { "type": "string" },
+                "git": {
+                    "type": "object",
+                    "properties": {
+                        "remote_url": { "type": "string" },
+                        "file_path": { "type": "string" },
+                        "access_token": { "type": "string" },
+                        "branch": { "type": "string" }
+                    },
+                    "required": ["remote_url", "file_path", "access_token"]
+                }
+            }
         }
     },
     "required": ["webapp"]

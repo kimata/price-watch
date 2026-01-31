@@ -35,6 +35,7 @@ from price_watch.webapi.schemas.target import (
     TargetConfigResponse,
     TargetConfigSchema,
     TargetUpdateRequest,
+    TargetUpdateResponse,
     ValidateResponse,
     ValidationError,
 )
@@ -71,6 +72,7 @@ __all__ = [
     "TargetConfigResponse",
     "TargetConfigSchema",
     "TargetUpdateRequest",
+    "TargetUpdateResponse",
     "ValidateResponse",
     "ValidationError",
 ]

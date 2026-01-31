@@ -5,6 +5,7 @@ import axios from "axios";
 import type {
     TargetConfigResponse,
     TargetUpdateRequest,
+    TargetUpdateResponse,
     ValidateResponse,
     TargetConfig,
     CheckItemRequest,
@@ -27,13 +28,15 @@ export async function fetchTargetConfig(): Promise<TargetConfigResponse> {
  */
 export async function updateTargetConfig(
     config: TargetConfig,
-    createBackup: boolean = true
-): Promise<{ success: boolean }> {
+    createBackup: boolean = true,
+    password?: string | null
+): Promise<TargetUpdateResponse> {
     const request: TargetUpdateRequest = {
         config,
         create_backup: createBackup,
+        password,
     };
-    const response = await axios.put<{ success: boolean }>(`${API_BASE}/target`, request);
+    const response = await axios.put<TargetUpdateResponse>(`${API_BASE}/target`, request);
     return response.data;
 }
 

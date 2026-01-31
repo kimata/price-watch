@@ -9,9 +9,9 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
-    { id: "stores", label: "ストア", icon: BuildingStorefrontIcon },
-    { id: "categories", label: "カテゴリ", icon: TagIcon },
     { id: "items", label: "アイテム", icon: CubeIcon },
+    { id: "categories", label: "カテゴリ", icon: TagIcon },
+    { id: "stores", label: "ストア", icon: BuildingStorefrontIcon },
 ];
 
 interface ConfigTabsProps {

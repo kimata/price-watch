@@ -25,9 +25,10 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
-    const [activeTab, setActiveTab] = useState<TabType>("stores");
+    const [activeTab, setActiveTab] = useState<TabType>("items");
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [createBackup, setCreateBackup] = useState(true);
+    const [requirePassword, setRequirePassword] = useState(false);
 
     // 変更があるかどうかを判定
     const hasChanges = useCallback(() => {
@@ -44,6 +45,7 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
             setOriginalConfig(JSON.parse(JSON.stringify(response.config)));
             setCheckMethods(response.check_methods);
             setActionTypes(response.action_types);
+            setRequirePassword(response.require_password);
             setValidationErrors([]);
         } catch (error) {
             console.error("Failed to load config:", error);
@@ -72,7 +74,7 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
     }, [config, showToast]);
 
     // 保存処理
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (password?: string) => {
         if (!config) return;
 
         // まずバリデーション
@@ -85,13 +87,31 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
 
         setSaving(true);
         try {
-            await updateTargetConfig(config, createBackup);
+            const result = await updateTargetConfig(config, createBackup, password);
             setOriginalConfig(JSON.parse(JSON.stringify(config)));
             setValidationErrors([]);
-            showToast("設定を保存しました", "success");
+
+            // Git push の結果に応じてメッセージを変更
+            if (result.git_pushed) {
+                showToast("設定を保存し、Git にプッシュしました", "success");
+            } else {
+                showToast("設定を保存しました", "success");
+            }
             setShowSaveModal(false);
-        } catch (error) {
+        } catch (error: unknown) {
             console.error("Failed to save config:", error);
+            // 401 エラーの場合はパスワードエラーを表示
+            if (error && typeof error === "object" && "response" in error) {
+                const axiosError = error as { response?: { status?: number; data?: { error?: string } } };
+                if (axiosError.response?.status === 401) {
+                    showToast("パスワードが正しくありません", "error");
+                    return;
+                }
+                if (axiosError.response?.data?.error) {
+                    showToast(axiosError.response.data.error, "error");
+                    return;
+                }
+            }
             showToast("設定の保存に失敗しました", "error");
         } finally {
             setSaving(false);
@@ -243,6 +263,7 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
                     onConfirm={handleSave}
                     onCancel={() => setShowSaveModal(false)}
                     saving={saving}
+                    requirePassword={requirePassword}
                 />
             )}
         </div>

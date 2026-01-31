@@ -104,6 +104,7 @@ class TargetConfigResponse(BaseSchema):
     config: TargetConfigSchema
     check_methods: list[str] = Field(default_factory=lambda: CHECK_METHODS)
     action_types: list[str] = Field(default_factory=lambda: ACTION_TYPES)
+    require_password: bool = Field(default=False, description="保存時にパスワードが必要か")
 
 
 class TargetUpdateRequest(BaseSchema):
@@ -111,6 +112,15 @@ class TargetUpdateRequest(BaseSchema):
 
     config: TargetConfigSchema
     create_backup: bool = Field(default=True, description="バックアップを作成するか")
+    password: str | None = Field(default=None, description="認証パスワード")
+
+
+class TargetUpdateResponse(BaseSchema):
+    """PUT /api/target のレスポンス."""
+
+    success: bool = Field(..., description="保存成功かどうか")
+    git_pushed: bool = Field(default=False, description="Git push が実行されたか")
+    git_commit_url: str | None = Field(default=None, description="コミット URL")
 
 
 class ValidationError(BaseSchema):

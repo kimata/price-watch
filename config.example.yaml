@@ -42,3 +42,13 @@ liveness:
     file:
         crawler: /dev/shm/healthz # ヘルスチェック用ファイル
     interval_sec: 300 # ヘルスチェック間隔（秒）
+
+
+# エディタ設定（オプション）
+# edit:
+#     password: "secret123"  # 保存時に必要なパスワード
+#     git:
+#         remote_url: "https://gitlab.example.com/user/repo.git"  # リモートリポジトリURL
+#         file_path: "config/target.yaml"  # リポジトリ内のファイルパス
+#         access_token: "glpat-xxx"  # GitLab: glpat-*, GitHub: ghp_*
+#         branch: "main"  # ブランチ名（省略時: main）

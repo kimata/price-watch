@@ -138,6 +138,31 @@ export default function ItemForm({
         }));
     }, []);
 
+    // フリマ一括追加（メルカリ、ラクマ、PayPayフリマ）
+    const FLEA_MARKET_METHODS = [
+        "my_lib.store.mercari.search",
+        "my_lib.store.rakuma.search",
+        "my_lib.store.paypay.search",
+    ];
+
+    const fleaMarketStores = useMemo(() => {
+        return stores.filter((s) => FLEA_MARKET_METHODS.includes(s.check_method));
+    }, [stores]);
+
+    const addFleaMarketStores = useCallback(() => {
+        const usedStoreNames = new Set(item.store.map((s) => s.name));
+        const newEntries: StoreEntryConfig[] = fleaMarketStores
+            .filter((s) => !usedStoreNames.has(s.name))
+            .map((s) => ({
+                ...DEFAULT_STORE_ENTRY,
+                name: s.name,
+            }));
+
+        if (newEntries.length > 0) {
+            setItem((prev) => ({ ...prev, store: [...prev.store, ...newEntries] }));
+        }
+    }, [item.store, fleaMarketStores]);
+
     // 価格範囲の更新
     const updatePriceRange = useCallback((min: string, max: string) => {
         const minVal = parseInt(min, 10);
@@ -257,15 +282,27 @@ export default function ItemForm({
                         <h4 className="text-sm font-medium text-gray-900">
                             ストア <span className="text-red-500">*</span>
                         </h4>
-                        <button
-                            type="button"
-                            onClick={addStoreEntry}
-                            disabled={stores.length === 0}
-                            className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <PlusIcon className="w-4 h-4 mr-1" />
-                            ストアを追加
-                        </button>
+                        <div className="flex items-center gap-3">
+                            {fleaMarketStores.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={addFleaMarketStores}
+                                    className="inline-flex items-center text-sm text-green-600 hover:text-green-700"
+                                >
+                                    <PlusIcon className="w-4 h-4 mr-1" />
+                                    フリマ一括追加
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={addStoreEntry}
+                                disabled={stores.length === 0}
+                                className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <PlusIcon className="w-4 h-4 mr-1" />
+                                ストアを追加
+                            </button>
+                        </div>
                     </div>
 
                     {errors.store && (

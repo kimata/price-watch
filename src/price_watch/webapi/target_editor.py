@@ -4,6 +4,7 @@
 target.yaml の読み込み、保存、バリデーションを行う API を提供します。
 """
 
+import io
 import logging
 import pathlib
 import shutil
@@ -15,6 +16,7 @@ from flask_pydantic import validate
 from ruamel.yaml import YAML
 
 import price_watch.webapi.cache
+import price_watch.webapi.git_sync
 import price_watch.webapi.schemas
 
 blueprint = flask.Blueprint("target_editor", __name__)
@@ -368,10 +370,17 @@ def get_target() -> flask.Response | tuple[flask.Response, int]:
         raw_data = _load_raw_target()
         config = _convert_raw_to_schema(raw_data)
 
+        # パスワード認証が必要かどうかを判定
+        app_config = price_watch.webapi.cache.get_app_config()
+        require_password = False
+        if app_config and app_config.edit and app_config.edit.password:
+            require_password = True
+
         response = price_watch.webapi.schemas.TargetConfigResponse(
             config=config,
             check_methods=price_watch.webapi.schemas.CHECK_METHODS,
             action_types=price_watch.webapi.schemas.ACTION_TYPES,
+            require_password=require_password,
         )
 
         return flask.jsonify(response.model_dump())
@@ -389,6 +398,15 @@ def update_target(
 ) -> flask.Response | tuple[flask.Response, int]:
     """target.yaml を更新."""
     try:
+        # アプリ設定を取得
+        app_config = price_watch.webapi.cache.get_app_config()
+        edit_config = app_config.edit if app_config else None
+
+        # パスワード認証
+        if edit_config and edit_config.password and body.password != edit_config.password:
+            error = price_watch.webapi.schemas.ErrorResponse(error="パスワードが正しくありません")
+            return flask.jsonify(error.model_dump()), 401
+
         # バリデーション
         errors = _validate_config(body.config)
         if errors:
@@ -399,7 +417,39 @@ def update_target(
         raw_data = _convert_schema_to_raw(body.config)
         _save_raw_target(raw_data, create_backup=body.create_backup)
 
-        return flask.jsonify({"success": True})
+        # Git push（設定されている場合）
+        git_pushed = False
+        git_commit_url: str | None = None
+        if edit_config and edit_config.git:
+            # YAML 文字列を生成
+            yaml_output = io.StringIO()
+            _yaml.dump(raw_data, yaml_output)
+            content = yaml_output.getvalue()
+
+            # コミットメッセージを生成（ファイル名を含める）
+            target_file_name = _get_target_file_path().name
+            commit_message = f"fix: {target_file_name} via price-watch Web UI"
+
+            result = price_watch.webapi.git_sync.sync_to_remote(
+                config=edit_config.git,
+                content=content,
+                commit_message=commit_message,
+            )
+            if result.success:
+                git_pushed = True
+                git_commit_url = result.commit_url
+            else:
+                # Git push 失敗時はエラーを返す（ローカルは保存済み）
+                error_msg = f"ローカル保存は成功しましたが、Git push に失敗しました: {result.error}"
+                error = price_watch.webapi.schemas.ErrorResponse(error=error_msg)
+                return flask.jsonify(error.model_dump()), 500
+
+        update_response = price_watch.webapi.schemas.TargetUpdateResponse(
+            success=True,
+            git_pushed=git_pushed,
+            git_commit_url=git_commit_url,
+        )
+        return flask.jsonify(update_response.model_dump())
 
     except Exception:
         logging.exception("Error updating target config")

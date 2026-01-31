@@ -270,6 +270,45 @@ class FontConfig:
 
 
 @dataclass(frozen=True)
+class GitSyncConfig:
+    """Git 同期設定"""
+
+    remote_url: str
+    file_path: str
+    access_token: str
+    branch: str = "main"
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> GitSyncConfig:
+        """dict から GitSyncConfig を生成"""
+        return cls(
+            remote_url=data["remote_url"],
+            file_path=data["file_path"],
+            access_token=data["access_token"],
+            branch=data.get("branch", "main"),
+        )
+
+
+@dataclass(frozen=True)
+class EditConfig:
+    """エディタ設定"""
+
+    password: str | None = None
+    git: GitSyncConfig | None = None
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> EditConfig:
+        """dict から EditConfig を生成"""
+        git = None
+        if "git" in data:
+            git = GitSyncConfig.parse(data["git"])
+        return cls(
+            password=data.get("password"),
+            git=git,
+        )
+
+
+@dataclass(frozen=True)
 class LivenessFileConfig:
     """Liveness ファイル設定"""
 
@@ -314,7 +353,8 @@ class AppConfig:
     webapp: my_lib.webapp.config.WebappConfig
     target: TargetConfig
     liveness: LivenessConfig
-    font: FontConfig | None
+    font: FontConfig | None = None
+    edit: EditConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> AppConfig:
@@ -349,6 +389,11 @@ class AppConfig:
         if "font" in data:
             font = FontConfig.parse(data["font"])
 
+        # Edit 設定
+        edit = None
+        if "edit" in data:
+            edit = EditConfig.parse(data["edit"])
+
         return cls(
             check=check,
             slack=slack,
@@ -358,6 +403,7 @@ class AppConfig:
             target=target,
             liveness=liveness,
             font=font,
+            edit=edit,
         )
 
 
