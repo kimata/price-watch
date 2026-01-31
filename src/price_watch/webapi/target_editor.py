@@ -419,13 +419,18 @@ def update_target(
 ) -> flask.Response | tuple[flask.Response, int]:
     """target.yaml を更新."""
     try:
-        # アプリ設定を取得
+        # アプリ設定を取得（必須）
         app_config = price_watch.webapi.cache.get_app_config()
+        if app_config is None:
+            logging.error("config.yaml の読み込みに失敗したため、設定の保存を拒否しました")
+            error = price_watch.webapi.schemas.ErrorResponse(
+                error="サーバー設定の読み込みに失敗しました。管理者に連絡してください。"
+            )
+            return flask.jsonify(error.model_dump()), 500
 
         # パスワード認証（ハッシュ検証）- edit.password_hash は必須
-        if app_config and (
-            not body.password
-            or not price_watch.webapi.password.verify_password(body.password, app_config.edit.password_hash)
+        if not body.password or not price_watch.webapi.password.verify_password(
+            body.password, app_config.edit.password_hash
         ):
             error = price_watch.webapi.schemas.ErrorResponse(error="パスワードが正しくありません")
             return flask.jsonify(error.model_dump()), 401

@@ -144,6 +144,9 @@ def create_app(
         static_dir_path: フロントエンドの静的ファイルディレクトリパス（frontend/dist）
         config_file: 設定ファイルパス（指定時にキャッシュパスを更新）
         target_file: ターゲット設定ファイルパス（指定時にキャッシュパスを更新）
+
+    Raises:
+        RuntimeError: config.yaml の読み込みに失敗した場合
     """
     import price_watch.webapi.check_job
     import price_watch.webapi.page
@@ -162,9 +165,17 @@ def create_app(
 
     app = flask.Flask("price_watch_webui")
 
-    # CORS 設定: external_url が設定されていればそのオリジンのみ許可
+    # config.yaml の読み込み（必須）
+    # 読み込み失敗時は例外が発生し、サーバー起動が停止する
     app_config = price_watch.webapi.cache.get_app_config()
-    external_url = app_config.webapp.external_url if app_config else None
+    if app_config is None:
+        config_path = price_watch.webapi.cache.get_config_cache().file_path
+        msg = f"config.yaml の読み込みに失敗しました: {config_path}"
+        logging.critical(msg)
+        raise RuntimeError(msg)
+
+    # CORS 設定: external_url が設定されていればそのオリジンのみ許可
+    external_url = app_config.webapp.external_url
     cors_origins = _get_cors_origins(external_url)
     flask_cors.CORS(app, origins=cors_origins)
 

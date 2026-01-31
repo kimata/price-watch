@@ -215,6 +215,8 @@ data:
   metrics: /tmp/metrics
 webapp:
   static_dir_path: /tmp/static
+edit:
+  password_hash: "$2b$12$test_hash"
 """
         )
 
@@ -250,6 +252,8 @@ data:
   metrics: /tmp/metrics
 webapp:
   static_dir_path: /tmp/static
+edit:
+  password_hash: "$2b$12$test_hash"
 """
         )
 
@@ -291,6 +295,8 @@ data:
   metrics: /tmp/metrics
 webapp:
   static_dir_path: {nonexistent_static}
+edit:
+  password_hash: "$2b$12$test_hash"
 """
         )
 
