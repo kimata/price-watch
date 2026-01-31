@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 import requests
 import urllib3
+import urllib3.exceptions
 
 import price_watch.config
 
