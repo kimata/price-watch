@@ -380,3 +380,30 @@ class StoreStats:
     item_count: int = 0
     success_count: int = 0
     failed_count: int = 0
+
+
+# =============================================================================
+# target.yaml 差分検出用
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class ItemChange:
+    """アイテムの変更内容."""
+
+    field: str  # 変更されたフィールド名
+    old_value: str  # 変更前の値
+    new_value: str  # 変更後の値
+
+
+@dataclass(frozen=True)
+class TargetDiff:
+    """target.yaml の差分."""
+
+    added: list[ResolvedItem]  # 追加されたアイテム
+    removed: list[ResolvedItem]  # 削除されたアイテム
+    changed: list[tuple[ResolvedItem, list[ItemChange]]]  # 変更されたアイテムと変更内容
+
+    def has_changes(self) -> bool:
+        """変更があるかどうかを返す."""
+        return bool(self.added or self.removed or self.changed)

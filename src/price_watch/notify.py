@@ -15,7 +15,7 @@ import price_watch.event
 if TYPE_CHECKING:
     import PIL.Image
 
-    from price_watch.models import CheckedItem
+    from price_watch.models import CheckedItem, TargetDiff
 
 
 MESSAGE_TMPL = """\
@@ -347,3 +347,85 @@ def _build_event_message(
     parts.append(f"<{item.url or ''}|詳細を見る>")
 
     return "\n".join(parts)
+
+
+# --- target.yaml 変更通知 ---
+
+TARGET_CHANGED_TMPL = """\
+[
+    {{
+        "type": "header",
+        "text": {{
+            "type": "plain_text",
+            "text": {title},
+            "emoji": true
+        }}
+    }},
+    {{
+        "type": "section",
+        "text": {{
+            "type": "mrkdwn",
+            "text": {message}
+        }}
+    }}
+]
+"""
+
+
+def target_changed(
+    slack_config: my_lib.notify.slack.SlackConfigTypes,
+    diff: TargetDiff,
+) -> str | None:
+    """target.yaml の変更を通知.
+
+    Args:
+        slack_config: Slack 設定（SlackEmptyConfig の場合は何もしない）
+        diff: 差分情報
+
+    Returns:
+        スレッドのタイムスタンプ、または通知失敗時は None
+    """
+    if not diff.has_changes():
+        return None
+
+    # メッセージを構築
+    message_parts: list[str] = []
+
+    if diff.added:
+        message_parts.append(f"*➕ 追加 ({len(diff.added)}件)*")
+        message_parts.extend(f"  • {item.name} ({item.store})" for item in diff.added)
+        message_parts.append("")
+
+    if diff.removed:
+        message_parts.append(f"*➖ 削除 ({len(diff.removed)}件)*")
+        message_parts.extend(f"  • {item.name} ({item.store})" for item in diff.removed)
+        message_parts.append("")
+
+    if diff.changed:
+        message_parts.append(f"*✏️ 変更 ({len(diff.changed)}件)*")
+        for item, changes in diff.changed:
+            message_parts.append(f"  • {item.name} ({item.store})")
+            message_parts.extend(
+                f'    - {change.field}: "{change.old_value}" → "{change.new_value}"' for change in changes
+            )
+        message_parts.append("")
+
+    message_text = "\n".join(message_parts).strip()
+
+    title = "📝 target.yaml が更新されました"
+    message_json = TARGET_CHANGED_TMPL.format(
+        title=json.dumps(title),
+        message=json.dumps(message_text),
+    )
+
+    formatted = my_lib.notify.slack.FormattedMessage(
+        text=title,
+        json=json.loads(message_json),
+    )
+
+    try:
+        # NullObject パターン: SlackEmptyConfig の場合は send() 内で早期リターン
+        return my_lib.notify.slack.send(slack_config, slack_config.info.channel.name, formatted)  # type: ignore[union-attr, return-value]
+    except Exception:
+        logging.exception("Failed to send target change notification")
+        return None

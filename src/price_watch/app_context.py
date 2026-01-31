@@ -29,6 +29,7 @@ if TYPE_CHECKING:
         HistoryManager,
         MetricsManager,
     )
+    from price_watch.models import TargetDiff
     from price_watch.target import ResolvedItem
     from price_watch.webapi.server import ServerHandle
 
@@ -204,16 +205,17 @@ class PriceWatchApp:
         my_lib.footprint.update(self.config.liveness.file.crawler)
         self.metrics_manager.update_heartbeat()
 
-    def get_resolved_items(self) -> list[ResolvedItem]:
+    def get_resolved_items(self) -> tuple[list[ResolvedItem], TargetDiff | None]:
         """解決済みアイテムリストを取得.
 
         ターゲット設定を再読み込みしてから解決します。
         item_filter や store_filter が設定されている場合はフィルタリングします。
 
         Returns:
-            解決済みアイテムのリスト
+            (解決済みアイテムのリスト, 差分情報)
+            差分は初回読み込み時は None
         """
-        items = self.config_manager.get_resolved_items()
+        items, diff = self.config_manager.get_resolved_items()
 
         # フィルタリング
         if self.item_filter or self.store_filter:
@@ -243,7 +245,7 @@ class PriceWatchApp:
                 )
             items = filtered
 
-        return items
+        return items, diff
 
     def shutdown(self) -> None:
         """アプリケーションを終了.

@@ -458,3 +458,125 @@ class TestResolveThumbUrl:
             "https://example.com/",
         )
         assert result == "https://example.com/price/thumb/abc.png"
+
+
+class TestTargetChanged:
+    """target_changed 関数のテスト"""
+
+    def _create_target_diff(
+        self,
+        added: list[price_watch.models.ResolvedItem] | None = None,
+        removed: list[price_watch.models.ResolvedItem] | None = None,
+        changed: list[tuple[price_watch.models.ResolvedItem, list[price_watch.models.ItemChange]]]
+        | None = None,
+    ) -> price_watch.models.TargetDiff:
+        """テスト用 TargetDiff を作成."""
+        return price_watch.models.TargetDiff(
+            added=added or [],
+            removed=removed or [],
+            changed=changed or [],
+        )
+
+    def _create_resolved_item(
+        self,
+        name: str = "商品A",
+        store: str = "Amazon",
+        url: str = "https://amazon.co.jp/dp/B0123456",
+    ) -> price_watch.models.ResolvedItem:
+        """テスト用 ResolvedItem を作成."""
+        import price_watch.target
+
+        return price_watch.target.ResolvedItem(
+            name=name,
+            store=store,
+            url=url,
+        )
+
+    def test_returns_none_for_empty_config(self) -> None:
+        """SlackEmptyConfig の場合は None"""
+        config = my_lib.notify.slack.SlackEmptyConfig()
+        diff = self._create_target_diff(
+            added=[self._create_resolved_item()],
+        )
+        result = price_watch.notify.target_changed(config, diff)
+        assert result is None
+
+    def test_returns_none_when_no_changes(self) -> None:
+        """変更がない場合は None"""
+        mock_config = MagicMock()
+        diff = self._create_target_diff()
+        result = price_watch.notify.target_changed(mock_config, diff)
+        assert result is None
+
+    def test_sends_notification_for_added_items(self) -> None:
+        """追加アイテムの通知"""
+        mock_config = MagicMock()
+        mock_config.info.channel.name = "#info"
+
+        diff = self._create_target_diff(
+            added=[
+                self._create_resolved_item(name="商品A", store="Amazon"),
+                self._create_resolved_item(name="商品B", store="ヨドバシ"),
+            ]
+        )
+
+        with patch("my_lib.notify.slack.send", return_value="ts001") as mock_send:
+            result = price_watch.notify.target_changed(mock_config, diff)
+
+            assert result == "ts001"
+            mock_send.assert_called_once()
+            # メッセージ内容を確認
+            call_args = mock_send.call_args
+            formatted_msg = call_args[0][2]
+            assert "追加" in formatted_msg.text or "target.yaml" in formatted_msg.text
+
+    def test_sends_notification_for_removed_items(self) -> None:
+        """削除アイテムの通知"""
+        mock_config = MagicMock()
+        mock_config.info.channel.name = "#info"
+
+        diff = self._create_target_diff(
+            removed=[self._create_resolved_item(name="商品C", store="Amazon")],
+        )
+
+        with patch("my_lib.notify.slack.send", return_value="ts002") as mock_send:
+            result = price_watch.notify.target_changed(mock_config, diff)
+
+            assert result == "ts002"
+            mock_send.assert_called_once()
+
+    def test_sends_notification_for_changed_items(self) -> None:
+        """変更アイテムの通知"""
+        mock_config = MagicMock()
+        mock_config.info.channel.name = "#info"
+
+        item = self._create_resolved_item(name="商品D", store="メルカリ")
+        changes = [
+            price_watch.models.ItemChange(
+                field="検索キーワード",
+                old_value="古いキーワード",
+                new_value="新しいキーワード",
+            )
+        ]
+        diff = self._create_target_diff(
+            changed=[(item, changes)],
+        )
+
+        with patch("my_lib.notify.slack.send", return_value="ts003") as mock_send:
+            result = price_watch.notify.target_changed(mock_config, diff)
+
+            assert result == "ts003"
+            mock_send.assert_called_once()
+
+    def test_handles_send_exception(self) -> None:
+        """送信例外をハンドル"""
+        mock_config = MagicMock()
+        mock_config.info.channel.name = "#info"
+
+        diff = self._create_target_diff(
+            added=[self._create_resolved_item()],
+        )
+
+        with patch("my_lib.notify.slack.send", side_effect=Exception("Network error")):
+            result = price_watch.notify.target_changed(mock_config, diff)
+            assert result is None

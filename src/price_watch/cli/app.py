@@ -29,10 +29,12 @@ import my_lib.webapp.event
 import price_watch.app_context
 import price_watch.const
 import price_watch.managers.history
+import price_watch.notify
 import price_watch.processor
 import price_watch.target
 
 if TYPE_CHECKING:
+    from price_watch.models import TargetDiff
     from price_watch.target import ResolvedItem
 
 if TYPE_CHECKING:
@@ -146,7 +148,10 @@ class AppRunner:
 
     def _load_item_list(self) -> list[ResolvedItem]:
         """監視対象アイテムリストを読み込む."""
-        items = self.app.get_resolved_items()
+        items, diff = self.app.get_resolved_items()
+
+        # target.yaml の変更を通知
+        self._notify_target_changes(diff)
 
         # エラーカウントを初期化
         for item in items:
@@ -165,6 +170,26 @@ class AppRunner:
                     self.processor.error_count[item.url] = 0
 
         return items
+
+    def _notify_target_changes(self, diff: TargetDiff | None) -> None:
+        """target.yaml の変更を通知.
+
+        Args:
+            diff: 差分情報（初回読み込み時は None）
+        """
+        if diff is None or not diff.has_changes():
+            return
+
+        # 変更内容をログ出力
+        logging.info(
+            "target.yaml changed: added=%d, removed=%d, changed=%d",
+            len(diff.added),
+            len(diff.removed),
+            len(diff.changed),
+        )
+
+        # Slack 通知（target_changed 内で SlackEmptyConfig チェックを行う）
+        price_watch.notify.target_changed(self.app.config.slack, diff)
 
     def _sleep_until(self, end_time: float) -> None:
         """指定時刻までスリープ.
