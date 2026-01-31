@@ -23,9 +23,9 @@
 
 ## 概要
 
-![Slack 通知サンプル](./img/screenshot.png "Slack 通知サンプル")
-
 Selenium と undetected-chromedriver を使用してオンラインショップをスクレイピングし、価格変動を検出して Slack に通知します。Amazon PA-API やメルカリ/ラクマ/PayPayフリマ/Yahoo!ショッピングのキーワード検索にも対応しています。
+
+**動作サンプル:** https://price-watch-webui.kubernetes.green-rabbit.net/price/
 
 ### ✨ 主な特徴
 
