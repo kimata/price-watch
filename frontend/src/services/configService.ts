@@ -10,6 +10,8 @@ import type {
     TargetConfig,
     CheckItemRequest,
     CheckItemResponse,
+    AmazonSearchResponse,
+    AmazonSearchAvailableResponse,
 } from "../types/config";
 
 const API_BASE = "/price/api";
@@ -84,4 +86,23 @@ export function streamCheckItemProgress(
     };
 
     return eventSource;
+}
+
+/**
+ * Amazon 検索 API が利用可能かどうかを確認
+ */
+export async function checkAmazonSearchAvailable(): Promise<boolean> {
+    const response = await axios.get<AmazonSearchAvailableResponse>(`${API_BASE}/amazon/search/available`);
+    return response.data.available;
+}
+
+/**
+ * Amazon 商品をキーワードで検索
+ */
+export async function searchAmazon(keywords: string, itemCount: number = 10): Promise<AmazonSearchResponse> {
+    const response = await axios.post<AmazonSearchResponse>(`${API_BASE}/amazon/search`, {
+        keywords,
+        item_count: itemCount,
+    });
+    return response.data;
 }

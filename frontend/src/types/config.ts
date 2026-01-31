@@ -187,3 +187,24 @@ export const DEFAULT_ITEM_DEFINITION: ItemDefinitionConfig = {
     cond: null,
     store: [],
 };
+
+// Amazon 検索関連
+export interface AmazonSearchRequest {
+    keywords: string;
+    item_count?: number;
+}
+
+export interface AmazonSearchResultItem {
+    title: string;
+    asin: string;
+    price: number | null;
+    thumb_url: string | null;
+}
+
+export interface AmazonSearchResponse {
+    items: AmazonSearchResultItem[];
+}
+
+export interface AmazonSearchAvailableResponse {
+    available: boolean;
+}

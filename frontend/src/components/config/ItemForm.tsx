@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
-import { PlusIcon, TrashIcon, PlayIcon } from "@heroicons/react/24/outline";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { PlusIcon, TrashIcon, PlayIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import type {
     ItemDefinitionConfig,
     StoreDefinitionConfig,
@@ -9,6 +9,8 @@ import type {
 import { DEFAULT_STORE_ENTRY, CHECK_METHOD_LABELS } from "../../types/config";
 import XPathInput from "./XPathInput";
 import CheckItemModal from "./CheckItemModal";
+import AmazonSearchModal from "./AmazonSearchModal";
+import { checkAmazonSearchAvailable } from "../../services/configService";
 
 interface ItemFormProps {
     item: ItemDefinitionConfig;
@@ -36,6 +38,18 @@ export default function ItemForm({
         storeName: string;
         storeConfig: StoreDefinitionConfig;
     } | null>(null);
+    const [amazonSearchModal, setAmazonSearchModal] = useState<{
+        storeIndex: number;
+        defaultKeyword: string;
+    } | null>(null);
+    const [isAmazonSearchAvailable, setIsAmazonSearchAvailable] = useState(false);
+
+    // Amazon 検索 API の利用可能状態を確認
+    useEffect(() => {
+        checkAmazonSearchAvailable()
+            .then(setIsAmazonSearchAvailable)
+            .catch(() => setIsAmazonSearchAvailable(false));
+    }, []);
 
     // ストア定義のマップ（名前 → 定義）
     const storeMap = useMemo(() => {
@@ -389,18 +403,36 @@ export default function ItemForm({
                                                             <label className="block text-xs font-medium text-gray-700 mb-1">
                                                                 ASIN
                                                             </label>
-                                                            <input
-                                                                type="text"
-                                                                value={storeEntry.asin || ""}
-                                                                onChange={(e) =>
-                                                                    updateStoreEntry(index, {
-                                                                        ...storeEntry,
-                                                                        asin: e.target.value || null,
-                                                                    })
-                                                                }
-                                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                                                                placeholder="B0XXXXXXXX"
-                                                            />
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={storeEntry.asin || ""}
+                                                                    onChange={(e) =>
+                                                                        updateStoreEntry(index, {
+                                                                            ...storeEntry,
+                                                                            asin: e.target.value || null,
+                                                                        })
+                                                                    }
+                                                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                                                                    placeholder="B0XXXXXXXX"
+                                                                />
+                                                                {isAmazonSearchAvailable && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setAmazonSearchModal({
+                                                                                storeIndex: index,
+                                                                                defaultKeyword: storeEntry.search_keyword || item.name,
+                                                                            })
+                                                                        }
+                                                                        className="inline-flex items-center px-3 py-2 text-sm bg-orange-500 text-white rounded-md hover:bg-orange-600 transition-colors"
+                                                                        title="Amazon で検索して ASIN を選択"
+                                                                    >
+                                                                        <MagnifyingGlassIcon className="w-4 h-4 mr-1" />
+                                                                        検索
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
 
@@ -582,6 +614,20 @@ export default function ItemForm({
                     storeName={checkModalStore.storeName}
                     storeConfig={checkModalStore.storeConfig}
                     onClose={() => setCheckModalStore(null)}
+                />
+            )}
+
+            {/* Amazon 検索モーダル */}
+            {amazonSearchModal && (
+                <AmazonSearchModal
+                    defaultKeyword={amazonSearchModal.defaultKeyword}
+                    onSelect={(asin) => {
+                        updateStoreEntry(amazonSearchModal.storeIndex, {
+                            ...item.store[amazonSearchModal.storeIndex],
+                            asin,
+                        });
+                    }}
+                    onClose={() => setAmazonSearchModal(null)}
                 />
             )}
         </form>
