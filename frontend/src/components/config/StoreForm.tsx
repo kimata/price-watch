@@ -189,7 +189,7 @@ export default function StoreForm({
                                 type="color"
                                 value={store.color || "#3b82f6"}
                                 onChange={(e) => updateField("color", e.target.value)}
-                                className="w-12 h-10 border border-gray-300 cursor-pointer"
+                                className="w-12 h-10 cursor-pointer"
                             />
                             <input
                                 type="text"
