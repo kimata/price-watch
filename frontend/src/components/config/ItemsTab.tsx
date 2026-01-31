@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import type { TargetConfig, ItemDefinitionConfig } from "../../types/config";
 import { DEFAULT_ITEM_DEFINITION } from "../../types/config";
 import ItemForm from "./ItemForm";
@@ -9,12 +9,17 @@ interface ItemsTabProps {
     onChange: (config: TargetConfig) => void;
 }
 
+type SortKey = "name" | "category" | null;
+type SortOrder = "asc" | "desc";
+
 export default function ItemsTab({ config, onChange }: ItemsTabProps) {
     const [editingItem, setEditingItem] = useState<ItemDefinitionConfig | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [categoryFilter, setCategoryFilter] = useState<string>("");
+    const [sortKey, setSortKey] = useState<SortKey>(null);
+    const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
     // ユニークなカテゴリー一覧（フィルター用）
     const availableCategories = useMemo(() => {
@@ -25,9 +30,9 @@ export default function ItemsTab({ config, onChange }: ItemsTabProps) {
         return ["", ...Array.from(categories).sort()];
     }, [config.item_list]);
 
-    // フィルター済みアイテム
+    // フィルター・ソート済みアイテム
     const filteredItems = useMemo(() => {
-        return config.item_list.filter((item) => {
+        const filtered = config.item_list.filter((item) => {
             // カテゴリーフィルター
             if (categoryFilter) {
                 const itemCategory = item.category || "その他";
@@ -53,7 +58,40 @@ export default function ItemsTab({ config, onChange }: ItemsTabProps) {
             item,
             originalIndex: config.item_list.findIndex((i) => i === item),
         }));
-    }, [config.item_list, searchQuery, categoryFilter]);
+
+        // ソート処理
+        if (sortKey) {
+            filtered.sort((a, b) => {
+                let aValue: string;
+                let bValue: string;
+
+                if (sortKey === "name") {
+                    aValue = a.item.name.toLowerCase();
+                    bValue = b.item.name.toLowerCase();
+                } else {
+                    aValue = (a.item.category || "その他").toLowerCase();
+                    bValue = (b.item.category || "その他").toLowerCase();
+                }
+
+                const comparison = aValue.localeCompare(bValue, "ja");
+                return sortOrder === "asc" ? comparison : -comparison;
+            });
+        }
+
+        return filtered;
+    }, [config.item_list, searchQuery, categoryFilter, sortKey, sortOrder]);
+
+    // ソートトグル
+    const handleSort = useCallback((key: "name" | "category") => {
+        if (sortKey === key) {
+            // 同じキーの場合は順序を切り替え
+            setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+        } else {
+            // 新しいキーの場合は昇順で開始
+            setSortKey(key);
+            setSortOrder("asc");
+        }
+    }, [sortKey]);
 
     // アイテム追加
     const handleAddItem = useCallback(() => {
@@ -191,11 +229,31 @@ export default function ItemsTab({ config, onChange }: ItemsTabProps) {
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        アイテム名
+                                    <th
+                                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                                        onClick={() => handleSort("name")}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            アイテム名
+                                            {sortKey === "name" && (
+                                                sortOrder === "asc"
+                                                    ? <ChevronUpIcon className="w-4 h-4" />
+                                                    : <ChevronDownIcon className="w-4 h-4" />
+                                            )}
+                                        </div>
                                     </th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                        カテゴリー
+                                    <th
+                                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 select-none"
+                                        onClick={() => handleSort("category")}
+                                    >
+                                        <div className="flex items-center gap-1">
+                                            カテゴリー
+                                            {sortKey === "category" && (
+                                                sortOrder === "asc"
+                                                    ? <ChevronUpIcon className="w-4 h-4" />
+                                                    : <ChevronDownIcon className="w-4 h-4" />
+                                            )}
+                                        </div>
                                     </th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                         ストア

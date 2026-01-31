@@ -199,8 +199,11 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
                             <button
                                 onClick={() => setShowSaveModal(true)}
                                 disabled={!hasChanges() || saving}
-                                className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                className="inline-flex items-center px-4 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                             >
+                                {saving && (
+                                    <ArrowPathIcon className="w-4 h-4 mr-1.5 animate-spin" />
+                                )}
                                 {saving ? "保存中..." : "保存"}
                             </button>
                         </div>
