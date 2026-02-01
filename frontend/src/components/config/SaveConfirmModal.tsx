@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowPathIcon } from "@heroicons/react/24/outline";
 
 interface SaveConfirmModalProps {
     createBackup: boolean;
@@ -95,8 +96,11 @@ export default function SaveConfirmModal({
                         <button
                             type="submit"
                             disabled={saving || (requirePassword && !password)}
-                            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                            className="inline-flex items-center px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
                         >
+                            {saving && (
+                                <ArrowPathIcon className="w-4 h-4 mr-1.5 animate-spin" />
+                            )}
                             {saving ? "保存中..." : "保存"}
                         </button>
                     </div>
