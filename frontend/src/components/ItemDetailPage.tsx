@@ -287,7 +287,7 @@ export default function ItemDetailPage({
                                 <a
                                     href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
                                         hasValidPrice
-                                            ? `${item.name} - ${formatPrice(item.best_effective_price!, priceUnit)}`
+                                            ? `${item.name} 最安値 ${formatPrice(item.best_effective_price!, priceUnit)} (${item.best_store})`
                                             : item.name
                                     )}&url=${encodeURIComponent(window.location.href)}`}
                                     target="_blank"
