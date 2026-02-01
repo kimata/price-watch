@@ -15,6 +15,7 @@ from typing import Any
 import my_lib.config
 import my_lib.notify.slack
 import my_lib.store.amazon.config
+import my_lib.store.rakuten.config
 import my_lib.store.yahoo.config
 import my_lib.webapp.config
 
@@ -164,6 +165,7 @@ class StoreConfig:
 
     amazon_api: my_lib.store.amazon.config.AmazonApiConfig | None = None
     yahoo_api: my_lib.store.yahoo.config.YahooApiConfig | None = None
+    rakuten_api: my_lib.store.rakuten.config.RakutenApiConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> StoreConfig:
@@ -174,7 +176,10 @@ class StoreConfig:
         yahoo_api = None
         if "yahoo" in data:
             yahoo_api = my_lib.store.yahoo.config.YahooApiConfig.parse(data["yahoo"])
-        return cls(amazon_api=amazon_api, yahoo_api=yahoo_api)
+        rakuten_api = None
+        if "rakuten" in data:
+            rakuten_api = my_lib.store.rakuten.config.RakutenApiConfig.parse(data["rakuten"])
+        return cls(amazon_api=amazon_api, yahoo_api=yahoo_api, rakuten_api=rakuten_api)
 
 
 @dataclass(frozen=True)

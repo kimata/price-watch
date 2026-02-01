@@ -12,7 +12,8 @@
 - メルカリ（キーワード検索）
 - ラクマ（キーワード検索）
 - PayPayフリマ（キーワード検索）
-- Yahoo!ショッピング（API 検索 / スクレイピング）
+- Yahoo!ショッピング（API 検索）
+- 楽天市場（API 検索）
 - ヨドバシ.com
 - Switch Science
 - Ubiquiti Store USA
@@ -166,6 +167,7 @@ src/
     │   ├── scrape.py           # スクレイピングによる価格チェック
     │   ├── flea_market.py      # フリマ検索（メルカリ・ラクマ・PayPayフリマ）
     │   ├── yahoo.py            # Yahoo!ショッピング検索
+    │   ├── rakuten.py          # 楽天市場検索
     │   └── amazon/             # Amazon 関連モジュール
     │       ├── paapi.py        # Amazon PA-API による価格取得
     │       └── paapi_rate_limiter.py # PA-API レート制限
@@ -222,7 +224,7 @@ success = runner.execute()
 
 #### ItemProcessor (`processor.py`)
 
-各チェック方法（スクレイピング、PA-API、メルカリ、Yahoo）の共通処理を提供。
+各チェック方法（スクレイピング、PA-API、メルカリ、Yahoo、楽天）の共通処理を提供。
 
 ```python
 processor = ItemProcessor(app=app, loop=0)
@@ -255,7 +257,8 @@ price-watch (cli/app.py)
 │       ├── process_scrape_items() → スクレイピング
 │       ├── process_amazon_items() → PA-API
 │       ├── process_flea_market_items() → フリマ検索（メルカリ・ラクマ・PayPayフリマ）
-│       └── process_yahoo_items() → Yahoo検索
+│       ├── process_yahoo_items() → Yahoo検索
+│       └── process_rakuten_items() → 楽天検索
 └── app.shutdown() → 終了処理
 ```
 
@@ -415,6 +418,9 @@ store_list:
     - name: Yahoo
       check_method: my_lib.store.yahoo.api
 
+    - name: 楽天
+      check_method: my_lib.store.rakuten.api
+
 item_list:
     # 1アイテム=複数ストアの例（category でカテゴリーを指定）
     - name: 商品名
@@ -454,6 +460,16 @@ item_list:
       store:
           - name: Yahoo
             jan_code: "4901234567890"
+
+    # 楽天検索（キーワード検索、除外キーワード対応）
+    - name: 楽天商品
+      store:
+          - name: 楽天
+            search_keyword: 検索キーワード # 省略時は name で検索
+            exclude_keyword: 中古 ジャンク # 除外キーワード（スペース区切りで複数指定可）
+            price:
+                - 10000 # price_min
+                - 50000 # price_max
 ```
 
 ## デプロイ
@@ -499,6 +515,7 @@ docker compose up
 | my_lib.store.paypay.\*   | PayPayフリマ検索                                                 |
 | my_lib.store.amazon.\*   | Amazon API 関連                                                  |
 | my_lib.store.yahoo.\*    | Yahoo!ショッピング API 関連                                      |
+| my_lib.store.rakuten.\*  | 楽天市場 API 関連                                                |
 
 ## コーディング規約
 

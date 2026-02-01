@@ -34,6 +34,7 @@ class CheckMethod(str, Enum):
     RAKUMA_SEARCH = "my_lib.store.rakuma.search"
     PAYPAY_SEARCH = "my_lib.store.paypay.search"
     YAHOO_SEARCH = "my_lib.store.yahoo.api"
+    RAKUTEN_SEARCH = "my_lib.store.rakuten.api"
 
 
 # 検索系チェックメソッド（URL ではなく keyword で item_key を生成するストア）
@@ -43,6 +44,7 @@ SEARCH_CHECK_METHODS: frozenset[CheckMethod] = frozenset(
         CheckMethod.RAKUMA_SEARCH,
         CheckMethod.PAYPAY_SEARCH,
         CheckMethod.YAHOO_SEARCH,
+        CheckMethod.RAKUTEN_SEARCH,
     }
 )
 
