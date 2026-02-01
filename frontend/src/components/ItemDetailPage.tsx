@@ -31,6 +31,7 @@ interface ItemDetailPageProps {
     onBack: () => void;
     onPeriodChange: (period: Period) => void;
     checkIntervalSec?: number;
+    onConfigClick?: (itemName: string) => void;
 }
 
 export default function ItemDetailPage({
@@ -40,6 +41,7 @@ export default function ItemDetailPage({
     onBack,
     onPeriodChange,
     checkIntervalSec = 1800,
+    onConfigClick,
 }: ItemDetailPageProps) {
     const [item, setItem] = useState<Item>(initialItem);
     const [events, setEvents] = useState<Event[]>([]);
@@ -404,7 +406,7 @@ export default function ItemDetailPage({
                     )}
                 </div>
             </main>
-            <Footer storeDefinitions={storeDefinitions} />
+            <Footer storeDefinitions={storeDefinitions} onConfigClick={onConfigClick ? () => onConfigClick(item.name) : undefined} />
         </div>
     );
 }

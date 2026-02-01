@@ -12,11 +12,12 @@ import SaveConfirmModal from "./SaveConfirmModal";
 
 interface ConfigEditorPageProps {
     onBack: () => void;
+    initialItemName?: string;
 }
 
 type TabType = "stores" | "categories" | "items";
 
-export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
+export default function ConfigEditorPage({ onBack, initialItemName }: ConfigEditorPageProps) {
     const { showToast } = useToast();
     const [config, setConfig] = useState<TargetConfig | null>(null);
     const [originalConfig, setOriginalConfig] = useState<TargetConfig | null>(null);
@@ -25,6 +26,7 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+    // initialItemName がある場合は items タブをデフォルトにする
     const [activeTab, setActiveTab] = useState<TabType>("items");
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [createBackup, setCreateBackup] = useState(true);
@@ -254,6 +256,7 @@ export default function ConfigEditorPage({ onBack }: ConfigEditorPageProps) {
                     <ItemsTab
                         config={config}
                         onChange={handleConfigChange}
+                        initialItemName={initialItemName}
                     />
                 )}
             </main>

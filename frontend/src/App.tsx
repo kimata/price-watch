@@ -86,6 +86,7 @@ export default function App() {
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     const [showMetrics, setShowMetrics] = useState(getPageFromUrl() === "metrics");
     const [showConfig, setShowConfig] = useState(getPageFromUrl() === "config");
+    const [configItemName, setConfigItemName] = useState<string | undefined>(undefined);
 
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
@@ -295,10 +296,11 @@ export default function App() {
         window.history.pushState(null, "", newUrl);
     };
 
-    const handleConfigClick = () => {
+    const handleConfigClick = (itemName?: string) => {
         setShowConfig(true);
         setShowMetrics(false);
         setSelectedItem(null);
+        setConfigItemName(itemName);
         const newUrl = buildUrlWithPeriod("/price/config");
         window.history.pushState(null, "", newUrl);
         window.scrollTo(0, 0);
@@ -306,6 +308,7 @@ export default function App() {
 
     const handleBackFromConfig = () => {
         setShowConfig(false);
+        setConfigItemName(undefined);
         const newUrl = buildUrlWithPeriod("/price/");
         window.history.pushState(null, "", newUrl);
     };
@@ -317,7 +320,7 @@ export default function App() {
 
     // 設定エディタページを表示
     if (showConfig) {
-        return <ConfigEditorPage onBack={handleBackFromConfig} />;
+        return <ConfigEditorPage onBack={handleBackFromConfig} initialItemName={configItemName} />;
     }
 
     // 詳細ページを表示
@@ -330,6 +333,7 @@ export default function App() {
                 onBack={handleBackToList}
                 onPeriodChange={handlePeriodChange}
                 checkIntervalSec={checkIntervalSec}
+                onConfigClick={handleConfigClick}
             />
         );
     }

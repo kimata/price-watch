@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, ChevronUpIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import type { TargetConfig, ItemDefinitionConfig } from "../../types/config";
 import { DEFAULT_ITEM_DEFINITION } from "../../types/config";
@@ -7,12 +7,13 @@ import ItemForm from "./ItemForm";
 interface ItemsTabProps {
     config: TargetConfig;
     onChange: (config: TargetConfig) => void;
+    initialItemName?: string;
 }
 
 type SortKey = "name" | "category" | null;
 type SortOrder = "asc" | "desc";
 
-export default function ItemsTab({ config, onChange }: ItemsTabProps) {
+export default function ItemsTab({ config, onChange, initialItemName }: ItemsTabProps) {
     const [editingItem, setEditingItem] = useState<ItemDefinitionConfig | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isCreating, setIsCreating] = useState(false);
@@ -20,6 +21,25 @@ export default function ItemsTab({ config, onChange }: ItemsTabProps) {
     const [categoryFilter, setCategoryFilter] = useState<string>("");
     const [sortKey, setSortKey] = useState<SortKey>(null);
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+
+    // 初期アイテム自動選択フラグ
+    const initialSelectionDone = useRef(false);
+
+    // initialItemName が指定されている場合、該当アイテムを自動で編集モードにする
+    useEffect(() => {
+        if (initialSelectionDone.current || !initialItemName || config.item_list.length === 0) {
+            return;
+        }
+
+        const index = config.item_list.findIndex((item) => item.name === initialItemName);
+        if (index !== -1) {
+            const item = config.item_list[index];
+            setEditingItem(JSON.parse(JSON.stringify(item)));
+            setEditingIndex(index);
+            setIsCreating(false);
+            initialSelectionDone.current = true;
+        }
+    }, [initialItemName, config.item_list]);
 
     // ユニークなカテゴリー一覧（フィルター用）
     const availableCategories = useMemo(() => {
