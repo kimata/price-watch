@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, memo } from "react";
 
 // カスタムツールチップポジショナーの型宣言
 declare module "chart.js" {
@@ -242,7 +242,7 @@ interface PriceChartProps {
     checkIntervalSec?: number; // 監視間隔（秒）- ツールチップ表示用
 }
 
-export default function PriceChart({
+function PriceChart({
     stores,
     storeDefinitions,
     className = "h-40",
@@ -718,3 +718,28 @@ export default function PriceChart({
         </div>
     );
 }
+
+export default memo(PriceChart, (prev, next) => {
+    // ストアと期間で比較
+    if (prev.period !== next.period) return false;
+    if (prev.largeLabels !== next.largeLabels) return false;
+    if (prev.checkIntervalSec !== next.checkIntervalSec) return false;
+    if (prev.className !== next.className) return false;
+
+    // ストアの履歴データで変更を検出
+    if (prev.stores.length !== next.stores.length) return false;
+
+    for (let i = 0; i < prev.stores.length; i++) {
+        const prevStore = prev.stores[i];
+        const nextStore = next.stores[i];
+        if (prevStore.store !== nextStore.store) return false;
+        if (prevStore.history.length !== nextStore.history.length) return false;
+        // 最新の履歴エントリのみ比較（完全比較は重いため）
+        const prevLast = prevStore.history[prevStore.history.length - 1];
+        const nextLast = nextStore.history[nextStore.history.length - 1];
+        if (prevLast?.time !== nextLast?.time) return false;
+        if (prevLast?.effective_price !== nextLast?.effective_price) return false;
+    }
+
+    return true;
+});

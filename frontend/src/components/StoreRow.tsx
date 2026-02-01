@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
     CheckCircleIcon,
     XCircleIcon,
@@ -14,7 +15,7 @@ interface StoreRowProps {
     bestPrice: number | null;
 }
 
-export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
+function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
     const isInStock = store.stock > 0;
     const hasPrice = store.effective_price !== null;
     const priceDiff = hasPrice && bestPrice !== null ? store.effective_price! - bestPrice : 0;
@@ -90,3 +91,5 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
         </div>
     );
 }
+
+export default memo(StoreRow);

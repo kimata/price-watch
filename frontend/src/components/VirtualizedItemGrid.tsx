@@ -1,4 +1,5 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef, useLayoutEffect } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Item, StoreDefinition, Period } from "../types";
 import ItemCard from "./ItemCard";
 import PermalinkHeading from "./PermalinkHeading";
@@ -17,8 +18,22 @@ function categoryToId(category: string): string {
     return `category-${category}`;
 }
 
+// 行のタイプ
+type RowType =
+    | { type: "header"; category: string }
+    | { type: "items"; items: Item[] };
+
+// レスポンシブカラム数
+function getColumnCount(): number {
+    if (typeof window === "undefined") return 1;
+    const width = window.innerWidth;
+    if (width >= 1024) return 3; // lg
+    if (width >= 768) return 2; // md
+    return 1;
+}
+
 /**
- * カテゴリー別アイテムグリッド
+ * カテゴリー別アイテムグリッド（仮想スクロール対応）
  *
  * categories の順序に従ってアイテムをカテゴリーごとにグルーピングして表示します。
  * 各カテゴリーの見出しにはパーマリンクアンカーが設定され、
@@ -32,6 +47,24 @@ export default function VirtualizedItemGrid({
     categories,
     checkIntervalSec = 1800,
 }: VirtualizedItemGridProps) {
+    const parentRef = useRef<HTMLDivElement>(null);
+    const columnCountRef = useRef(getColumnCount());
+
+    // ウィンドウリサイズ時にカラム数を更新
+    useLayoutEffect(() => {
+        const handleResize = () => {
+            const newColumnCount = getColumnCount();
+            if (columnCountRef.current !== newColumnCount) {
+                columnCountRef.current = newColumnCount;
+                // 仮想化を再計算
+                virtualizer.measure();
+            }
+        };
+
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    });
+
     const groupedItems = useMemo(() => {
         // アイテムをカテゴリーでグルーピング
         const byCategory = new Map<string, Item[]>();
@@ -80,6 +113,54 @@ export default function VirtualizedItemGrid({
         return ordered;
     }, [items, categories]);
 
+    // 仮想スクロールのしきい値（アイテム数がこれ以上なら仮想化）
+    const VIRTUALIZATION_THRESHOLD = 30;
+    const shouldVirtualize = items.length >= VIRTUALIZATION_THRESHOLD;
+
+    // カテゴリーが1つだけの場合はナビゲーションと見出しを省略
+    const showHeaders = groupedItems.length > 1;
+
+    // フラット化した行データを生成
+    const rows = useMemo(() => {
+        const result: RowType[] = [];
+        const columnCount = columnCountRef.current;
+
+        for (const { category, items: categoryItems } of groupedItems) {
+            // カテゴリーヘッダー（複数カテゴリーの場合のみ）
+            if (showHeaders) {
+                result.push({ type: "header", category });
+            }
+
+            // アイテムを行ごとにグルーピング
+            for (let i = 0; i < categoryItems.length; i += columnCount) {
+                const rowItems = categoryItems.slice(i, i + columnCount);
+                result.push({ type: "items", items: rowItems });
+            }
+        }
+
+        return result;
+    }, [groupedItems, showHeaders]);
+
+    // 行の高さを推定
+    const estimateSize = useCallback(
+        (index: number): number => {
+            const row = rows[index];
+            if (row.type === "header") {
+                return 56; // ヘッダーの高さ
+            }
+            // アイテム行の高さ（カードの高さ + gap）
+            return 400;
+        },
+        [rows]
+    );
+
+    const virtualizer = useVirtualizer({
+        count: rows.length,
+        getScrollElement: () => parentRef.current,
+        estimateSize,
+        overscan: 3,
+    });
+
     const handleCategoryClick = useCallback((category: string) => {
         const categoryId = categoryToId(category);
         const el = document.getElementById(categoryId);
@@ -93,9 +174,53 @@ export default function VirtualizedItemGrid({
         }
     }, []);
 
-    // カテゴリーが1つだけの場合はナビゲーションと見出しを省略
-    const showHeaders = groupedItems.length > 1;
+    // アイテム数が少ない場合は従来のレンダリングを使用
+    if (!shouldVirtualize) {
+        return (
+            <div className="space-y-8">
+                {showHeaders && (
+                    <nav className="flex flex-wrap gap-2">
+                        {groupedItems.map(({ category }) => (
+                            <button
+                                key={category}
+                                onClick={() => handleCategoryClick(category)}
+                                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors"
+                            >
+                                {category}
+                            </button>
+                        ))}
+                    </nav>
+                )}
 
+                {groupedItems.map(({ category, items: categoryItems }) => (
+                    <section key={category}>
+                        {showHeaders && (
+                            <PermalinkHeading
+                                id={categoryToId(category)}
+                                className="text-lg font-semibold text-gray-700 mb-4 border-b border-gray-300 pb-2"
+                            >
+                                {category}
+                            </PermalinkHeading>
+                        )}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {categoryItems.map((item) => (
+                                <ItemCard
+                                    key={item.name}
+                                    item={item}
+                                    storeDefinitions={storeDefinitions}
+                                    onClick={onItemClick}
+                                    period={period}
+                                    checkIntervalSec={checkIntervalSec}
+                                />
+                            ))}
+                        </div>
+                    </section>
+                ))}
+            </div>
+        );
+    }
+
+    // 仮想スクロール版
     return (
         <div className="space-y-8">
             {showHeaders && (
@@ -112,30 +237,75 @@ export default function VirtualizedItemGrid({
                 </nav>
             )}
 
-            {groupedItems.map(({ category, items: categoryItems }) => (
-                <section key={category}>
-                    {showHeaders && (
-                        <PermalinkHeading
-                            id={categoryToId(category)}
-                            className="text-lg font-semibold text-gray-700 mb-4 border-b border-gray-300 pb-2"
-                        >
-                            {category}
-                        </PermalinkHeading>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {categoryItems.map((item) => (
-                            <ItemCard
-                                key={item.name}
-                                item={item}
-                                storeDefinitions={storeDefinitions}
-                                onClick={onItemClick}
-                                period={period}
-                                checkIntervalSec={checkIntervalSec}
-                            />
-                        ))}
-                    </div>
-                </section>
-            ))}
+            <div
+                ref={parentRef}
+                style={{
+                    height: "calc(100vh - 200px)",
+                    overflow: "auto",
+                }}
+            >
+                <div
+                    style={{
+                        height: `${virtualizer.getTotalSize()}px`,
+                        width: "100%",
+                        position: "relative",
+                    }}
+                >
+                    {virtualizer.getVirtualItems().map((virtualRow) => {
+                        const row = rows[virtualRow.index];
+
+                        if (row.type === "header") {
+                            return (
+                                <div
+                                    key={virtualRow.key}
+                                    style={{
+                                        position: "absolute",
+                                        top: 0,
+                                        left: 0,
+                                        width: "100%",
+                                        height: `${virtualRow.size}px`,
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                    }}
+                                >
+                                    <PermalinkHeading
+                                        id={categoryToId(row.category)}
+                                        className="text-lg font-semibold text-gray-700 mb-4 border-b border-gray-300 pb-2"
+                                    >
+                                        {row.category}
+                                    </PermalinkHeading>
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div
+                                key={virtualRow.key}
+                                style={{
+                                    position: "absolute",
+                                    top: 0,
+                                    left: 0,
+                                    width: "100%",
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                    paddingBottom: "24px",
+                                }}
+                            >
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {row.items.map((item) => (
+                                        <ItemCard
+                                            key={item.name}
+                                            item={item}
+                                            storeDefinitions={storeDefinitions}
+                                            onClick={onItemClick}
+                                            period={period}
+                                            checkIntervalSec={checkIntervalSec}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
     );
 }

@@ -9,11 +9,8 @@ import ConfigEditorPage from "./components/config/ConfigEditorPage";
 import { PriceRecordEditorPage } from "./components/priceRecord";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Footer from "./components/Footer";
-import { fetchItems } from "./services/apiService";
-import type { Item, Period, StoreDefinition } from "./types";
-
-// SSE イベントタイプ
-const SSE_EVENT_CONTENT = "content";
+import { useItems } from "./hooks/useItems";
+import type { Item, Period } from "./types";
 
 // グローバル変数から item_key を取得（OGP ページ用）
 declare global {
@@ -77,12 +74,6 @@ function updateUrlWithPeriod(period: Period, replace: boolean = false): void {
 }
 
 export default function App() {
-    const [items, setItems] = useState<Item[]>([]);
-    const [storeDefinitions, setStoreDefinitions] = useState<StoreDefinition[]>([]);
-    const [categories, setCategories] = useState<string[]>([]);
-    const [checkIntervalSec, setCheckIntervalSec] = useState<number>(1800);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [period, setPeriod] = useState<Period>(getPeriodFromUrl);
     const [selectedItem, setSelectedItem] = useState<Item | null>(null);
     const [showMetrics, setShowMetrics] = useState(getPageFromUrl() === "metrics");
@@ -91,73 +82,22 @@ export default function App() {
     const [showPriceRecordEditor, setShowPriceRecordEditor] = useState(false);
     const [previousPage, setPreviousPage] = useState<"list" | "item">("list");
 
+    // TanStack Query でアイテム一覧を取得
+    const {
+        data: itemsData,
+        isLoading: loading,
+        error,
+    } = useItems(period);
+
+    const items = itemsData?.items ?? [];
+    const storeDefinitions = itemsData?.store_definitions ?? [];
+    const categories = itemsData?.categories ?? [];
+    const checkIntervalSec = itemsData?.check_interval_sec ?? 1800;
+
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
     // ハッシュスクロール済みフラグ
     const hashScrollDone = useRef(false);
-
-    // SSE 接続用 refs
-    const eventSourceRef = useRef<EventSource | null>(null);
-    const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    const loadItems = useCallback(async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const response = await fetchItems(period);
-            setItems(response.items);
-            setStoreDefinitions(response.store_definitions || []);
-            setCategories(response.categories || []);
-            setCheckIntervalSec(response.check_interval_sec || 1800);
-        } catch (err) {
-            setError("データの取得に失敗しました");
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    }, [period]);
-
-    useEffect(() => {
-        loadItems();
-    }, [loadItems]);
-
-    // SSE 接続（コンテンツ更新イベントを受信）
-    useEffect(() => {
-        const connectSSE = () => {
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-            }
-
-            const eventSource = new EventSource("/price/api/event");
-
-            eventSource.onmessage = (event) => {
-                if (event.data === SSE_EVENT_CONTENT) {
-                    loadItems();
-                }
-            };
-
-            eventSource.onerror = () => {
-                eventSource.close();
-                // 5秒後に再接続
-                reconnectTimerRef.current = setTimeout(() => {
-                    connectSSE();
-                }, 5000);
-            };
-
-            eventSourceRef.current = eventSource;
-        };
-
-        connectSSE();
-
-        return () => {
-            if (eventSourceRef.current) {
-                eventSourceRef.current.close();
-            }
-            if (reconnectTimerRef.current) {
-                clearTimeout(reconnectTimerRef.current);
-            }
-        };
-    }, [loadItems]);
 
     // item_key からアイテムを検索
     const findItemByKey = useCallback(
@@ -400,13 +340,7 @@ export default function App() {
                     <LoadingSpinner />
                 ) : error ? (
                     <div className="text-center py-8">
-                        <p className="text-red-600">{error}</p>
-                        <button
-                            onClick={loadItems}
-                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                        >
-                            再読み込み
-                        </button>
+                        <p className="text-red-600">データの取得に失敗しました</p>
                     </div>
                 ) : items.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">監視中のアイテムがありません</div>

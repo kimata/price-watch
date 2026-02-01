@@ -1,3 +1,4 @@
+import { memo, useMemo, useCallback } from "react";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 import type { Item, StoreDefinition, Period } from "../types";
@@ -13,24 +14,28 @@ interface ItemCardProps {
     checkIntervalSec?: number;
 }
 
-export default function ItemCard({ item, storeDefinitions, onClick, period = "30", checkIntervalSec = 1800 }: ItemCardProps) {
+function ItemCard({ item, storeDefinitions, onClick, period = "30", checkIntervalSec = 1800 }: ItemCardProps) {
     // ストアを実質価格の安い順にソート（価格nullのものは後ろに）
-    const sortedStores = [...item.stores].sort((a, b) => {
-        const aPrice = a.effective_price;
-        const bPrice = b.effective_price;
-        if (aPrice === null && bPrice === null) return 0;
-        if (aPrice === null) return 1;
-        if (bPrice === null) return -1;
-        return aPrice - bPrice;
-    });
+    const sortedStores = useMemo(() => {
+        return [...item.stores].sort((a, b) => {
+            const aPrice = a.effective_price;
+            const bPrice = b.effective_price;
+            if (aPrice === null && bPrice === null) return 0;
+            if (aPrice === null) return 1;
+            if (bPrice === null) return -1;
+            return aPrice - bPrice;
+        });
+    }, [item.stores]);
 
     // 最終更新日時（最新のものを使用、空文字は除外）
-    const validUpdates = item.stores.filter((s) => s.last_updated);
-    const lastUpdated = validUpdates.length > 0
-        ? validUpdates.reduce((latest, store) => {
-              return store.last_updated > latest ? store.last_updated : latest;
-          }, validUpdates[0].last_updated)
-        : null;
+    const lastUpdated = useMemo(() => {
+        const validUpdates = item.stores.filter((s) => s.last_updated);
+        return validUpdates.length > 0
+            ? validUpdates.reduce((latest, store) => {
+                  return store.last_updated > latest ? store.last_updated : latest;
+              }, validUpdates[0].last_updated)
+            : null;
+    }, [item.stores]);
 
     // 有効な価格があるかどうか（null でなければ価格あり、0円も有効な価格）
     const hasValidPrice = item.best_effective_price !== null;
@@ -39,11 +44,11 @@ export default function ItemCard({ item, storeDefinitions, onClick, period = "30
     const bestStore = item.stores.find((s) => s.store === item.best_store);
     const priceUnit = bestStore?.price_unit ?? "円";
 
-    const handleClick = () => {
+    const handleClick = useCallback(() => {
         if (onClick) {
             onClick(item);
         }
-    };
+    }, [onClick, item]);
 
     return (
         <div
@@ -107,3 +112,25 @@ export default function ItemCard({ item, storeDefinitions, onClick, period = "30
         </div>
     );
 }
+
+export default memo(ItemCard, (prev, next) => {
+    // item_key と updated_at で比較（更新がなければ再レンダリングしない）
+    const prevItemKey = prev.item.stores[0]?.item_key ?? "";
+    const nextItemKey = next.item.stores[0]?.item_key ?? "";
+
+    if (prevItemKey !== nextItemKey) return false;
+    if (prev.period !== next.period) return false;
+    if (prev.checkIntervalSec !== next.checkIntervalSec) return false;
+
+    // ストアの更新日時で変更を検出
+    const prevUpdated = prev.item.stores.map((s) => s.last_updated).join(",");
+    const nextUpdated = next.item.stores.map((s) => s.last_updated).join(",");
+    if (prevUpdated !== nextUpdated) return false;
+
+    // 価格の変更を検出
+    const prevPrice = prev.item.best_effective_price;
+    const nextPrice = next.item.best_effective_price;
+    if (prevPrice !== nextPrice) return false;
+
+    return true;
+});
