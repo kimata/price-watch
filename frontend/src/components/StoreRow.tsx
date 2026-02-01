@@ -3,6 +3,7 @@ import {
     XCircleIcon,
     ArrowTopRightOnSquareIcon,
     BuildingStorefrontIcon,
+    PencilSquareIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import type { StoreEntry } from "../types";
@@ -12,9 +13,10 @@ interface StoreRowProps {
     store: StoreEntry;
     isBest: boolean;
     bestPrice: number | null;
+    onEditClick?: (store: StoreEntry) => void;
 }
 
-export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
+export default function StoreRow({ store, isBest, bestPrice, onEditClick }: StoreRowProps) {
     const isInStock = store.stock > 0;
     const hasPrice = store.effective_price !== null;
     const priceDiff = hasPrice && bestPrice !== null ? store.effective_price! - bestPrice : 0;
@@ -86,6 +88,18 @@ export default function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
                         <XCircleIcon className="h-3 w-3" />
                     )}
                 </span>
+                {onEditClick && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onEditClick(store);
+                        }}
+                        className="p-1 rounded-md hover:bg-gray-200 transition-colors cursor-pointer"
+                        title="価格記録を編集"
+                    >
+                        <PencilSquareIcon className="h-4 w-4 text-gray-500" />
+                    </button>
+                )}
             </div>
         </div>
     );

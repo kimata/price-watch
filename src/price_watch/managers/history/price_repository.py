@@ -644,6 +644,104 @@ class PriceRepository:
             duration_seconds = (now - oldest_time).total_seconds()
             return duration_seconds / 3600
 
+    def get_records_for_edit(
+        self, item_key: str
+    ) -> tuple[price_watch.models.ItemRecord | None, list[dict[str, Any]]]:
+        """編集用の価格記録一覧を取得.
+
+        Args:
+            item_key: アイテムキー
+
+        Returns:
+            (アイテム情報, 価格記録リスト) のタプル
+            各価格記録には id, price, stock, time, crawl_status が含まれる
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+
+            cur.execute(
+                """
+                SELECT id, item_key, url, name, store, thumb_url,
+                       search_keyword, search_cond, price_unit, created_at, updated_at
+                FROM items
+                WHERE item_key = ?
+                """,
+                (item_key,),
+            )
+            item_row = cur.fetchone()
+
+            if not item_row:
+                return None, []
+
+            cur.execute(
+                """
+                SELECT id, price, stock, time, crawl_status
+                FROM price_history
+                WHERE item_id = ?
+                ORDER BY time DESC
+                """,
+                (item_row["id"],),
+            )
+
+            item = price_watch.models.ItemRecord.from_dict(item_row)
+            records = [
+                {
+                    "id": row["id"],
+                    "price": row["price"],
+                    "stock": row["stock"],
+                    "time": row["time"],
+                    "crawl_status": row["crawl_status"],
+                }
+                for row in cur.fetchall()
+            ]
+            return item, records
+
+    def delete_by_ids(self, record_ids: list[int]) -> int:
+        """指定した ID の価格記録を削除.
+
+        Args:
+            record_ids: 削除する価格記録の ID リスト
+
+        Returns:
+            削除した件数
+        """
+        if not record_ids:
+            return 0
+
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(record_ids))
+            cur.execute(
+                f"DELETE FROM price_history WHERE id IN ({placeholders})",  # noqa: S608
+                record_ids,
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def get_prices_by_ids(self, record_ids: list[int]) -> list[int]:
+        """指定した ID の価格記録から価格を取得.
+
+        Args:
+            record_ids: 価格記録の ID リスト
+
+        Returns:
+            価格のリスト（重複なし、None を除く）
+        """
+        if not record_ids:
+            return []
+
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(record_ids))
+            cur.execute(
+                f"""
+                SELECT DISTINCT price FROM price_history
+                WHERE id IN ({placeholders}) AND price IS NOT NULL
+                """,  # noqa: S608
+                record_ids,
+            )
+            return [row["price"] for row in cur.fetchall()]
+
     def get_lowest_price_across_stores_in_yen(
         self,
         item_name: str,

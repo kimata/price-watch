@@ -6,10 +6,11 @@ import VirtualizedItemGrid from "./components/VirtualizedItemGrid";
 import ItemDetailPage from "./components/ItemDetailPage";
 import MetricsPage from "./components/MetricsPage";
 import ConfigEditorPage from "./components/config/ConfigEditorPage";
+import { PriceRecordEditorPage } from "./components/priceRecord";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Footer from "./components/Footer";
 import { fetchItems } from "./services/apiService";
-import type { Item, Period, StoreDefinition } from "./types";
+import type { Item, Period, StoreDefinition, StoreEntry } from "./types";
 
 // SSE イベントタイプ
 const SSE_EVENT_CONTENT = "content";
@@ -87,6 +88,9 @@ export default function App() {
     const [showMetrics, setShowMetrics] = useState(getPageFromUrl() === "metrics");
     const [showConfig, setShowConfig] = useState(getPageFromUrl() === "config");
     const [configItemName, setConfigItemName] = useState<string | undefined>(undefined);
+    const [showPriceRecordEditor, setShowPriceRecordEditor] = useState(false);
+    const [priceRecordEditorStore, setPriceRecordEditorStore] = useState<StoreEntry | null>(null);
+    const [previousPage, setPreviousPage] = useState<"list" | "item">("list");
 
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
     const initialSelectDone = useRef(false);
@@ -297,9 +301,14 @@ export default function App() {
     };
 
     const handleConfigClick = (itemName?: string) => {
+        // 遷移元を記録
+        if (selectedItem) {
+            setPreviousPage("item");
+        } else {
+            setPreviousPage("list");
+        }
         setShowConfig(true);
         setShowMetrics(false);
-        setSelectedItem(null);
         setConfigItemName(itemName);
         const newUrl = buildUrlWithPeriod("/price/config");
         window.history.pushState(null, "", newUrl);
@@ -309,8 +318,40 @@ export default function App() {
     const handleBackFromConfig = () => {
         setShowConfig(false);
         setConfigItemName(undefined);
-        const newUrl = buildUrlWithPeriod("/price/");
-        window.history.pushState(null, "", newUrl);
+        // 遷移元に応じて戻り先を決定
+        if (previousPage === "item" && selectedItem) {
+            const itemKey = getItemKey(selectedItem);
+            if (itemKey) {
+                const newUrl = buildUrlWithPeriod(`/price/items/${encodeURIComponent(itemKey)}`);
+                window.history.pushState({ itemKey }, "", newUrl);
+            } else {
+                const newUrl = buildUrlWithPeriod("/price/");
+                window.history.pushState(null, "", newUrl);
+            }
+        } else {
+            const newUrl = buildUrlWithPeriod("/price/");
+            window.history.pushState(null, "", newUrl);
+        }
+    };
+
+    const handlePriceRecordEditorClick = (store: StoreEntry) => {
+        setShowPriceRecordEditor(true);
+        setPriceRecordEditorStore(store);
+        setPreviousPage("item");
+        window.scrollTo(0, 0);
+    };
+
+    const handleBackFromPriceRecordEditor = () => {
+        setShowPriceRecordEditor(false);
+        setPriceRecordEditorStore(null);
+        // アイテム詳細ページに戻る
+        if (selectedItem) {
+            const itemKey = getItemKey(selectedItem);
+            if (itemKey) {
+                const newUrl = buildUrlWithPeriod(`/price/items/${encodeURIComponent(itemKey)}`);
+                window.history.pushState({ itemKey }, "", newUrl);
+            }
+        }
     };
 
     // メトリクスページを表示
@@ -320,7 +361,18 @@ export default function App() {
 
     // 設定エディタページを表示
     if (showConfig) {
-        return <ConfigEditorPage onBack={handleBackFromConfig} initialItemName={configItemName} />;
+        return <ConfigEditorPage onBack={handleBackFromConfig} initialItemName={configItemName} previousPage={previousPage} selectedItem={selectedItem} />;
+    }
+
+    // 価格記録編集ページを表示
+    if (showPriceRecordEditor && selectedItem && priceRecordEditorStore) {
+        return (
+            <PriceRecordEditorPage
+                item={selectedItem}
+                store={priceRecordEditorStore}
+                onBack={handleBackFromPriceRecordEditor}
+            />
+        );
     }
 
     // 詳細ページを表示
@@ -334,6 +386,7 @@ export default function App() {
                 onPeriodChange={handlePeriodChange}
                 checkIntervalSec={checkIntervalSec}
                 onConfigClick={handleConfigClick}
+                onPriceRecordEditorClick={handlePriceRecordEditorClick}
             />
         );
     }

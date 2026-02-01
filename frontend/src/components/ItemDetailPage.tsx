@@ -32,6 +32,7 @@ interface ItemDetailPageProps {
     onPeriodChange: (period: Period) => void;
     checkIntervalSec?: number;
     onConfigClick?: (itemName: string) => void;
+    onPriceRecordEditorClick?: (store: StoreEntry) => void;
 }
 
 export default function ItemDetailPage({
@@ -42,6 +43,7 @@ export default function ItemDetailPage({
     onPeriodChange,
     checkIntervalSec = 1800,
     onConfigClick,
+    onPriceRecordEditorClick,
 }: ItemDetailPageProps) {
     const [item, setItem] = useState<Item>(initialItem);
     const [events, setEvents] = useState<Event[]>([]);
@@ -383,6 +385,7 @@ export default function ItemDetailPage({
                                 store={store}
                                 isBest={store.store === item.best_store}
                                 bestPrice={item.best_effective_price}
+                                onEditClick={onPriceRecordEditorClick}
                             />
                         ))}
                     </div>

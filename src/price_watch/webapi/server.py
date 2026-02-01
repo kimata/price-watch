@@ -151,6 +151,7 @@ def create_app(
     import price_watch.webapi.amazon_search
     import price_watch.webapi.check_job
     import price_watch.webapi.page
+    import price_watch.webapi.price_record_editor
     import price_watch.webapi.target_editor
 
     # CLI 引数で指定されたファイルパスをキャッシュに反映
@@ -199,6 +200,8 @@ def create_app(
     app.register_blueprint(price_watch.webapi.check_job.check_job_bp, url_prefix=URL_PREFIX)
     # Amazon 検索 API
     app.register_blueprint(price_watch.webapi.amazon_search.blueprint, url_prefix=URL_PREFIX)
+    # 価格記録編集 API
+    app.register_blueprint(price_watch.webapi.price_record_editor.blueprint, url_prefix=URL_PREFIX)
 
     # フロントエンド静的ファイル（React アプリ）
     if static_dir_path.exists():

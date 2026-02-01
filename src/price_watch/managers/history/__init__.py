@@ -410,6 +410,63 @@ class HistoryManager:
         self.insert_price_history(item_id, item)
         return item_id
 
+    def get_records_for_edit(self, item_key: str) -> tuple[ItemRecord | None, list[dict[str, Any]]]:
+        """編集用の価格記録一覧を取得.
+
+        Args:
+            item_key: アイテムキー
+
+        Returns:
+            (アイテム情報, 価格記録リスト) のタプル
+        """
+        return self.prices.get_records_for_edit(item_key)
+
+    def delete_price_records(self, record_ids: list[int]) -> int:
+        """指定した ID の価格記録を削除.
+
+        Args:
+            record_ids: 削除する価格記録の ID リスト
+
+        Returns:
+            削除した件数
+        """
+        return self.prices.delete_by_ids(record_ids)
+
+    def get_prices_by_record_ids(self, record_ids: list[int]) -> list[int]:
+        """指定した ID の価格記録から価格を取得.
+
+        Args:
+            record_ids: 価格記録の ID リスト
+
+        Returns:
+            価格のリスト
+        """
+        return self.prices.get_prices_by_ids(record_ids)
+
+    def delete_events_by_price(self, item_id: int, prices: list[int]) -> int:
+        """指定した価格に対応するイベントを削除.
+
+        Args:
+            item_id: アイテム ID
+            prices: 削除対象の価格リスト
+
+        Returns:
+            削除した件数
+        """
+        return self.events.delete_by_price(item_id, prices)
+
+    def count_events_by_price(self, item_id: int, prices: list[int]) -> int:
+        """指定した価格に対応するイベント数を取得.
+
+        Args:
+            item_id: アイテム ID
+            prices: 対象の価格リスト
+
+        Returns:
+            イベント数
+        """
+        return self.events.count_by_price(item_id, prices)
+
     @staticmethod
     def generate_item_key(
         url: str | None = None,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { ArrowLeftIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import type { Item } from "../../types";
 import type { TargetConfig, ValidationError } from "../../types/config";
 import { fetchTargetConfig, updateTargetConfig, validateTargetConfig } from "../../services/configService";
 import { useToast } from "../../contexts/ToastContext";
@@ -13,6 +14,8 @@ import SaveConfirmModal from "./SaveConfirmModal";
 interface ConfigEditorPageProps {
     onBack: () => void;
     initialItemName?: string;
+    previousPage?: "list" | "item";
+    selectedItem?: Item | null;
 }
 
 type TabType = "stores" | "categories" | "items";

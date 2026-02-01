@@ -171,6 +171,69 @@ class EventRepository:
             cur.execute("UPDATE events SET notified = 1 WHERE id = ?", (event_id,))
             conn.commit()
 
+    def delete_by_price(self, item_id: int, prices: list[int]) -> int:
+        """指定した価格に対応するイベントを削除.
+
+        LOWEST_PRICE, PRICE_DROP イベントのうち、
+        指定した価格と一致するものを削除します。
+
+        Args:
+            item_id: アイテム ID
+            prices: 削除対象の価格リスト
+
+        Returns:
+            削除した件数
+        """
+        if not prices:
+            return 0
+
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(prices))
+            cur.execute(
+                f"""
+                DELETE FROM events
+                WHERE item_id = ?
+                  AND event_type IN ('lowest_price', 'price_drop')
+                  AND price IN ({placeholders})
+                """,  # noqa: S608
+                [item_id, *prices],
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def count_by_price(self, item_id: int, prices: list[int]) -> int:
+        """指定した価格に対応するイベント数を取得.
+
+        LOWEST_PRICE, PRICE_DROP イベントのうち、
+        指定した価格と一致するものの数を返します。
+
+        Args:
+            item_id: アイテム ID
+            prices: 対象の価格リスト
+
+        Returns:
+            イベント数
+        """
+        if not prices:
+            return 0
+
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            placeholders = ",".join("?" * len(prices))
+            cur.execute(
+                f"""
+                SELECT COUNT(*) as count
+                FROM events
+                WHERE item_id = ?
+                  AND event_type IN ('lowest_price', 'price_drop')
+                  AND price IN ({placeholders})
+                """,  # noqa: S608
+                [item_id, *prices],
+            )
+            row = cur.fetchone()
+            return row["count"] if row else 0
+
     def get_by_item(self, item_key: str, limit: int = 50) -> list[price_watch.models.EventRecord]:
         """指定アイテムのイベント履歴を取得（アイテム情報付き）.
 
