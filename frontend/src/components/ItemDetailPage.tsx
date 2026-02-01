@@ -32,7 +32,7 @@ interface ItemDetailPageProps {
     onPeriodChange: (period: Period) => void;
     checkIntervalSec?: number;
     onConfigClick?: (itemName: string) => void;
-    onPriceRecordEditorClick?: (store: StoreEntry) => void;
+    onPriceRecordEditorClick?: () => void;
 }
 
 export default function ItemDetailPage({
@@ -265,13 +265,13 @@ export default function ItemDetailPage({
                         )}
                         <div className="flex-1 min-w-0 flex flex-col">
                             <h1 className="text-xl font-bold text-gray-900 mb-2">{item.name}</h1>
-                            <div className="flex items-baseline gap-2 mb-2">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0 mb-2">
                                 {hasValidPrice ? (
                                     <>
-                                        <span className="text-3xl font-bold text-gray-900">
+                                        <span className="text-3xl font-bold text-gray-900 whitespace-nowrap">
                                             {formatPrice(item.best_effective_price!, priceUnit)}
                                         </span>
-                                        <span className="text-sm text-gray-500">
+                                        <span className="text-sm text-gray-500 whitespace-nowrap">
                                             ({item.best_store}が最安)
                                         </span>
                                     </>
@@ -320,10 +320,10 @@ export default function ItemDetailPage({
                         <CalculatorIcon className="h-5 w-5" />
                         価格統計
                     </PermalinkHeading>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         <div className="text-center p-4 bg-green-50 rounded-lg border border-green-100">
                             <div className="text-sm text-gray-600 mb-2">期間内最安値</div>
-                            <div className="text-2xl font-bold text-green-600">
+                            <div className="text-xl sm:text-2xl font-bold text-green-600 whitespace-nowrap">
                                 {priceStats.lowestPrice !== null
                                     ? formatPrice(priceStats.lowestPrice, priceUnit)
                                     : "-"}
@@ -331,13 +331,13 @@ export default function ItemDetailPage({
                         </div>
                         <div className="text-center p-4 bg-red-50 rounded-lg border border-red-100">
                             <div className="text-sm text-gray-600 mb-2">期間内最高値</div>
-                            <div className="text-2xl font-bold text-red-600">
+                            <div className="text-xl sm:text-2xl font-bold text-red-600 whitespace-nowrap">
                                 {priceStats.highestPrice !== null
                                     ? formatPrice(priceStats.highestPrice, priceUnit)
                                     : "-"}
                             </div>
                         </div>
-                        <div className="text-center p-4 bg-gray-50 rounded-lg">
+                        <div className="col-span-2 sm:col-span-1 text-center p-4 bg-gray-50 rounded-lg">
                             <div className="text-sm text-gray-600 mb-2">期間内最安値平均</div>
                             <div className="text-xl font-semibold text-gray-600">
                                 {priceStats.averagePrice !== null
@@ -385,7 +385,6 @@ export default function ItemDetailPage({
                                 store={store}
                                 isBest={store.store === item.best_store}
                                 bestPrice={item.best_effective_price}
-                                onEditClick={onPriceRecordEditorClick}
                             />
                         ))}
                     </div>
@@ -409,7 +408,7 @@ export default function ItemDetailPage({
                     )}
                 </div>
             </main>
-            <Footer storeDefinitions={storeDefinitions} onConfigClick={onConfigClick ? () => onConfigClick(item.name) : undefined} />
+            <Footer storeDefinitions={storeDefinitions} onConfigClick={onConfigClick ? () => onConfigClick(item.name) : undefined} onPriceRecordEditorClick={onPriceRecordEditorClick} />
         </div>
     );
 }

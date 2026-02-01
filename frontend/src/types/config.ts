@@ -9,7 +9,8 @@ export type CheckMethod =
     | "my_lib.store.mercari.search"
     | "my_lib.store.rakuma.search"
     | "my_lib.store.paypay.search"
-    | "my_lib.store.yahoo.api";
+    | "my_lib.store.yahoo.api"
+    | "my_lib.store.rakuten.api";
 
 // アクションタイプの型
 export type ActionType = "click" | "input" | "sixdigit" | "recaptcha";
@@ -142,6 +143,7 @@ export const CHECK_METHOD_LABELS: Record<CheckMethod, string> = {
     "my_lib.store.rakuma.search": "ラクマ検索",
     "my_lib.store.paypay.search": "PayPayフリマ検索",
     "my_lib.store.yahoo.api": "Yahoo検索",
+    "my_lib.store.rakuten.api": "楽天検索",
 };
 
 // アクションタイプの表示名マッピング

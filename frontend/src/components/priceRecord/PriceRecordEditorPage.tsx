@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeftIcon, ArrowPathIcon, TrashIcon, FunnelIcon } from "@heroicons/react/24/outline";
-import type { Item, StoreEntry } from "../../types";
+import { ArrowLeftIcon, ArrowPathIcon, TrashIcon, FunnelIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import type { Item } from "../../types";
 import { fetchPriceRecords, type PriceRecord, type ItemInfo } from "../../services/priceRecordService";
 import { useToast } from "../../contexts/ToastContext";
 import LoadingSpinner from "../LoadingSpinner";
@@ -10,16 +10,17 @@ import { formatPrice } from "../../utils/formatPrice";
 
 interface PriceRecordEditorPageProps {
     item: Item;
-    store: StoreEntry;
     onBack: () => void;
 }
 
 export default function PriceRecordEditorPage({
     item,
-    store,
     onBack,
 }: PriceRecordEditorPageProps) {
     const { showToast } = useToast();
+    const [selectedStoreKey, setSelectedStoreKey] = useState<string>(
+        item.stores.length > 0 ? item.stores[0].item_key : ""
+    );
     const [loading, setLoading] = useState(true);
     const [itemInfo, setItemInfo] = useState<ItemInfo | null>(null);
     const [records, setRecords] = useState<PriceRecord[]>([]);
@@ -28,11 +29,22 @@ export default function PriceRecordEditorPage({
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [priceThreshold, setPriceThreshold] = useState<string>("");
 
+    // 選択中のストア
+    const selectedStore = useMemo(
+        () => item.stores.find((s) => s.item_key === selectedStoreKey),
+        [item.stores, selectedStoreKey]
+    );
+
     // 記録を読み込み
     const loadRecords = useCallback(async () => {
+        if (!selectedStoreKey) {
+            setRecords([]);
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
-            const response = await fetchPriceRecords(store.item_key);
+            const response = await fetchPriceRecords(selectedStoreKey);
             setItemInfo(response.item);
             setRecords(response.records);
             setRequirePassword(response.require_password);
@@ -43,11 +55,18 @@ export default function PriceRecordEditorPage({
         } finally {
             setLoading(false);
         }
-    }, [store.item_key, showToast]);
+    }, [selectedStoreKey, showToast]);
 
     useEffect(() => {
         loadRecords();
     }, [loadRecords]);
+
+    // ストア変更時
+    const handleStoreChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+        setSelectedStoreKey(e.target.value);
+        setSelectedIds(new Set());
+        setPriceThreshold("");
+    }, []);
 
     // 閾値以下の価格を持つレコードを選択
     const handleSelectByThreshold = useCallback(() => {
@@ -117,7 +136,7 @@ export default function PriceRecordEditorPage({
         };
     }, [records, selectedIds]);
 
-    const priceUnit = itemInfo?.price_unit ?? "円";
+    const priceUnit = itemInfo?.price_unit ?? selectedStore?.price_unit ?? "円";
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -138,14 +157,14 @@ export default function PriceRecordEditorPage({
                                     価格記録編集
                                 </h1>
                                 <p className="text-sm text-gray-500">
-                                    {item.name} - {store.store}
+                                    {item.name}
                                 </p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
                             <button
                                 onClick={loadRecords}
-                                disabled={loading}
+                                disabled={loading || !selectedStoreKey}
                                 className="p-2 rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50 cursor-pointer"
                                 title="再読み込み"
                             >
@@ -165,6 +184,30 @@ export default function PriceRecordEditorPage({
             </header>
 
             <main className="max-w-4xl mx-auto px-4 py-6">
+                {/* ストア選択 */}
+                <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-4">
+                    <div className="flex items-center gap-3">
+                        <label htmlFor="store-select" className="text-sm font-medium text-gray-700">
+                            ストア:
+                        </label>
+                        <div className="relative flex-1 max-w-xs">
+                            <select
+                                id="store-select"
+                                value={selectedStoreKey}
+                                onChange={handleStoreChange}
+                                className="w-full appearance-none px-3 py-2 pr-8 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                            >
+                                {item.stores.map((store) => (
+                                    <option key={store.item_key} value={store.item_key}>
+                                        {store.store}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDownIcon className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+                        </div>
+                    </div>
+                </div>
+
                 {loading ? (
                     <div className="flex justify-center py-12">
                         <LoadingSpinner />
@@ -206,7 +249,7 @@ export default function PriceRecordEditorPage({
 
                         {/* フィルタ */}
                         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-4 mb-4">
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-3">
                                 <FunnelIcon className="w-5 h-5 text-gray-500" />
                                 <span className="text-sm text-gray-600">価格閾値:</span>
                                 <input
@@ -247,9 +290,9 @@ export default function PriceRecordEditorPage({
             </main>
 
             {/* 削除確認モーダル */}
-            {showDeleteModal && itemInfo && (
+            {showDeleteModal && selectedStoreKey && (
                 <DeleteConfirmModal
-                    itemKey={store.item_key}
+                    itemKey={selectedStoreKey}
                     recordIds={Array.from(selectedIds)}
                     requirePassword={requirePassword}
                     priceUnit={priceUnit}

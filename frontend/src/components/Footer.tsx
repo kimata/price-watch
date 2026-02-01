@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { version as reactVersion } from "react";
-import { InformationCircleIcon, ChartBarIcon, Cog6ToothIcon } from "@heroicons/react/24/outline";
+import { InformationCircleIcon, ChartBarIcon, Cog6ToothIcon, PencilSquareIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 import "dayjs/locale/ja";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -20,6 +20,7 @@ interface FooterProps {
     storeDefinitions: StoreDefinition[];
     onMetricsClick?: () => void;
     onConfigClick?: () => void;
+    onPriceRecordEditorClick?: () => void;
 }
 
 // GitHub アイコン SVG
@@ -31,7 +32,7 @@ function GitHubIcon({ className }: { className?: string }) {
     );
 }
 
-export default function Footer({ storeDefinitions, onMetricsClick, onConfigClick }: FooterProps) {
+export default function Footer({ storeDefinitions, onMetricsClick, onConfigClick, onPriceRecordEditorClick }: FooterProps) {
     const [sysInfo, setSysInfo] = useState<SysInfo | null>(null);
     const buildDate = dayjs(import.meta.env.VITE_BUILD_DATE || new Date());
 
@@ -131,6 +132,16 @@ export default function Footer({ storeDefinitions, onMetricsClick, onConfigClick
                     </p>
                     <p>React バージョン: {reactVersion}</p>
                     <p className="pt-2 flex items-center justify-end gap-3">
+                        {/* 価格記録編集リンク（onPriceRecordEditorClick が指定されている場合のみ） */}
+                        {onPriceRecordEditorClick && (
+                            <button
+                                onClick={onPriceRecordEditorClick}
+                                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                                title="価格記録編集"
+                            >
+                                <PencilSquareIcon className="w-6 h-6" />
+                            </button>
+                        )}
                         {/* 設定リンク（onConfigClick が指定されている場合のみ） */}
                         {onConfigClick && (
                             <button

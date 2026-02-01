@@ -10,7 +10,7 @@ import { PriceRecordEditorPage } from "./components/priceRecord";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Footer from "./components/Footer";
 import { fetchItems } from "./services/apiService";
-import type { Item, Period, StoreDefinition, StoreEntry } from "./types";
+import type { Item, Period, StoreDefinition } from "./types";
 
 // SSE イベントタイプ
 const SSE_EVENT_CONTENT = "content";
@@ -89,7 +89,6 @@ export default function App() {
     const [showConfig, setShowConfig] = useState(getPageFromUrl() === "config");
     const [configItemName, setConfigItemName] = useState<string | undefined>(undefined);
     const [showPriceRecordEditor, setShowPriceRecordEditor] = useState(false);
-    const [priceRecordEditorStore, setPriceRecordEditorStore] = useState<StoreEntry | null>(null);
     const [previousPage, setPreviousPage] = useState<"list" | "item">("list");
 
     // 初期化済みフラグ（URL/OGP からのアイテム選択を1回だけ実行）
@@ -334,16 +333,14 @@ export default function App() {
         }
     };
 
-    const handlePriceRecordEditorClick = (store: StoreEntry) => {
+    const handlePriceRecordEditorClick = () => {
         setShowPriceRecordEditor(true);
-        setPriceRecordEditorStore(store);
         setPreviousPage("item");
         window.scrollTo(0, 0);
     };
 
     const handleBackFromPriceRecordEditor = () => {
         setShowPriceRecordEditor(false);
-        setPriceRecordEditorStore(null);
         // アイテム詳細ページに戻る
         if (selectedItem) {
             const itemKey = getItemKey(selectedItem);
@@ -365,11 +362,10 @@ export default function App() {
     }
 
     // 価格記録編集ページを表示
-    if (showPriceRecordEditor && selectedItem && priceRecordEditorStore) {
+    if (showPriceRecordEditor && selectedItem) {
         return (
             <PriceRecordEditorPage
                 item={selectedItem}
-                store={priceRecordEditorStore}
                 onBack={handleBackFromPriceRecordEditor}
             />
         );
