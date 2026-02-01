@@ -54,6 +54,7 @@ class StoreDefinitionSchema(BaseSchema):
     point_rate: float = Field(default=0.0, ge=0.0, le=100.0, description="ポイント還元率（%）")
     color: str | None = Field(default=None, description="ストアの色（hex形式）")
     action: list[ActionStepSchema] = Field(default_factory=list, description="アクションステップ")
+    affiliate_id: str | None = Field(default=None, description="アフィリエイトID")
 
 
 class StoreEntrySchema(BaseSchema):

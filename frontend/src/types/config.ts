@@ -38,6 +38,7 @@ export interface StoreDefinitionConfig {
     point_rate: number;
     color?: string | null;
     action: ActionStep[];
+    affiliate_id?: string | null;
 }
 
 // アイテムのストアエントリ（新書式用）
@@ -162,6 +163,7 @@ export const DEFAULT_STORE_DEFINITION: StoreDefinitionConfig = {
     point_rate: 0,
     color: null,
     action: [],
+    affiliate_id: null,
 };
 
 export const DEFAULT_STORE_ENTRY: StoreEntryConfig = {

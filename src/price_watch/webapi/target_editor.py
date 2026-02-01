@@ -121,6 +121,10 @@ def _convert_schema_to_raw(config: price_watch.webapi.schemas.TargetConfigSchema
             if store.color:
                 store_data["color"] = store.color
 
+            # アフィリエイトID
+            if store.affiliate_id:
+                store_data["affiliate_id"] = store.affiliate_id
+
             # アクション
             if store.action:
                 store_data["action"] = [
@@ -223,6 +227,7 @@ def _convert_raw_to_schema(data: dict[str, Any]) -> price_watch.webapi.schemas.T
                 point_rate=point_rate,
                 color=store_data.get("color"),
                 action=actions,
+                affiliate_id=store_data.get("affiliate_id"),
             )
         )
 

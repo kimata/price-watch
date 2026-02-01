@@ -63,6 +63,7 @@ export default function StoreForm({
                 thumb_img_xpath: store.thumb_img_xpath?.trim() || null,
                 unavailable_xpath: store.unavailable_xpath?.trim() || null,
                 color: store.color?.trim() || null,
+                affiliate_id: store.affiliate_id?.trim() || null,
             };
             onSave(cleanedStore);
         }
@@ -204,6 +205,23 @@ export default function StoreForm({
                         {errors.color && (
                             <p className="mt-1 text-sm text-red-600">{errors.color}</p>
                         )}
+                    </div>
+
+                    {/* アフィリエイトID */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                            アフィリエイトID
+                        </label>
+                        <input
+                            type="text"
+                            value={store.affiliate_id || ""}
+                            onChange={(e) => updateField("affiliate_id", e.target.value || null)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="例: my-affiliate-tag"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                            URLに付与するアフィリエイトタグ（Amazon: ?tag=..., フリマ: ?afid=...）
+                        </p>
                     </div>
                 </div>
 
