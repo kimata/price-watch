@@ -102,6 +102,8 @@ def check(
     logging.info("[楽天検索] %s: キーワード='%s'", item.name, condition.keyword)
     if condition.ng_keyword:
         logging.info("[楽天検索] %s: 除外キーワード='%s'", item.name, condition.ng_keyword)
+    if item.affiliate_id:
+        logging.debug("[楽天検索] %s: アフィリエイトID='%s'", item.name, item.affiliate_id)
 
     # item_key 生成用のデータを設定
     result.search_keyword = condition.keyword
@@ -113,6 +115,7 @@ def check(
             config.store.rakuten_api,
             condition,
             max_items=MAX_SEARCH_RESULTS,
+            affiliate_id=item.affiliate_id,
         )
     except Exception:
         logging.exception("[楽天検索] %s: API エラー", item.name)
