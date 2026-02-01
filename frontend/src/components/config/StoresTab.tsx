@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { PlusIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PencilIcon, TrashIcon, Bars3Icon } from "@heroicons/react/24/outline";
 import type { TargetConfig, StoreDefinitionConfig } from "../../types/config";
 import { CHECK_METHOD_LABELS, DEFAULT_STORE_DEFINITION } from "../../types/config";
 import StoreForm from "./StoreForm";
@@ -15,6 +15,8 @@ export default function StoresTab({ config, onChange, checkMethods, actionTypes 
     const [editingStore, setEditingStore] = useState<StoreDefinitionConfig | null>(null);
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+    const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
     // ストア追加
     const handleAddStore = useCallback(() => {
@@ -83,6 +85,29 @@ export default function StoresTab({ config, onChange, checkMethods, actionTypes 
         setIsCreating(false);
     }, []);
 
+    // ドラッグ開始
+    const handleDragStart = useCallback((index: number) => {
+        setDraggedIndex(index);
+    }, []);
+
+    // ドラッグオーバー
+    const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+        e.preventDefault();
+        setDragOverIndex(index);
+    }, []);
+
+    // ドラッグ終了
+    const handleDragEnd = useCallback(() => {
+        if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
+            const newList = [...config.store_list];
+            const [removed] = newList.splice(draggedIndex, 1);
+            newList.splice(dragOverIndex, 0, removed);
+            onChange({ ...config, store_list: newList });
+        }
+        setDraggedIndex(null);
+        setDragOverIndex(null);
+    }, [config, onChange, draggedIndex, dragOverIndex]);
+
     // 編集フォームを表示中の場合
     if (editingStore) {
         return (
@@ -136,6 +161,7 @@ export default function StoresTab({ config, onChange, checkMethods, actionTypes 
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50">
                             <tr>
+                                <th className="w-10 px-2 py-3"></th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                     ストア名
                                 </th>
@@ -154,48 +180,65 @@ export default function StoresTab({ config, onChange, checkMethods, actionTypes 
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                            {config.store_list.map((store, index) => (
-                                <tr key={index} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 whitespace-nowrap">
-                                        <div className="flex items-center">
-                                            {store.color && (
-                                                <span
-                                                    className="w-3 h-3 rounded-full mr-2"
-                                                    style={{ backgroundColor: store.color }}
-                                                />
-                                            )}
-                                            <span className="text-sm font-medium text-gray-900">
-                                                {store.name}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                        {CHECK_METHOD_LABELS[store.check_method as keyof typeof CHECK_METHOD_LABELS] || store.check_method}
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                        {store.price_unit}
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                                        {store.point_rate > 0 ? `${store.point_rate}%` : "-"}
-                                    </td>
-                                    <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
-                                        <button
-                                            onClick={() => handleEditStore(store, index)}
-                                            className="text-blue-600 hover:text-blue-800 p-1"
-                                            title="編集"
-                                        >
-                                            <PencilIcon className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDeleteStore(index)}
-                                            className="text-red-600 hover:text-red-800 p-1 ml-2"
-                                            title="削除"
-                                        >
-                                            <TrashIcon className="w-4 h-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {config.store_list.map((store, index) => {
+                                const isDragging = draggedIndex === index;
+                                const isDragOver = dragOverIndex === index && draggedIndex !== index;
+
+                                return (
+                                    <tr
+                                        key={index}
+                                        draggable
+                                        onDragStart={() => handleDragStart(index)}
+                                        onDragOver={(e) => handleDragOver(e, index)}
+                                        onDragEnd={handleDragEnd}
+                                        className={`cursor-move transition-colors ${
+                                            isDragging ? "opacity-50 bg-blue-50" : "hover:bg-gray-50"
+                                        } ${isDragOver ? "bg-blue-100 border-t-2 border-blue-500" : ""}`}
+                                    >
+                                        <td className="px-2 py-3 whitespace-nowrap">
+                                            <Bars3Icon className="w-5 h-5 text-gray-400" />
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <div className="flex items-center">
+                                                {store.color && (
+                                                    <span
+                                                        className="w-3 h-3 rounded-full mr-2"
+                                                        style={{ backgroundColor: store.color }}
+                                                    />
+                                                )}
+                                                <span className="text-sm font-medium text-gray-900">
+                                                    {store.name}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                            {CHECK_METHOD_LABELS[store.check_method as keyof typeof CHECK_METHOD_LABELS] || store.check_method}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                            {store.price_unit}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                                            {store.point_rate > 0 ? `${store.point_rate}%` : "-"}
+                                        </td>
+                                        <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                                            <button
+                                                onClick={() => handleEditStore(store, index)}
+                                                className="text-blue-600 hover:text-blue-800 p-1"
+                                                title="編集"
+                                            >
+                                                <PencilIcon className="w-4 h-4" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteStore(index)}
+                                                className="text-red-600 hover:text-red-800 p-1 ml-2"
+                                                title="削除"
+                                            >
+                                                <TrashIcon className="w-4 h-4" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
