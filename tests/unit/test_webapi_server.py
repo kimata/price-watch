@@ -149,6 +149,7 @@ class TestServerStart:
 
         with (
             patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
+            patch("price_watch.webapi.cache.start_file_watcher"),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread) as mock_thread_class,
         ):
@@ -171,6 +172,7 @@ class TestServerStart:
 
         with (
             patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
+            patch("price_watch.webapi.cache.start_file_watcher"),
             patch("werkzeug.serving.make_server", return_value=mock_server) as mock_make_server,
             patch("threading.Thread", return_value=mock_thread),
         ):
@@ -255,6 +257,7 @@ edit:
             patch("docopt.docopt", return_value=mock_args),
             patch("my_lib.logger.init"),
             patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
+            patch("price_watch.webapi.cache.start_file_watcher"),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread),
             patch.object(price_watch.webapi.server, "term") as mock_term,
@@ -296,6 +299,7 @@ edit:
             patch("docopt.docopt", return_value=mock_args),
             patch("my_lib.logger.init") as mock_logger_init,
             patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
+            patch("price_watch.webapi.cache.start_file_watcher"),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread),
             patch.object(price_watch.webapi.server, "term"),
@@ -344,6 +348,7 @@ edit:
             patch("my_lib.logger.init"),
             patch("logging.warning") as mock_warning,
             patch("price_watch.webapi.cache.get_app_config", return_value=mock_config),
+            patch("price_watch.webapi.cache.start_file_watcher"),
             patch("werkzeug.serving.make_server", return_value=mock_server),
             patch("threading.Thread", return_value=mock_thread),
             patch.object(price_watch.webapi.server, "term"),
