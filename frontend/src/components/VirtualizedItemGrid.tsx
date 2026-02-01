@@ -184,7 +184,7 @@ export default function VirtualizedItemGrid({
                             <button
                                 key={category}
                                 onClick={() => handleCategoryClick(category)}
-                                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors"
+                                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
                             >
                                 {category}
                             </button>
