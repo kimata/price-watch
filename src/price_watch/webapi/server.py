@@ -228,6 +228,8 @@ def start(
         config_file: 設定ファイルパス
         target_file: ターゲット設定ファイルパス
     """
+    import price_watch.webapi.cache
+
     server = werkzeug.serving.make_server(
         "0.0.0.0",  # noqa: S104
         port,
@@ -244,14 +246,20 @@ def start(
     if metrics_db_path is not None:
         start_db_watcher(metrics_db_path)
 
+    # target.yaml ファイル監視を開始
+    price_watch.webapi.cache.start_file_watcher()
+
     return ServerHandle(server=server, thread=thread)
 
 
 def term(handle: ServerHandle) -> None:
     """サーバーを停止."""
+    import price_watch.webapi.cache
+
     logging.info("Stop webui server")
 
     stop_db_watcher()
+    price_watch.webapi.cache.stop_file_watcher()
     handle.server.shutdown()
     handle.server.server_close()
 

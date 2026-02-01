@@ -2,10 +2,14 @@
 """Web API 用キャッシュ管理.
 
 HistoryManager, target.yaml, config.yaml のキャッシュを管理します。
+target.yaml の変更を監視し、変更時にキャッシュを無効化して SSE で通知します。
 """
 
 import logging
 import pathlib
+
+import my_lib.file_watcher
+import my_lib.webapp.event
 
 import price_watch.config
 import price_watch.file_cache
@@ -31,6 +35,20 @@ _config_cache: price_watch.file_cache.FileCache[price_watch.config.AppConfig] = 
         lambda path: price_watch.config.load(path),
     )
 )
+
+# ファイル監視（target.yaml の変更検知用）
+_file_watcher: my_lib.file_watcher.FileWatcher | None = None
+
+
+def _on_target_file_changed() -> None:
+    """target.yaml が変更された時のコールバック."""
+    logging.info("target.yaml changed, invalidating cache and notifying clients")
+
+    # キャッシュを無効化
+    _target_config_cache.invalidate()
+
+    # SSE でフロントエンドに通知（データ再取得を促す）
+    my_lib.webapp.event.notify_event(my_lib.webapp.event.EVENT_TYPE.CONTENT)
 
 
 def get_history_manager() -> HistoryManager:
@@ -61,7 +79,8 @@ def init_file_paths(
         config_file: 設定ファイルパス
         target_file: ターゲット設定ファイルパス
     """
-    global _target_config_cache, _config_cache
+    global _target_config_cache, _config_cache, _file_watcher
+
     _target_config_cache = price_watch.file_cache.FileCache(
         target_file,
         lambda path: price_watch.target.load(path),
@@ -70,6 +89,46 @@ def init_file_paths(
         config_file,
         lambda path: price_watch.config.load(path),
     )
+
+    # 既存の FileWatcher があれば停止して再設定
+    if _file_watcher is not None:
+        _file_watcher.stop()
+
+    new_watcher = my_lib.file_watcher.FileWatcher()
+    new_watcher.watch(
+        path=target_file,
+        on_change=_on_target_file_changed,
+        debounce_sec=0.5,
+    )
+    _file_watcher = new_watcher
+
+
+def start_file_watcher() -> None:
+    """ファイル監視を開始."""
+    global _file_watcher
+
+    # init_file_paths が呼ばれていない場合はデフォルトパスで初期化
+    watcher = _file_watcher
+    if watcher is None:
+        watcher = my_lib.file_watcher.FileWatcher()
+        watcher.watch(
+            path=_target_config_cache.file_path,
+            on_change=_on_target_file_changed,
+            debounce_sec=0.5,
+        )
+        _file_watcher = watcher
+
+    watcher.start()
+    logging.info("Started file watcher for target.yaml: %s", _target_config_cache.file_path)
+
+
+def stop_file_watcher() -> None:
+    """ファイル監視を停止."""
+    global _file_watcher
+    if _file_watcher is not None:
+        _file_watcher.stop()
+        _file_watcher = None
+        logging.info("Stopped file watcher for target.yaml")
 
 
 def get_target_config() -> price_watch.target.TargetConfig | None:
