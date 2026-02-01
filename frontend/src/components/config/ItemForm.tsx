@@ -603,7 +603,7 @@ export default function ItemForm({
                     type="submit"
                     className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
                 >
-                    {isNew ? "追加" : "保存"}
+                    {isNew ? "追加" : "決定"}
                 </button>
             </div>
 
