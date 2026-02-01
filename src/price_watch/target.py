@@ -35,6 +35,7 @@ class CheckMethod(str, Enum):
     PAYPAY_SEARCH = "my_lib.store.paypay.search"
     YAHOO_SEARCH = "my_lib.store.yahoo.api"
     RAKUTEN_SEARCH = "my_lib.store.rakuten.api"
+    YODOBASHI_SCRAPE = "my_lib.store.yodobashi.scrape"
 
 
 # 検索系チェックメソッド（URL ではなく keyword で item_key を生成するストア）

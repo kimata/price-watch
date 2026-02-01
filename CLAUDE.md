@@ -14,10 +14,10 @@
 - PayPayフリマ（キーワード検索）
 - Yahoo!ショッピング（API 検索）
 - 楽天市場（API 検索）
-- ヨドバシ.com
-- Switch Science
-- Ubiquiti Store USA
-- Lenovo
+- ヨドバシ.com（専用スクレイピング / キーワード検索）
+- Switch Science（汎用スクレイピング）
+- Ubiquiti Store USA（汎用スクレイピング）
+- Lenovo（汎用スクレイピング）
 
 ## 重要な注意事項
 
@@ -164,7 +164,8 @@ src/
     ├── item.py                 # アイテムリスト管理
     │
     ├── store/                  # ストア別価格取得
-    │   ├── scrape.py           # スクレイピングによる価格チェック
+    │   ├── scrape.py           # 汎用スクレイピングによる価格チェック
+    │   ├── yodobashi.py        # ヨドバシ専用スクレイピング（my_lib.store.yodobashi.scrape 使用）
     │   ├── flea_market.py      # フリマ検索（メルカリ・ラクマ・PayPayフリマ）
     │   ├── yahoo.py            # Yahoo!ショッピング検索
     │   ├── rakuten.py          # 楽天市場検索
@@ -254,11 +255,12 @@ price-watch (cli/app.py)
 ├── app.start_webui_server() → Flask サーバー起動
 ├── AppRunner.execute() → メイン監視ループ
 │   └── ItemProcessor.process_all() → 全アイテム処理
-│       ├── process_scrape_items() → スクレイピング
+│       ├── process_scrape_items() → 汎用スクレイピング
 │       ├── process_amazon_items() → PA-API
 │       ├── process_flea_market_items() → フリマ検索（メルカリ・ラクマ・PayPayフリマ）
 │       ├── process_yahoo_items() → Yahoo検索
-│       └── process_rakuten_items() → 楽天検索
+│       ├── process_rakuten_items() → 楽天検索
+│       └── process_yodobashi_items() → ヨドバシ専用スクレイピング
 └── app.shutdown() → 終了処理
 ```
 
@@ -302,7 +304,7 @@ StoreStats       # ストア別統計
 
 ```python
 # Enum
-CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH, RAKUMA_SEARCH, PAYPAY_SEARCH, YAHOO_SEARCH
+CheckMethod: SCRAPE, AMAZON_PAAPI, MERCARI_SEARCH, RAKUMA_SEARCH, PAYPAY_SEARCH, YAHOO_SEARCH, RAKUTEN_SEARCH, YODOBASHI_SCRAPE
 ActionType: CLICK, INPUT, SIXDIGIT, RECAPTCHA
 
 # Protocol
@@ -395,9 +397,7 @@ category_list:
 
 store_list:
     - name: ヨドバシ
-      price_xpath: '//span[@id="js_scl_salesPrice"]/span[1]'
-      thumb_img_xpath: '//img[@id="mainImg"]/@src'
-      unavailable_xpath: '//p[contains(@class, "orderInfo")]/span[text()="販売休止中"]'
+      check_method: my_lib.store.yodobashi.scrape # 専用スクレイパー使用
 
     - name: Amazon
       check_method: my_lib.store.amazon.api
@@ -502,20 +502,21 @@ docker compose up
 
 ### my-lib（自作共通ライブラリ）
 
-| モジュール               | 用途                                                             |
-| ------------------------ | ---------------------------------------------------------------- |
-| my_lib.selenium_util     | WebDriver 作成・操作ユーティリティ                               |
-| my_lib.config            | YAML 設定ファイル読み込み（スキーマ検証付き）                    |
-| my_lib.notify.slack      | Slack 通知（レート制限機能付き）                                 |
-| my_lib.healthz           | Liveness チェック                                                |
-| my_lib.footprint         | タイムスタンプファイル管理                                       |
-| my_lib.store.flea_market | フリマ検索共通型（ItemCondition, SearchCondition, SearchResult） |
-| my_lib.store.mercari.\*  | メルカリ検索                                                     |
-| my_lib.store.rakuma.\*   | ラクマ検索                                                       |
-| my_lib.store.paypay.\*   | PayPayフリマ検索                                                 |
-| my_lib.store.amazon.\*   | Amazon API 関連                                                  |
-| my_lib.store.yahoo.\*    | Yahoo!ショッピング API 関連                                      |
-| my_lib.store.rakuten.\*  | 楽天市場 API 関連                                                |
+| モジュール                | 用途                                                             |
+| ------------------------- | ---------------------------------------------------------------- |
+| my_lib.selenium_util      | WebDriver 作成・操作ユーティリティ                               |
+| my_lib.config             | YAML 設定ファイル読み込み（スキーマ検証付き）                    |
+| my_lib.notify.slack       | Slack 通知（レート制限機能付き）                                 |
+| my_lib.healthz            | Liveness チェック                                                |
+| my_lib.footprint          | タイムスタンプファイル管理                                       |
+| my_lib.store.flea_market  | フリマ検索共通型（ItemCondition, SearchCondition, SearchResult） |
+| my_lib.store.mercari.\*   | メルカリ検索                                                     |
+| my_lib.store.rakuma.\*    | ラクマ検索                                                       |
+| my_lib.store.paypay.\*    | PayPayフリマ検索                                                 |
+| my_lib.store.amazon.\*    | Amazon API 関連                                                  |
+| my_lib.store.yahoo.\*     | Yahoo!ショッピング API 関連                                      |
+| my_lib.store.rakuten.\*   | 楽天市場 API 関連                                                |
+| my_lib.store.yodobashi.\* | ヨドバシ.com スクレイピング・検索                                |
 
 ## コーディング規約
 

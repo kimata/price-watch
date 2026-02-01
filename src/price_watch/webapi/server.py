@@ -153,6 +153,7 @@ def create_app(
     import price_watch.webapi.page
     import price_watch.webapi.price_record_editor
     import price_watch.webapi.target_editor
+    import price_watch.webapi.yodobashi_search
 
     # CLI 引数で指定されたファイルパスをキャッシュに反映
     if config_file is not None and target_file is not None:
@@ -200,6 +201,8 @@ def create_app(
     app.register_blueprint(price_watch.webapi.check_job.check_job_bp, url_prefix=URL_PREFIX)
     # Amazon 検索 API
     app.register_blueprint(price_watch.webapi.amazon_search.blueprint, url_prefix=URL_PREFIX)
+    # ヨドバシ検索 API
+    app.register_blueprint(price_watch.webapi.yodobashi_search.blueprint, url_prefix=URL_PREFIX)
     # 価格記録編集 API
     app.register_blueprint(price_watch.webapi.price_record_editor.blueprint, url_prefix=URL_PREFIX)
 
@@ -263,6 +266,7 @@ def term(handle: ServerHandle) -> None:
 
     stop_db_watcher()
     price_watch.webapi.cache.stop_file_watcher()
+    price_watch.webapi.cache.quit_yodobashi_driver()
     handle.server.shutdown()
     handle.server.server_close()
 

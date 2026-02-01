@@ -3,12 +3,18 @@
 
 HistoryManager, target.yaml, config.yaml のキャッシュを管理します。
 target.yaml の変更を監視し、変更時にキャッシュを無効化して SSE で通知します。
+ヨドバシ検索用の WebDriver も管理します。
 """
+
+from __future__ import annotations
 
 import logging
 import pathlib
+import threading
+from typing import TYPE_CHECKING
 
 import my_lib.file_watcher
+import my_lib.selenium_util
 import my_lib.webapp.event
 
 import price_watch.config
@@ -16,6 +22,9 @@ import price_watch.file_cache
 import price_watch.managers.history
 import price_watch.target
 from price_watch.managers import HistoryManager
+
+if TYPE_CHECKING:
+    import selenium.webdriver.remote.webdriver
 
 # HistoryManager のキャッシュ（遅延初期化）
 _history_manager: HistoryManager | None = None
@@ -164,3 +173,50 @@ def get_config_cache() -> price_watch.file_cache.FileCache[price_watch.config.Ap
 def get_target_config_cache() -> price_watch.file_cache.FileCache[price_watch.target.TargetConfig]:
     """target.yaml キャッシュオブジェクトを取得."""
     return _target_config_cache
+
+
+# ヨドバシ検索用 WebDriver 管理
+_yodobashi_driver: selenium.webdriver.remote.webdriver.WebDriver | None = None
+_yodobashi_driver_lock: threading.Lock = threading.Lock()
+
+
+def get_yodobashi_driver() -> selenium.webdriver.remote.webdriver.WebDriver | None:
+    """ヨドバシ検索用の WebDriver を取得（遅延初期化）.
+
+    Returns:
+        WebDriver インスタンス（初期化失敗時は None）
+    """
+    global _yodobashi_driver
+
+    with _yodobashi_driver_lock:
+        if _yodobashi_driver is not None:
+            return _yodobashi_driver
+
+        config = get_app_config()
+        if config is None:
+            logging.error("Cannot create Yodobashi driver: config not available")
+            return None
+
+        try:
+            logging.info("Creating Yodobashi search WebDriver")
+            driver = my_lib.selenium_util.create_driver(
+                "yodobashi_search",
+                config.data.selenium,
+                stealth_mode=True,
+            )
+            _yodobashi_driver = driver
+            return driver
+        except Exception:
+            logging.exception("Failed to create Yodobashi search WebDriver")
+            return None
+
+
+def quit_yodobashi_driver() -> None:
+    """ヨドバシ検索用 WebDriver を終了."""
+    global _yodobashi_driver
+
+    with _yodobashi_driver_lock:
+        if _yodobashi_driver is not None:
+            logging.info("Quitting Yodobashi search WebDriver")
+            my_lib.selenium_util.quit_driver_gracefully(_yodobashi_driver)
+            _yodobashi_driver = None

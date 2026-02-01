@@ -23,6 +23,7 @@ import price_watch.store.flea_market
 import price_watch.store.rakuten
 import price_watch.store.scrape
 import price_watch.store.yahoo
+import price_watch.store.yodobashi
 import price_watch.target
 
 if TYPE_CHECKING:
@@ -68,6 +69,9 @@ class ItemProcessor:
 
         # 5. 楽天検索対象
         self.process_rakuten_items(item_list)
+
+        # 6. ヨドバシ対象
+        self.process_yodobashi_items(item_list)
 
     def process_scrape_items(self, item_list: list[ResolvedItem]) -> None:
         """スクレイピング対象アイテムを処理.
@@ -480,6 +484,106 @@ class ItemProcessor:
             if self.error_count[item_key] >= price_watch.const.ERROR_NOTIFY_COUNT:
                 self.error_count[item_key] = 0
             self._mark_debug_failure(store_name, "例外発生")
+
+        return crawl_success
+
+    def process_yodobashi_items(self, item_list: list[ResolvedItem]) -> None:
+        """ヨドバシ対象アイテムを処理.
+
+        Args:
+            item_list: 全アイテムリスト
+        """
+        driver = self.app.browser_manager.driver
+        if driver is None:
+            return
+
+        yodobashi_items = [
+            item for item in item_list if item.check_method == price_watch.target.CheckMethod.YODOBASHI_SCRAPE
+        ]
+
+        if not yodobashi_items:
+            return
+
+        # デバッグモードでは各ストアにつき1アイテムのみ
+        if self.app.debug_mode:
+            yodobashi_items = self._select_one_item_per_store(yodobashi_items)
+            if yodobashi_items:
+                logging.info(
+                    "[デバッグモード] ヨドバシ: %d件のアイテムをチェック",
+                    len(yodobashi_items),
+                )
+        else:
+            logging.info("[ヨドバシ] %d件のアイテムをチェック中...", len(yodobashi_items))
+
+        # ストアごとにグループ化
+        items_by_store = self._group_by_store(yodobashi_items)
+
+        for store_name, store_items in items_by_store.items():
+            if self.app.should_terminate:
+                return
+
+            with price_watch.managers.metrics_manager.StoreContext(
+                self.app.metrics_manager, store_name
+            ) as store_ctx:
+                for item in store_items:
+                    if self.app.should_terminate:
+                        return
+
+                    success = self._process_yodobashi_item(item, store_name)
+                    if success:
+                        store_ctx.record_success()
+                    else:
+                        store_ctx.record_failure()
+
+                    # アイテム間の待機
+                    if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                        return
+
+    def _process_yodobashi_item(self, item: ResolvedItem, store_name: str) -> bool:
+        """ヨドバシアイテムを処理.
+
+        Args:
+            item: 監視対象アイテム
+            store_name: ストア名
+
+        Returns:
+            成功時 True
+        """
+        driver = self.app.browser_manager.driver
+        if driver is None:
+            return False
+
+        logging.info(price_watch.log_format.format_crawl_start(item))
+        crawl_success = False
+
+        try:
+            checked = price_watch.store.yodobashi.check(self.config, driver, item)
+            crawl_success = checked.is_success()
+
+            self._process_data(checked)
+
+            if crawl_success:
+                self.app.update_liveness()
+                self.error_count[item.url] = 0
+                if self.app.debug_mode:
+                    self.debug_check_results[store_name] = True
+                    logging.info("[デバッグモード] %s: 成功", store_name)
+            else:
+                self._handle_crawl_failure(checked, store_name)
+
+        except selenium.common.exceptions.InvalidSessionIdException:
+            logging.warning("セッションが無効になりました。ドライバーを再作成します")
+            if not self.app.browser_manager.recreate_driver():
+                logging.error("ドライバーの再作成に失敗しました")
+                return False
+            # 失敗として記録
+            checked = price_watch.models.CheckedItem.from_resolved_item(item)
+            checked.crawl_status = price_watch.models.CrawlStatus.FAILURE
+            self._process_data(checked)
+            self._mark_debug_failure(store_name, "セッションエラー")
+
+        except Exception:
+            self._handle_exception(item, store_name)
 
         return crawl_success
 
