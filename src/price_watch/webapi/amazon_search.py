@@ -100,7 +100,7 @@ def search() -> flask.Response | tuple[flask.Response, int]:
 
         items = [
             AmazonSearchResultItem(
-                title=item.title,
+                title=item.name,
                 asin=item.asin,
                 price=item.price,
                 thumb_url=item.thumb_url,

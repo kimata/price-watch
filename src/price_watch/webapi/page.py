@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """API エンドポイント."""
 
+import json
 import logging
 import pathlib
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import flask
 from flask_pydantic import validate
@@ -19,6 +21,9 @@ import price_watch.webapi.metrics
 import price_watch.webapi.ogp
 import price_watch.webapi.schemas
 
+if TYPE_CHECKING:
+    from price_watch.target import ResolvedItem
+
 blueprint = flask.Blueprint("page", __name__)
 
 
@@ -33,6 +38,123 @@ class ProcessedStoreData:
 # キャッシュ関連は cache モジュールに移動
 # 互換性のためのエイリアス
 init_file_paths = price_watch.webapi.cache.init_file_paths
+
+# cond 文字列から整数リストへのマッピング（フリマ用）
+_FLEA_MARKET_COND_MAP: dict[str, int] = {
+    "NEW": 1,
+    "LIKE_NEW": 2,
+    "GOOD": 3,
+    "FAIR": 4,
+    "POOR": 5,
+    "BAD": 6,
+}
+
+
+def _build_search_cond_for_flea_market(item: "ResolvedItem") -> str:
+    """フリマ系ストア用の search_cond JSON 文字列を生成.
+
+    Args:
+        item: 監視対象アイテム
+
+    Returns:
+        search_cond JSON 文字列
+    """
+    data: dict[str, object] = {}
+
+    if item.exclude_keyword:
+        data["exclude"] = item.exclude_keyword
+
+    if item.price_range:
+        if len(item.price_range) >= 1 and item.price_range[0] is not None:
+            data["price_min"] = item.price_range[0]
+        if len(item.price_range) >= 2 and item.price_range[1] is not None:
+            data["price_max"] = item.price_range[1]
+
+    # cond 文字列を整数リストに変換
+    if item.cond:
+        cond_values = []
+        for cond_name in item.cond.split("|"):
+            cond_name = cond_name.strip().upper()
+            if cond_name in _FLEA_MARKET_COND_MAP:
+                cond_values.append(_FLEA_MARKET_COND_MAP[cond_name])
+        if cond_values:
+            data["cond"] = cond_values
+    else:
+        # デフォルト: NEW, LIKE_NEW
+        data["cond"] = [1, 2]
+
+    return json.dumps(data, sort_keys=True, ensure_ascii=False) if data else ""
+
+
+def _build_search_cond_for_yahoo(item: "ResolvedItem") -> str:
+    """Yahoo ストア用の search_cond JSON 文字列を生成.
+
+    Args:
+        item: 監視対象アイテム
+
+    Returns:
+        search_cond JSON 文字列
+    """
+    data: dict[str, object] = {}
+
+    if item.jan_code:
+        data["jan"] = item.jan_code
+
+    if item.price_range:
+        if len(item.price_range) >= 1 and item.price_range[0] is not None:
+            data["price_min"] = item.price_range[0]
+        if len(item.price_range) >= 2 and item.price_range[1] is not None:
+            data["price_max"] = item.price_range[1]
+
+    # cond: デフォルト（"new"）以外の場合のみ含める
+    if item.cond and item.cond.strip().lower() == "used":
+        data["cond"] = "used"
+
+    return json.dumps(data, sort_keys=True, ensure_ascii=False) if data else ""
+
+
+def _build_search_cond_for_rakuten(item: "ResolvedItem") -> str:
+    """楽天ストア用の search_cond JSON 文字列を生成.
+
+    Args:
+        item: 監視対象アイテム
+
+    Returns:
+        search_cond JSON 文字列
+    """
+    data: dict[str, object] = {}
+
+    if item.exclude_keyword:
+        data["exclude_keyword"] = item.exclude_keyword
+
+    if item.price_range:
+        if len(item.price_range) >= 1 and item.price_range[0] is not None:
+            data["price_min"] = item.price_range[0]
+        if len(item.price_range) >= 2 and item.price_range[1] is not None:
+            data["price_max"] = item.price_range[1]
+
+    return json.dumps(data, sort_keys=True, ensure_ascii=False) if data else ""
+
+
+def _build_search_cond_for_item(item: "ResolvedItem") -> str:
+    """ResolvedItem から search_cond JSON 文字列を生成.
+
+    ストアタイプに応じて適切なロジックを使用します。
+
+    Args:
+        item: 監視対象アイテム
+
+    Returns:
+        search_cond JSON 文字列（条件がない場合は空文字列）
+    """
+    if item.check_method == price_watch.target.CheckMethod.YAHOO_SEARCH:
+        return _build_search_cond_for_yahoo(item)
+    if item.check_method == price_watch.target.CheckMethod.RAKUTEN_SEARCH:
+        return _build_search_cond_for_rakuten(item)
+    if item.check_method in price_watch.target.FLEA_MARKET_CHECK_METHODS:
+        return _build_search_cond_for_flea_market(item)
+    # その他の検索系ストア（将来追加される可能性）
+    return ""
 
 
 def _parse_days(days_str: str | None) -> int | None:
@@ -58,12 +180,17 @@ def _get_target_item_keys(target_config: price_watch.target.TargetConfig | None)
         return set()
 
     for item in resolved_items:
-        # 検索系ストアの場合は keyword から item_key を生成
+        # 検索系ストアの場合は keyword と search_cond から item_key を生成
         if item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
-            keyword = item.search_keyword or item.name
+            # Yahoo は JANコードが指定されていれば JANコードを search_keyword として使用
+            if item.check_method == price_watch.target.CheckMethod.YAHOO_SEARCH and item.jan_code:
+                keyword = item.jan_code
+            else:
+                keyword = item.search_keyword or item.name
+            search_cond = _build_search_cond_for_item(item)
             keys.add(
                 price_watch.managers.history.generate_item_key(
-                    search_keyword=keyword, search_cond="", store_name=item.store
+                    search_keyword=keyword, search_cond=search_cond, store_name=item.store
                 )
             )
         else:
@@ -439,9 +566,17 @@ def _group_items_by_name(
         for resolved_item in resolved_items_list:
             # 検索系ストアの場合の item_key を生成
             if resolved_item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
-                keyword = resolved_item.search_keyword or resolved_item.name
+                # Yahoo は JANコードが指定されていれば JANコードを search_keyword として使用
+                if (
+                    resolved_item.check_method == price_watch.target.CheckMethod.YAHOO_SEARCH
+                    and resolved_item.jan_code
+                ):
+                    keyword = resolved_item.jan_code
+                else:
+                    keyword = resolved_item.search_keyword or resolved_item.name
+                search_cond = _build_search_cond_for_item(resolved_item)
                 item_key = price_watch.managers.history.generate_item_key(
-                    search_keyword=keyword, search_cond="", store_name=resolved_item.store
+                    search_keyword=keyword, search_cond=search_cond, store_name=resolved_item.store
                 )
             else:
                 item_key = price_watch.managers.history.url_hash(resolved_item.url)

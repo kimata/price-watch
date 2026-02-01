@@ -43,11 +43,11 @@ def _build_search_condition(item: ResolvedItem) -> my_lib.store.rakuten.api.Sear
             price_max = item.price_range[1]
 
     # 除外キーワード
-    ng_keyword = item.exclude_keyword
+    exclude_keyword = item.exclude_keyword
 
     return my_lib.store.rakuten.api.SearchCondition(
         keyword=keyword,
-        ng_keyword=ng_keyword,
+        exclude_keyword=exclude_keyword,
         price_min=price_min,
         price_max=price_max,
     )
@@ -64,8 +64,8 @@ def _build_search_cond_json(condition: my_lib.store.rakuten.api.SearchCondition)
     """
     data: dict[str, Any] = {}
 
-    if condition.ng_keyword:
-        data["ng_keyword"] = condition.ng_keyword
+    if condition.exclude_keyword:
+        data["exclude_keyword"] = condition.exclude_keyword
     if condition.price_min is not None:
         data["price_min"] = condition.price_min
     if condition.price_max is not None:
@@ -100,8 +100,8 @@ def check(
     condition = _build_search_condition(item)
 
     logging.info("[楽天検索] %s: キーワード='%s'", item.name, condition.keyword)
-    if condition.ng_keyword:
-        logging.info("[楽天検索] %s: 除外キーワード='%s'", item.name, condition.ng_keyword)
+    if condition.exclude_keyword:
+        logging.info("[楽天検索] %s: 除外キーワード='%s'", item.name, condition.exclude_keyword)
     if item.affiliate_id:
         logging.debug("[楽天検索] %s: アフィリエイトID='%s'", item.name, item.affiliate_id)
 

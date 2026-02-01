@@ -103,14 +103,14 @@ def _build_search_condition(item: ResolvedItem) -> my_lib.store.flea_market.Sear
             price_max = item.price_range[1]
 
     # 商品状態
-    item_conditions = _parse_cond(item.cond)
+    conditions = _parse_cond(item.cond)
 
     return my_lib.store.flea_market.SearchCondition(
         keyword=keyword,
         exclude_keyword=item.exclude_keyword,
         price_min=price_min,
         price_max=price_max,
-        item_conditions=item_conditions,
+        condition=conditions,
     )
 
 
@@ -131,8 +131,8 @@ def _build_search_cond_json(condition: my_lib.store.flea_market.SearchCondition)
         data["price_min"] = condition.price_min
     if condition.price_max is not None:
         data["price_max"] = condition.price_max
-    if condition.item_conditions:
-        data["cond"] = [c.value for c in condition.item_conditions]
+    if condition.condition:
+        data["cond"] = [c.value for c in condition.condition]
 
     return json.dumps(data, sort_keys=True, ensure_ascii=False) if data else ""
 
@@ -226,7 +226,7 @@ def check(
     filtered_results = [
         r
         for r in filtered_results
-        if price_watch.store.search_filter.matches_all_keywords(r.title, condition.keyword)
+        if price_watch.store.search_filter.matches_all_keywords(r.name, condition.keyword)
     ]
     if len(filtered_results) < before_keyword_filter:
         logging.info(
@@ -252,7 +252,7 @@ def check(
         item.name,
         len(filtered_results),
         f"{cheapest.price:,}",
-        cheapest.title,
+        cheapest.name,
     )
 
     # 結果を設定（アフィリエイトID付与）
