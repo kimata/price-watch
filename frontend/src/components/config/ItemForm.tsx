@@ -335,12 +335,13 @@ export default function ItemForm({
                             {item.store.map((storeEntry, index) => {
                                 const storeDef = storeMap.get(storeEntry.name);
                                 const checkMethod = storeDef?.check_method || "scrape";
-                                const isScrape = checkMethod === "scrape";
+                                const isScrape = checkMethod === "scrape" || checkMethod === "my_lib.store.yodobashi.scrape";
                                 const isSearch = [
                                     "my_lib.store.mercari.search",
                                     "my_lib.store.rakuma.search",
                                     "my_lib.store.paypay.search",
                                     "my_lib.store.yahoo.api",
+                                    "my_lib.store.rakuten.api",
                                 ].includes(checkMethod);
 
                                 return (
