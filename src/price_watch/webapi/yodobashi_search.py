@@ -33,6 +33,7 @@ class YodobashiSearchResultItem(BaseModel):
     name: str
     url: str
     price: int | None
+    thumb_url: str | None
 
 
 class YodobashiSearchResponse(BaseModel):
@@ -108,6 +109,7 @@ def search() -> flask.Response | tuple[flask.Response, int]:
                     name=item.name,
                     url=item.url,
                     price=item.price,
+                    thumb_url=item.thumb_url,
                 )
                 for item in results
             ]

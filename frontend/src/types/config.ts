@@ -225,6 +225,7 @@ export interface YodobashiSearchResultItem {
     name: string;
     url: string;
     price: number | null;
+    thumb_url: string | null;
 }
 
 export interface YodobashiSearchResponse {

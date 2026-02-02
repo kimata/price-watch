@@ -215,6 +215,26 @@ export default function YodobashiSearchModal({
                                     key={index}
                                     className="flex items-center gap-4 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                                 >
+                                    {/* サムネイル */}
+                                    <a
+                                        href={item.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="flex-shrink-0"
+                                    >
+                                        {item.thumb_url ? (
+                                            <img
+                                                src={item.thumb_url}
+                                                alt={item.name}
+                                                className="w-16 h-16 object-contain border border-gray-200 rounded hover:border-blue-400 transition-colors"
+                                            />
+                                        ) : (
+                                            <div className="w-16 h-16 bg-gray-100 border border-gray-200 rounded flex items-center justify-center text-gray-400 text-xs">
+                                                No Image
+                                            </div>
+                                        )}
+                                    </a>
+
                                     {/* 商品情報 */}
                                     <div className="flex-1 min-w-0">
                                         <a
