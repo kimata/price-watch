@@ -12,6 +12,8 @@ import type {
     CheckItemResponse,
     AmazonSearchResponse,
     AmazonSearchAvailableResponse,
+    YodobashiSearchResponse,
+    YodobashiSearchAvailableResponse,
 } from "../types/config";
 
 const API_BASE = "/price/api";
@@ -101,6 +103,30 @@ export async function checkAmazonSearchAvailable(): Promise<boolean> {
  */
 export async function searchAmazon(keywords: string, itemCount: number = 10): Promise<AmazonSearchResponse> {
     const response = await axios.post<AmazonSearchResponse>(`${API_BASE}/amazon/search`, {
+        keywords,
+        item_count: itemCount,
+    });
+    return response.data;
+}
+
+/**
+ * ヨドバシ検索 API が利用可能かどうかを確認
+ */
+export async function checkYodobashiSearchAvailable(): Promise<boolean> {
+    const response = await axios.get<YodobashiSearchAvailableResponse>(
+        `${API_BASE}/yodobashi/search/available`
+    );
+    return response.data.available;
+}
+
+/**
+ * ヨドバシ商品をキーワードで検索
+ */
+export async function searchYodobashi(
+    keywords: string,
+    itemCount: number = 10
+): Promise<YodobashiSearchResponse> {
+    const response = await axios.post<YodobashiSearchResponse>(`${API_BASE}/yodobashi/search`, {
         keywords,
         item_count: itemCount,
     });

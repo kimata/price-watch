@@ -214,3 +214,23 @@ export interface AmazonSearchResponse {
 export interface AmazonSearchAvailableResponse {
     available: boolean;
 }
+
+// ヨドバシ検索関連
+export interface YodobashiSearchRequest {
+    keywords: string;
+    item_count?: number;
+}
+
+export interface YodobashiSearchResultItem {
+    name: string;
+    url: string;
+    price: number | null;
+}
+
+export interface YodobashiSearchResponse {
+    items: YodobashiSearchResultItem[];
+}
+
+export interface YodobashiSearchAvailableResponse {
+    available: boolean;
+}

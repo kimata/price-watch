@@ -10,7 +10,8 @@ import { DEFAULT_STORE_ENTRY, CHECK_METHOD_LABELS } from "../../types/config";
 import XPathInput from "./XPathInput";
 import CheckItemModal from "./CheckItemModal";
 import AmazonSearchModal from "./AmazonSearchModal";
-import { checkAmazonSearchAvailable } from "../../services/configService";
+import YodobashiSearchModal from "./YodobashiSearchModal";
+import { checkAmazonSearchAvailable, checkYodobashiSearchAvailable } from "../../services/configService";
 
 interface ItemFormProps {
     item: ItemDefinitionConfig;
@@ -42,13 +43,21 @@ export default function ItemForm({
         storeIndex: number;
         defaultKeyword: string;
     } | null>(null);
+    const [yodobashiSearchModal, setYodobashiSearchModal] = useState<{
+        storeIndex: number;
+        defaultKeyword: string;
+    } | null>(null);
     const [isAmazonSearchAvailable, setIsAmazonSearchAvailable] = useState(false);
+    const [isYodobashiSearchAvailable, setIsYodobashiSearchAvailable] = useState(false);
 
-    // Amazon 検索 API の利用可能状態を確認
+    // Amazon/ヨドバシ検索 API の利用可能状態を確認
     useEffect(() => {
         checkAmazonSearchAvailable()
             .then(setIsAmazonSearchAvailable)
             .catch(() => setIsAmazonSearchAvailable(false));
+        checkYodobashiSearchAvailable()
+            .then(setIsYodobashiSearchAvailable)
+            .catch(() => setIsYodobashiSearchAvailable(false));
     }, []);
 
     // ストア定義のマップ（名前 → 定義）
@@ -384,18 +393,36 @@ export default function ItemForm({
                                                             <label className="block text-xs font-medium text-gray-700 mb-1">
                                                                 URL
                                                             </label>
-                                                            <input
-                                                                type="text"
-                                                                value={storeEntry.url || ""}
-                                                                onChange={(e) =>
-                                                                    updateStoreEntry(index, {
-                                                                        ...storeEntry,
-                                                                        url: e.target.value || null,
-                                                                    })
-                                                                }
-                                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                                                                placeholder="https://..."
-                                                            />
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={storeEntry.url || ""}
+                                                                    onChange={(e) =>
+                                                                        updateStoreEntry(index, {
+                                                                            ...storeEntry,
+                                                                            url: e.target.value || null,
+                                                                        })
+                                                                    }
+                                                                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm"
+                                                                    placeholder="https://..."
+                                                                />
+                                                                {checkMethod === "my_lib.store.yodobashi.scrape" && isYodobashiSearchAvailable && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setYodobashiSearchModal({
+                                                                                storeIndex: index,
+                                                                                defaultKeyword: storeEntry.search_keyword || item.name,
+                                                                            })
+                                                                        }
+                                                                        className="inline-flex items-center px-3 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                                                                        title="ヨドバシで検索して URL を選択"
+                                                                    >
+                                                                        <MagnifyingGlassIcon className="w-4 h-4 mr-1" />
+                                                                        検索
+                                                                    </button>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
 
@@ -630,6 +657,20 @@ export default function ItemForm({
                         });
                     }}
                     onClose={() => setAmazonSearchModal(null)}
+                />
+            )}
+
+            {/* ヨドバシ検索モーダル */}
+            {yodobashiSearchModal && (
+                <YodobashiSearchModal
+                    defaultKeyword={yodobashiSearchModal.defaultKeyword}
+                    onSelect={(url) => {
+                        updateStoreEntry(yodobashiSearchModal.storeIndex, {
+                            ...item.store[yodobashiSearchModal.storeIndex],
+                            url,
+                        });
+                    }}
+                    onClose={() => setYodobashiSearchModal(null)}
                 />
             )}
         </form>
