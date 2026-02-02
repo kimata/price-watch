@@ -18,6 +18,8 @@ CHECK_METHODS = [
     "my_lib.store.rakuma.search",
     "my_lib.store.paypay.search",
     "my_lib.store.yahoo.api",
+    "my_lib.store.rakuten.api",
+    "my_lib.store.yodobashi.scrape",
 ]
 
 # === アクションタイプ定義 ===
