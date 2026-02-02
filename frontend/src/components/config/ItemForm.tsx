@@ -335,7 +335,8 @@ export default function ItemForm({
                             {item.store.map((storeEntry, index) => {
                                 const storeDef = storeMap.get(storeEntry.name);
                                 const checkMethod = storeDef?.check_method || "scrape";
-                                const isScrape = checkMethod === "scrape" || checkMethod === "my_lib.store.yodobashi.scrape";
+                                const isGenericScrape = checkMethod === "scrape";
+                                const needsUrl = isGenericScrape || checkMethod === "my_lib.store.yodobashi.scrape";
                                 const isSearch = [
                                     "my_lib.store.mercari.search",
                                     "my_lib.store.rakuma.search",
@@ -377,8 +378,8 @@ export default function ItemForm({
                                                         </select>
                                                     </div>
 
-                                                    {/* スクレイピング: URL */}
-                                                    {isScrape && (
+                                                    {/* スクレイピング/ヨドバシ: URL */}
+                                                    {needsUrl && (
                                                         <div>
                                                             <label className="block text-xs font-medium text-gray-700 mb-1">
                                                                 URL
@@ -503,8 +504,8 @@ export default function ItemForm({
                                                     <p className="text-sm text-red-600">{errors[`store.${index}`]}</p>
                                                 )}
 
-                                                {/* スクレイピング: XPath（オプション） */}
-                                                {isScrape && (
+                                                {/* スクレイピング: XPath（オプション）- 汎用スクレイピングのみ */}
+                                                {isGenericScrape && (
                                                     <details className="text-sm">
                                                         <summary className="cursor-pointer text-gray-600 hover:text-gray-800">
                                                             詳細設定（XPath 等）
