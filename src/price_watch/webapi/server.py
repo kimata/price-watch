@@ -19,11 +19,13 @@ import urllib.parse
 from dataclasses import dataclass
 
 import flask
+import flask.typing
 import flask_cors
 import my_lib.webapp.base
 import my_lib.webapp.config
 import my_lib.webapp.event
 import my_lib.webapp.util
+import werkzeug.exceptions
 import werkzeug.serving
 
 URL_PREFIX = "/price"
@@ -212,6 +214,22 @@ def create_app(
         app.register_blueprint(my_lib.webapp.base.blueprint_default)
     app.register_blueprint(my_lib.webapp.event.blueprint, url_prefix=URL_PREFIX)
     app.register_blueprint(my_lib.webapp.util.blueprint, url_prefix=URL_PREFIX)
+
+    # グローバルエラーハンドラー: 予期しない例外をキャッチしてログ記録
+    @app.errorhandler(500)
+    def handle_internal_error(error: Exception) -> flask.typing.ResponseReturnValue:
+        """Handle internal server errors."""
+        logging.exception("Internal server error: %s", error)
+        return flask.jsonify({"error": "Internal Server Error"}), 500
+
+    @app.errorhandler(Exception)
+    def handle_exception(error: Exception) -> flask.typing.ResponseReturnValue:
+        """Handle uncaught exceptions."""
+        # HTTPException はそのまま処理（Response に変換して返す）
+        if isinstance(error, werkzeug.exceptions.HTTPException):
+            return error.get_response()
+        logging.exception("Unhandled exception: %s", error)
+        return flask.jsonify({"error": "Internal Server Error"}), 500
 
     my_lib.webapp.config.show_handler_list(app)
 
