@@ -25,6 +25,26 @@ CHECK_METHODS = [
 # === アクションタイプ定義 ===
 ACTION_TYPES = ["click", "input", "sixdigit", "recaptcha"]
 
+# === check_method ごとの必須フィールド定義 ===
+# バリデーション時に参照する
+# フィールド名をそのまま指定: そのフィールドが必須
+# "url_or_asin": url または asin のいずれかが必要
+# 定義なし or 空リスト: 必須フィールドなし（検索系など）
+#
+# Note: XPath 系フィールドはストア定義またはアイテムのストアエントリで指定可能
+#       ストア定義で指定されていればアイテム側では省略可能
+CHECK_METHOD_REQUIRED_FIELDS: dict[str, list[str]] = {
+    "scrape": ["url", "price_xpath", "unavailable_xpath", "thumb_img_xpath"],
+    "my_lib.store.amazon.api": ["url_or_asin"],
+    "my_lib.store.yodobashi.scrape": ["url"],
+    # 検索系は URL/ASIN 不要（検索結果から動的に取得）
+    # "my_lib.store.mercari.search": [],
+    # "my_lib.store.rakuma.search": [],
+    # "my_lib.store.paypay.search": [],
+    # "my_lib.store.yahoo.api": [],
+    # "my_lib.store.rakuten.api": [],
+}
+
 
 # === リクエスト/レスポンス用スキーマ ===
 

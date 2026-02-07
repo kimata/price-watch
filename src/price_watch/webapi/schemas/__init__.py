@@ -23,6 +23,7 @@ from price_watch.webapi.schemas.items import (
 )
 from price_watch.webapi.schemas.target import (
     ACTION_TYPES,
+    CHECK_METHOD_REQUIRED_FIELDS,
     CHECK_METHODS,
     ActionStepSchema,
     CheckItemRequest,
@@ -43,6 +44,7 @@ from price_watch.webapi.schemas.target import (
 __all__ = [
     "ACTION_TYPES",
     "CHECK_METHODS",
+    "CHECK_METHOD_REQUIRED_FIELDS",
     "ActionStepSchema",
     "CheckItemRequest",
     "CheckItemResponse",

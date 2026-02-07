@@ -6,7 +6,7 @@ import type {
     StoreEntryConfig,
     CheckMethod,
 } from "../../types/config";
-import { DEFAULT_STORE_ENTRY, CHECK_METHOD_LABELS } from "../../types/config";
+import { DEFAULT_STORE_ENTRY, CHECK_METHOD_LABELS, CHECK_METHOD_REQUIRED_FIELDS } from "../../types/config";
 import XPathInput from "./XPathInput";
 import CheckItemModal from "./CheckItemModal";
 import AmazonSearchModal from "./AmazonSearchModal";
@@ -85,10 +85,32 @@ export default function ItemForm({
                 return;
             }
 
-            // スクレイピングストアの場合は URL または ASIN が必要
-            if (storeDef.check_method === "scrape") {
-                if (!storeEntry.url && !storeEntry.asin) {
-                    newErrors[`store.${index}`] = "URL または ASIN が必要です";
+            // check_method に応じた必須フィールドチェック
+            const requiredFields = CHECK_METHOD_REQUIRED_FIELDS[storeDef.check_method as CheckMethod] || [];
+
+            for (const field of requiredFields) {
+                if (field === "url_or_asin") {
+                    if (!storeEntry.url && !storeEntry.asin) {
+                        newErrors[`store.${index}`] = "URL または ASIN が必要です";
+                    }
+                } else if (field === "url") {
+                    if (!storeEntry.url) {
+                        newErrors[`store.${index}.url`] = "URL が必要です";
+                    }
+                } else if (field === "asin") {
+                    if (!storeEntry.asin) {
+                        newErrors[`store.${index}.asin`] = "ASIN が必要です";
+                    }
+                } else if (field === "price_xpath" || field === "thumb_img_xpath" || field === "unavailable_xpath") {
+                    // XPath 系はストア定義またはストアエントリで指定可能
+                    const storeValue = storeDef[field as keyof StoreDefinitionConfig];
+                    const entryValue = storeEntry[field as keyof StoreEntryConfig];
+                    if (!storeValue && !entryValue) {
+                        const fieldLabel = field === "price_xpath" ? "価格の XPath"
+                            : field === "thumb_img_xpath" ? "サムネイル画像の XPath"
+                            : "在庫なし判定の XPath";
+                        newErrors[`store.${index}.${field}`] = `${fieldLabel} が必要です（ストア定義またはアイテムで指定）`;
+                    }
                 }
             }
         });
@@ -527,9 +549,13 @@ export default function ItemForm({
                                                     )}
                                                 </div>
 
-                                                {errors[`store.${index}`] && (
-                                                    <p className="text-sm text-red-600">{errors[`store.${index}`]}</p>
-                                                )}
+                                                {/* ストアエントリのバリデーションエラー表示 */}
+                                                {Object.entries(errors)
+                                                    .filter(([key]) => key.startsWith(`store.${index}`))
+                                                    .map(([key, message]) => (
+                                                        <p key={key} className="text-sm text-red-600">{message}</p>
+                                                    ))
+                                                }
 
                                                 {/* スクレイピング: XPath（オプション）- 汎用スクレイピングのみ */}
                                                 {isGenericScrape && (

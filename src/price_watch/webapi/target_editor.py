@@ -365,20 +365,49 @@ def _validate_config(
                     )
                 )
 
-            # スクレイピングストアの場合、URL が必要
+            # check_method に応じた必須フィールドチェック
             store_def = next((s for s in config.store_list if s.name == store_entry.name), None)
-            if (
-                store_def
-                and store_def.check_method == "scrape"
-                and not store_entry.url
-                and not store_entry.asin
-            ):
-                errors.append(
-                    price_watch.webapi.schemas.ValidationError(
-                        path=f"item_list[{i}].store[{j}]",
-                        message=f"ストア '{store_entry.name}' には url または asin が必要です",
-                    )
+            if store_def:
+                required_fields = price_watch.webapi.schemas.CHECK_METHOD_REQUIRED_FIELDS.get(
+                    store_def.check_method, []
                 )
+
+                for field in required_fields:
+                    if field == "url_or_asin":
+                        # url または asin のいずれかが必要
+                        if not store_entry.url and not store_entry.asin:
+                            errors.append(
+                                price_watch.webapi.schemas.ValidationError(
+                                    path=f"item_list[{i}].store[{j}]",
+                                    message=f"ストア '{store_entry.name}' には url または asin が必要です",
+                                )
+                            )
+                    elif field == "url" and not store_entry.url:
+                        errors.append(
+                            price_watch.webapi.schemas.ValidationError(
+                                path=f"item_list[{i}].store[{j}].url",
+                                message=f"ストア '{store_entry.name}' には url が必要です",
+                            )
+                        )
+                    elif field in ("price_xpath", "thumb_img_xpath", "unavailable_xpath"):
+                        # XPath 系はストア定義またはストアエントリで指定可能
+                        store_value = getattr(store_def, field, None)
+                        entry_value = getattr(store_entry, field, None)
+                        if not store_value and not entry_value:
+                            msg = f"ストア '{store_entry.name}' には {field} が必要です"
+                            errors.append(
+                                price_watch.webapi.schemas.ValidationError(
+                                    path=f"item_list[{i}].store[{j}].{field}",
+                                    message=f"{msg}（ストア定義またはアイテムで指定）",
+                                )
+                            )
+                    elif field == "asin" and not store_entry.asin:
+                        errors.append(
+                            price_watch.webapi.schemas.ValidationError(
+                                path=f"item_list[{i}].store[{j}].asin",
+                                message=f"ストア '{store_entry.name}' には asin が必要です",
+                            )
+                        )
             if store_entry.url:
                 try:
                     validate_public_url(store_entry.url)
