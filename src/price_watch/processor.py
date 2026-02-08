@@ -250,6 +250,11 @@ class ItemProcessor:
             if self.app.should_terminate:
                 return
 
+            # ストアごとにウォームアップを実行（最初のアイテム処理前に1回）
+            if store_items:
+                check_method = store_items[0].check_method
+                price_watch.store.flea_market.warmup(driver, check_method)
+
             with price_watch.managers.metrics_manager.StoreContext(
                 self.app.metrics_manager, store_name
             ) as store_ctx:

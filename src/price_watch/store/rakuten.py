@@ -115,7 +115,6 @@ def check(
             config.store.rakuten_api,
             condition,
             max_items=MAX_SEARCH_RESULTS,
-            affiliate_id=item.affiliate_id,
         )
     except Exception:
         logging.exception("[楽天検索] %s: API エラー", item.name)

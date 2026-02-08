@@ -43,6 +43,40 @@ _STORE_SEARCH_FUNCS: dict[
     price_watch.target.CheckMethod.PAYPAY_SEARCH: (my_lib.store.paypay.search.search, "PayPay検索"),
 }
 
+# ストアごとのウォームアップ関数
+_STORE_WARMUP_FUNCS: dict[
+    price_watch.target.CheckMethod,
+    Callable[..., bool],
+] = {
+    price_watch.target.CheckMethod.MERCARI_SEARCH: my_lib.store.mercari.search.warmup,
+    price_watch.target.CheckMethod.RAKUMA_SEARCH: my_lib.store.rakuma.search.warmup,
+    price_watch.target.CheckMethod.PAYPAY_SEARCH: my_lib.store.paypay.search.warmup,
+}
+
+
+def warmup(
+    driver: WebDriver,
+    check_method: price_watch.target.CheckMethod,
+) -> bool:
+    """指定されたフリマストアのウォームアップを実行.
+
+    Google検索経由でフリマサイトにアクセスし、bot検出を回避する。
+
+    Args:
+        driver: WebDriver インスタンス
+        check_method: チェックメソッド（フリマストア種別）
+
+    Returns:
+        ウォームアップが成功した場合 True
+    """
+    warmup_func = _STORE_WARMUP_FUNCS.get(check_method)
+    if warmup_func is None:
+        logging.warning("ウォームアップ関数が見つかりません: %s", check_method)
+        return False
+
+    wait = selenium.webdriver.support.wait.WebDriverWait(driver, 30)
+    return warmup_func(driver, wait)
+
 
 def _parse_cond(cond_str: str | None) -> list[my_lib.store.flea_market.ItemCondition] | None:
     """商品状態文字列をパース.
