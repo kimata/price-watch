@@ -27,7 +27,7 @@ function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
     return (
         <div
             className={clsx(
-                "flex items-center justify-between py-2 px-3 rounded-md",
+                "flex items-center justify-between py-3 px-4 rounded-md",
                 isBest && hasPrice ? "bg-blue-50 border border-blue-200" : "bg-gray-50"
             )}
         >
@@ -37,30 +37,30 @@ function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
                         href={linkUrl!}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-gray-700 hover:text-blue-600 truncate flex items-center gap-1"
+                        className="text-base font-medium text-gray-700 hover:text-blue-600 truncate flex items-center gap-1.5"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <StoreIcon store={store.store} size={14} />
+                        <StoreIcon store={store.store} size={18} />
                         <span className="truncate">{store.store}</span>
-                        <ArrowTopRightOnSquareIcon className="h-3 w-3 flex-shrink-0" />
+                        <ArrowTopRightOnSquareIcon className="h-4 w-4 flex-shrink-0" />
                     </a>
                 ) : (
-                    <span className="text-xs text-gray-400 truncate flex items-center gap-1">
-                        <StoreIcon store={store.store} size={14} />
+                    <span className="text-base font-medium text-gray-400 truncate flex items-center gap-1.5">
+                        <StoreIcon store={store.store} size={18} />
                         <span className="truncate">{store.store}</span>
                     </span>
                 )}
                 {isBest && hasPrice && (
-                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded whitespace-nowrap">
+                    <span className="text-sm px-2 py-0.5 bg-blue-100 text-blue-700 rounded whitespace-nowrap">
                         最安
                     </span>
                 )}
             </div>
             <div className="flex items-center gap-2">
-                <div className="text-right min-w-[5.5rem]">
+                <div className="text-right min-w-[6.5rem]">
                     {hasPrice ? (
                         <>
-                            <div className="text-sm font-semibold text-gray-900 whitespace-nowrap tabular-nums">
+                            <div className="text-lg font-bold text-gray-900 whitespace-nowrap tabular-nums">
                                 {formatPrice(store.effective_price!, store.price_unit)}
                             </div>
                             {(priceDiff > 0 || store.point_rate > 0) && (
@@ -72,7 +72,7 @@ function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
                             )}
                         </>
                     ) : (
-                        <div className="text-sm text-gray-400 whitespace-nowrap">---</div>
+                        <div className="text-lg text-gray-400 whitespace-nowrap">---</div>
                     )}
                 </div>
                 <span
