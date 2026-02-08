@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- 楽天風: 特徴的な「R」のアイコン -->
+  <rect x="2" y="2" width="20" height="20" rx="3" fill="#666666"/>
+  <path d="M7 19V5H13C15.5 5 17 6.5 17 9C17 11.5 15.5 13 13 13H7" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M11 13L18 19" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

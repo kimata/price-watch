@@ -4,6 +4,9 @@ import dayjs from "dayjs";
 import type { Item, StoreDefinition, Period } from "../types";
 import LazyPriceChart from "./LazyPriceChart";
 import StoreRow from "./StoreRow";
+import FavoriteButton from "./FavoriteButton";
+import PriceTrendBadge from "./PriceTrendBadge";
+import { usePriceTrend } from "../hooks/usePriceTrend";
 import { formatPrice } from "../utils/formatPrice";
 
 interface ItemCardProps {
@@ -44,6 +47,12 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
     const bestStore = item.stores.find((s) => s.store === item.best_store);
     const priceUnit = bestStore?.price_unit ?? "円";
 
+    // 全ストアの履歴を結合して価格トレンドを計算
+    const combinedHistory = useMemo(() => {
+        return item.stores.flatMap((s) => s.history);
+    }, [item.stores]);
+    const { trend, priceDropPercent } = usePriceTrend(combinedHistory);
+
     const handleClick = useCallback(() => {
         if (onClick) {
             onClick(item);
@@ -52,9 +61,14 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
 
     return (
         <div
-            className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col h-full cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all duration-200"
+            className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col h-full cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all duration-200 relative"
             onClick={handleClick}
         >
+            {/* お気に入りボタン（右上） */}
+            <div className="absolute top-2 right-2 z-10">
+                <FavoriteButton itemName={item.name} size="md" />
+            </div>
+
             <div className="p-4">
                 <div className="flex gap-4">
                     {item.thumb_url ? (
@@ -70,7 +84,7 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
                     )}
                     <div className="flex-1 min-w-0">
                         <h3 className="text-sm font-semibold text-gray-900 line-clamp-2">{item.name}</h3>
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex flex-wrap items-center gap-2 mt-2">
                             {hasValidPrice ? (
                                 <span className="text-lg font-bold text-gray-900">
                                     {formatPrice(item.best_effective_price!, priceUnit)}
@@ -78,6 +92,7 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
                             ) : (
                                 <span className="text-lg text-gray-400">---</span>
                             )}
+                            <PriceTrendBadge trend={trend} priceDropPercent={priceDropPercent} />
                             <span className="text-xs text-gray-500">({item.stores.length}店舗)</span>
                         </div>
                     </div>

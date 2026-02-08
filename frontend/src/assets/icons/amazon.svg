@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- Amazon風: スマイル矢印をモチーフにしたアイコン -->
+  <rect x="2" y="2" width="20" height="20" rx="3" fill="#666666"/>
+  <text x="11" y="16" font-family="Arial, sans-serif" font-size="19" font-weight="bold" fill="#ffffff" text-anchor="middle">a</text>
+  <path d="M6 18 Q12 21 18 18" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+  <path d="M16 17 L18 18 L17 20" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

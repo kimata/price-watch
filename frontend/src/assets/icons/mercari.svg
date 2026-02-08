@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- メルカリ風: 正六角形に「m」、右上に円 -->
+  <!-- 正六角形（縦向き、半径11） -->
+  <polygon points="12,1 21.5,6.5 21.5,17.5 12,23 2.5,17.5 2.5,6.5" fill="#666666"/>
+  <!-- 右上の円 -->
+  <circle cx="20" cy="4" r="4" fill="#999999"/>
+  <!-- 白い「m」- 丸みのあるアーチ形状 -->
+  <path d="M6.5 17V13C6.5 10.5 8 9 10 9C11.5 9 12 10 12 11.5V17M12 17V13C12 10.5 13.5 9 15.5 9C17 9 17.5 10 17.5 11.5V17"
+        stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

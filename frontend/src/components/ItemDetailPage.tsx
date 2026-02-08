@@ -1,15 +1,6 @@
 import { useMemo } from "react";
 import { ArrowLeftIcon, ClockIcon, ChartBarIcon, ListBulletIcon, CalculatorIcon, BuildingStorefrontIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
-
-// X (Twitter) のカスタムアイコン
-function XIcon({ className }: { className?: string }) {
-    return (
-        <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-        </svg>
-    );
-}
 import type { Item, StoreDefinition, Period } from "../types";
 import PeriodSelector from "./PeriodSelector";
 import PriceChart from "./PriceChart";
@@ -18,6 +9,8 @@ import EventHistory from "./EventHistory";
 import LoadingSpinner from "./LoadingSpinner";
 import Footer from "./Footer";
 import PermalinkHeading from "./PermalinkHeading";
+import FavoriteButton from "./FavoriteButton";
+import ShareButtons from "./ShareButtons";
 import { ChartSkeleton } from "./skeletons";
 import { useItemDetails, useItemEvents } from "../hooks/useItems";
 import { formatPrice } from "../utils/formatPrice";
@@ -151,7 +144,10 @@ export default function ItemDetailPage({
                             </div>
                         )}
                         <div className="flex-1 min-w-0 flex flex-col">
-                            <h1 className="text-xl font-bold text-gray-900 mb-2">{displayItem.name}</h1>
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                                <h1 className="text-xl font-bold text-gray-900">{displayItem.name}</h1>
+                                <FavoriteButton itemName={displayItem.name} size="lg" />
+                            </div>
                             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0 mb-2">
                                 {hasValidPrice ? (
                                     <>
@@ -168,26 +164,21 @@ export default function ItemDetailPage({
                             </div>
                             <div className="flex-1" />
                             <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1 text-sm text-gray-500">
-                                <ClockIcon className="h-4 w-4" />
-                                <span>
+                                <div className="flex items-center gap-1 text-sm text-gray-500">
+                                    <ClockIcon className="h-4 w-4" />
+                                    <span>
                                         最終更新: {lastUpdated ? dayjs(lastUpdated).format("YYYY年M月D日 HH:mm") : "未取得"}
                                         {lastUpdated ? ` (${lastUpdatedRelative})` : ""}
                                     </span>
                                 </div>
-                                <a
-                                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+                                <ShareButtons
+                                    title={displayItem.name}
+                                    text={
                                         hasValidPrice
                                             ? `${displayItem.name} 最安値 ${formatPrice(displayItem.best_effective_price!, priceUnit)} (${displayItem.best_store})`
                                             : displayItem.name
-                                    )}&url=${encodeURIComponent(window.location.href)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded transition-colors"
-                                    title="X (Twitter) で共有"
-                                >
-                                    <XIcon className="h-4 w-4" />
-                                </a>
+                                    }
+                                />
                             </div>
                         </div>
                     </div>

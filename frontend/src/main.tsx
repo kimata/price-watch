@@ -5,15 +5,18 @@ import "./index.css";
 import App from "./App.tsx";
 import { ToastProvider } from "./contexts/ToastContext.tsx";
 import { SSEProvider } from "./contexts/SSEContext.tsx";
+import { FavoritesProvider } from "./contexts/FavoritesContext.tsx";
 import { queryClient } from "./services/queryClient.ts";
 
 createRoot(document.getElementById("root")!).render(
     <StrictMode>
         <QueryClientProvider client={queryClient}>
             <SSEProvider>
-                <ToastProvider>
-                    <App />
-                </ToastProvider>
+                <FavoritesProvider>
+                    <ToastProvider>
+                        <App />
+                    </ToastProvider>
+                </FavoritesProvider>
             </SSEProvider>
         </QueryClientProvider>
     </StrictMode>

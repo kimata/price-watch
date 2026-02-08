@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Header from "./components/Header";
+import HeroSection from "./components/HeroSection";
 import EventBanner from "./components/EventBanner";
 import PeriodSelector from "./components/PeriodSelector";
 import VirtualizedItemGrid from "./components/VirtualizedItemGrid";
@@ -330,8 +331,17 @@ export default function App() {
     // 一覧ページを表示
     return (
         <div className="min-h-screen bg-gray-100">
-            <Header />
+            <Header items={items} onItemClick={handleItemClick} />
             <main className="max-w-7xl mx-auto px-4 py-6">
+                {/* ヒーローセクション */}
+                {!loading && items.length > 0 && (
+                    <HeroSection
+                        items={items}
+                        storeDefinitions={storeDefinitions}
+                        onItemClick={handleItemClick}
+                    />
+                )}
+
                 <div className="mb-6">
                     <PeriodSelector selected={period} onChange={handlePeriodChange} />
                 </div>

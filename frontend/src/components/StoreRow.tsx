@@ -3,11 +3,11 @@ import {
     CheckCircleIcon,
     XCircleIcon,
     ArrowTopRightOnSquareIcon,
-    BuildingStorefrontIcon,
 } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import type { StoreEntry } from "../types";
 import { formatPrice, formatPriceDiff } from "../utils/formatPrice";
+import StoreIcon from "./StoreIcon";
 
 interface StoreRowProps {
     store: StoreEntry;
@@ -40,13 +40,13 @@ function StoreRow({ store, isBest, bestPrice }: StoreRowProps) {
                         className="text-xs text-gray-700 hover:text-blue-600 truncate flex items-center gap-1"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <BuildingStorefrontIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <StoreIcon store={store.store} size={14} />
                         <span className="truncate">{store.store}</span>
                         <ArrowTopRightOnSquareIcon className="h-3 w-3 flex-shrink-0" />
                     </a>
                 ) : (
                     <span className="text-xs text-gray-400 truncate flex items-center gap-1">
-                        <BuildingStorefrontIcon className="h-3.5 w-3.5 flex-shrink-0" />
+                        <StoreIcon store={store.store} size={14} />
                         <span className="truncate">{store.store}</span>
                     </span>
                 )}
