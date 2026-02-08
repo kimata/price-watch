@@ -148,7 +148,11 @@ export default function App() {
             setTimeout(() => {
                 const el = document.getElementById(hash.slice(1));
                 if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    // 要素の位置を取得して、オフセットを考慮してスクロール
+                    const rect = el.getBoundingClientRect();
+                    const offset = 24; // 余白
+                    const y = rect.top + window.scrollY - offset;
+                    window.scrollTo({ top: y, behavior: "smooth" });
                 }
             }, 100);
             hashScrollDone.current = true;

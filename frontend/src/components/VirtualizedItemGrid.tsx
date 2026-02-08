@@ -1,8 +1,11 @@
-import { useMemo, useCallback, useRef, useLayoutEffect } from "react";
+import { useMemo, useCallback, useRef, useLayoutEffect, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { HeartIcon } from "@heroicons/react/24/solid";
+import { HeartIcon as HeartOutlineIcon } from "@heroicons/react/24/outline";
 import type { Item, StoreDefinition, Period } from "../types";
 import ItemCard from "./ItemCard";
 import PermalinkHeading from "./PermalinkHeading";
+import { useFavorites } from "../contexts/FavoritesContext";
 
 interface VirtualizedItemGridProps {
     items: Item[];
@@ -49,6 +52,19 @@ export default function VirtualizedItemGrid({
 }: VirtualizedItemGridProps) {
     const parentRef = useRef<HTMLDivElement>(null);
     const columnCountRef = useRef(getColumnCount());
+    const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+    const { isFavorite } = useFavorites();
+
+    // お気に入りフィルターを適用したアイテム
+    const filteredItems = useMemo(() => {
+        if (!showFavoritesOnly) return items;
+        return items.filter((item) => isFavorite(item.name));
+    }, [items, showFavoritesOnly, isFavorite]);
+
+    // お気に入りアイテム数
+    const favoriteCount = useMemo(() => {
+        return items.filter((item) => isFavorite(item.name)).length;
+    }, [items, isFavorite]);
 
     // ウィンドウリサイズ時にカラム数を更新
     useLayoutEffect(() => {
@@ -68,7 +84,7 @@ export default function VirtualizedItemGrid({
     const groupedItems = useMemo(() => {
         // アイテムをカテゴリーでグルーピング
         const byCategory = new Map<string, Item[]>();
-        for (const item of items) {
+        for (const item of filteredItems) {
             const cat = item.category || "その他";
             const list = byCategory.get(cat);
             if (list) {
@@ -111,11 +127,11 @@ export default function VirtualizedItemGrid({
         }
 
         return ordered;
-    }, [items, categories]);
+    }, [filteredItems, categories]);
 
     // 仮想スクロールのしきい値（アイテム数がこれ以上なら仮想化）
     const VIRTUALIZATION_THRESHOLD = 30;
-    const shouldVirtualize = items.length >= VIRTUALIZATION_THRESHOLD;
+    const shouldVirtualize = filteredItems.length >= VIRTUALIZATION_THRESHOLD;
 
     // カテゴリーが1つだけの場合はナビゲーションと見出しを省略
     const showHeaders = groupedItems.length > 1;
@@ -170,7 +186,11 @@ export default function VirtualizedItemGrid({
             url.hash = categoryId;
             window.history.replaceState(window.history.state, "", url.toString());
 
-            el.scrollIntoView({ behavior: "smooth", block: "start" });
+            // 要素の位置を取得して、オフセットを考慮してスクロール
+            const rect = el.getBoundingClientRect();
+            const offset = 24; // 余白
+            const y = rect.top + window.scrollY - offset;
+            window.scrollTo({ top: y, behavior: "smooth" });
         }
     }, []);
 
@@ -178,18 +198,53 @@ export default function VirtualizedItemGrid({
     if (!shouldVirtualize) {
         return (
             <div className="space-y-8">
-                {showHeaders && (
-                    <nav className="flex flex-wrap gap-2">
-                        {groupedItems.map(({ category }) => (
-                            <button
-                                key={category}
-                                onClick={() => handleCategoryClick(category)}
-                                className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
-                            >
-                                {category}
-                            </button>
-                        ))}
-                    </nav>
+                <nav className="flex flex-wrap items-center gap-2">
+                    {/* お気に入りフィルターボタン */}
+                    <button
+                        onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-colors cursor-pointer ${
+                            showFavoritesOnly
+                                ? "bg-pink-100 text-pink-700 border border-pink-300"
+                                : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50 hover:text-pink-600 hover:border-pink-300"
+                        }`}
+                        title={showFavoritesOnly ? "すべて表示" : "お気に入りのみ表示"}
+                    >
+                        {showFavoritesOnly ? (
+                            <HeartIcon className="w-4 h-4" />
+                        ) : (
+                            <HeartOutlineIcon className="w-4 h-4" />
+                        )}
+                        <span>お気に入り</span>
+                        {favoriteCount > 0 && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                showFavoritesOnly ? "bg-pink-200" : "bg-gray-200"
+                            }`}>
+                                {favoriteCount}
+                            </span>
+                        )}
+                    </button>
+
+                    {/* カテゴリーナビ */}
+                    {showHeaders && groupedItems.map(({ category }) => (
+                        <button
+                            key={category}
+                            onClick={() => handleCategoryClick(category)}
+                            className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
+                        >
+                            {category}
+                        </button>
+                    ))}
+                </nav>
+
+                {/* お気に入りフィルター時にアイテムがない場合 */}
+                {showFavoritesOnly && filteredItems.length === 0 && (
+                    <div className="text-center py-12">
+                        <HeartOutlineIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-500">お気に入り登録されたアイテムがありません</p>
+                        <p className="text-sm text-gray-400 mt-2">
+                            アイテムカードのハートアイコンをクリックして追加できます
+                        </p>
+                    </div>
                 )}
 
                 {groupedItems.map(({ category, items: categoryItems }) => (
@@ -223,20 +278,56 @@ export default function VirtualizedItemGrid({
     // 仮想スクロール版
     return (
         <div className="space-y-8">
-            {showHeaders && (
-                <nav className="flex flex-wrap gap-2">
-                    {groupedItems.map(({ category }) => (
-                        <button
-                            key={category}
-                            onClick={() => handleCategoryClick(category)}
-                            className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors"
-                        >
-                            {category}
-                        </button>
-                    ))}
-                </nav>
+            <nav className="flex flex-wrap items-center gap-2">
+                {/* お気に入りフィルターボタン */}
+                <button
+                    onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-colors cursor-pointer ${
+                        showFavoritesOnly
+                            ? "bg-pink-100 text-pink-700 border border-pink-300"
+                            : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50 hover:text-pink-600 hover:border-pink-300"
+                    }`}
+                    title={showFavoritesOnly ? "すべて表示" : "お気に入りのみ表示"}
+                >
+                    {showFavoritesOnly ? (
+                        <HeartIcon className="w-4 h-4" />
+                    ) : (
+                        <HeartOutlineIcon className="w-4 h-4" />
+                    )}
+                    <span>お気に入り</span>
+                    {favoriteCount > 0 && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                            showFavoritesOnly ? "bg-pink-200" : "bg-gray-200"
+                        }`}>
+                            {favoriteCount}
+                        </span>
+                    )}
+                </button>
+
+                {/* カテゴリーナビ */}
+                {showHeaders && groupedItems.map(({ category }) => (
+                    <button
+                        key={category}
+                        onClick={() => handleCategoryClick(category)}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-full hover:bg-gray-50 hover:text-blue-600 hover:border-blue-300 transition-colors cursor-pointer"
+                    >
+                        {category}
+                    </button>
+                ))}
+            </nav>
+
+            {/* お気に入りフィルター時にアイテムがない場合 */}
+            {showFavoritesOnly && filteredItems.length === 0 && (
+                <div className="text-center py-12">
+                    <HeartOutlineIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">お気に入り登録されたアイテムがありません</p>
+                    <p className="text-sm text-gray-400 mt-2">
+                        アイテムカードのハートアイコンをクリックして追加できます
+                    </p>
+                </div>
             )}
 
+            {filteredItems.length > 0 && (
             <div
                 ref={parentRef}
                 style={{
@@ -306,6 +397,7 @@ export default function VirtualizedItemGrid({
                     })}
                 </div>
             </div>
+            )}
         </div>
     );
 }

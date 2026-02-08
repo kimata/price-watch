@@ -44,10 +44,13 @@ export default function PermalinkHeading({
                 onClick={(e) => {
                     e.preventDefault();
                     handleCopyLink();
-                    // スクロールも行う
+                    // 要素の位置を取得して、オフセットを考慮してスクロール
                     const el = document.getElementById(id);
                     if (el) {
-                        el.scrollIntoView({ behavior: "smooth", block: "start" });
+                        const rect = el.getBoundingClientRect();
+                        const offset = 24; // 余白
+                        const y = rect.top + window.scrollY - offset;
+                        window.scrollTo({ top: y, behavior: "smooth" });
                     }
                 }}
             >

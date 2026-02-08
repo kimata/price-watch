@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { ArrowLeftIcon, ArrowPathIcon, TrashIcon, FunnelIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { ArrowLeftIcon, ArrowPathIcon, TrashIcon, FunnelIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import type { Item } from "../../types";
 import { fetchPriceRecords, type PriceRecord, type ItemInfo } from "../../services/priceRecordService";
 import { useToast } from "../../contexts/ToastContext";
@@ -28,6 +28,10 @@ export default function PriceRecordEditorPage({
     const [requirePassword, setRequirePassword] = useState(false);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [priceThreshold, setPriceThreshold] = useState<string>("");
+    const [currentPage, setCurrentPage] = useState(1);
+
+    // ページネーション設定
+    const RECORDS_PER_PAGE = 20;
 
     // 選択中のストア
     const selectedStore = useMemo(
@@ -137,6 +141,25 @@ export default function PriceRecordEditorPage({
     }, [records, selectedIds]);
 
     const priceUnit = itemInfo?.price_unit ?? selectedStore?.price_unit ?? "円";
+
+    // ページネーション計算
+    const totalPages = Math.ceil(records.length / RECORDS_PER_PAGE);
+    const paginatedRecords = useMemo(() => {
+        const startIndex = (currentPage - 1) * RECORDS_PER_PAGE;
+        return records.slice(startIndex, startIndex + RECORDS_PER_PAGE);
+    }, [records, currentPage]);
+
+    // ページ変更時に範囲外になった場合の調整
+    useEffect(() => {
+        if (currentPage > totalPages && totalPages > 0) {
+            setCurrentPage(totalPages);
+        }
+    }, [totalPages, currentPage]);
+
+    // ストア変更時にページをリセット
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [selectedStoreKey]);
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -272,12 +295,59 @@ export default function PriceRecordEditorPage({
                         {/* テーブル */}
                         <div className="bg-white rounded-lg shadow-md border border-gray-200">
                             <PriceRecordTable
-                                records={records}
+                                records={paginatedRecords}
                                 selectedIds={selectedIds}
                                 onToggleSelect={handleToggleSelect}
                                 onToggleAll={handleToggleAll}
                                 priceUnit={priceUnit}
                             />
+
+                            {/* ページネーション */}
+                            {totalPages > 1 && (
+                                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                                    <div className="text-sm text-gray-500">
+                                        {records.length}件中 {(currentPage - 1) * RECORDS_PER_PAGE + 1}〜
+                                        {Math.min(currentPage * RECORDS_PER_PAGE, records.length)}件を表示
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setCurrentPage(1)}
+                                            disabled={currentPage === 1}
+                                            className="px-2 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer"
+                                            title="最初のページ"
+                                        >
+                                            最初
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                            className="p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer"
+                                            title="前のページ"
+                                        >
+                                            <ChevronLeftIcon className="w-5 h-5" />
+                                        </button>
+                                        <span className="text-sm text-gray-700">
+                                            {currentPage} / {totalPages}
+                                        </span>
+                                        <button
+                                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="p-1 text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer"
+                                            title="次のページ"
+                                        >
+                                            <ChevronRightIcon className="w-5 h-5" />
+                                        </button>
+                                        <button
+                                            onClick={() => setCurrentPage(totalPages)}
+                                            disabled={currentPage === totalPages}
+                                            className="px-2 py-1 text-sm text-gray-600 hover:text-gray-900 disabled:text-gray-300 disabled:cursor-not-allowed cursor-pointer"
+                                            title="最後のページ"
+                                        >
+                                            最後
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         {records.length === 0 && (
