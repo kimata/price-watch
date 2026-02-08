@@ -246,6 +246,9 @@ class ItemProcessor:
         # ストアごとにグループ化してメトリクスを記録
         items_by_store = self._group_by_store(flea_market_items)
 
+        # 失敗したアイテムを収集（リトライ用）
+        failed_items: list[tuple[ResolvedItem, str]] = []
+
         for store_name, store_items in items_by_store.items():
             if self.app.should_terminate:
                 return
@@ -267,9 +270,16 @@ class ItemProcessor:
                         store_ctx.record_success()
                     else:
                         store_ctx.record_failure()
+                        # 失敗アイテムを収集（リトライ用）
+                        failed_items.append((item, store_name))
 
                     if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
                         return
+
+        # 失敗アイテムのリトライ（1回のみ）
+        if failed_items:
+            logging.info("[フリマ検索] 失敗した %d 件のアイテムをリトライします", len(failed_items))
+            self._retry_failed_flea_market_items(failed_items)
 
     def _process_flea_market_item(self, item: ResolvedItem, store_name: str) -> bool:
         """フリマアイテムを処理.
@@ -329,6 +339,45 @@ class ItemProcessor:
             self._mark_debug_failure(store_name, "例外発生")
 
         return crawl_success
+
+    def _retry_failed_flea_market_items(self, failed_items: list[tuple[ResolvedItem, str]]) -> None:
+        """失敗したフリマアイテムをリトライ.
+
+        全ストアの処理完了後、失敗したアイテムを1回だけリトライします。
+        ウォームアップ済みなので、2回目は成功率が高くなることを期待します。
+
+        Args:
+            failed_items: (アイテム, ストア名) のタプルリスト
+        """
+        driver = self.app.browser_manager.driver
+        if driver is None:
+            return
+
+        retry_success = 0
+        retry_fail = 0
+
+        for item, store_name in failed_items:
+            if self.app.should_terminate:
+                return
+
+            logging.info("[フリマ検索] リトライ: %s (%s)", item.name, store_name)
+
+            success = self._process_flea_market_item(item, store_name)
+            if success:
+                retry_success += 1
+                logging.info("[フリマ検索] リトライ成功: %s", item.name)
+            else:
+                retry_fail += 1
+                logging.warning("[フリマ検索] リトライ失敗: %s", item.name)
+
+            if self.app.wait_for_terminate(timeout=price_watch.const.SCRAPE_INTERVAL_SEC):
+                return
+
+        logging.info(
+            "[フリマ検索] リトライ完了: 成功=%d件, 失敗=%d件",
+            retry_success,
+            retry_fail,
+        )
 
     def process_yahoo_items(self, item_list: list[ResolvedItem]) -> None:
         """Yahoo検索対象アイテムを処理.
