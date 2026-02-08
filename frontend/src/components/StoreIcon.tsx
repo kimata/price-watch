@@ -16,11 +16,14 @@ interface StoreIconProps {
 // ストア名からアイコンへのマッピング
 const STORE_ICONS: Record<string, string> = {
     Amazon: amazonIcon,
+    アマゾン: amazonIcon,
     ヨドバシ: yodobashiIcon,
     メルカリ: mercariIcon,
     ラクマ: rakumaIcon,
     PayPayフリマ: paypayIcon,
+    PayPay: paypayIcon,
     Yahoo: yahooIcon,
+    ヤフー: yahooIcon,
     楽天: rakutenIcon,
 };
 

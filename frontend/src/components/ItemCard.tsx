@@ -61,14 +61,9 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
 
     return (
         <div
-            className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col h-full cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all duration-200 relative"
+            className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden flex flex-col h-full cursor-pointer hover:shadow-lg hover:border-blue-300 transition-all duration-200"
             onClick={handleClick}
         >
-            {/* お気に入りボタン（右上） */}
-            <div className="absolute top-2 right-2 z-10">
-                <FavoriteButton itemName={item.name} size="md" />
-            </div>
-
             <div className="p-4">
                 <div className="flex gap-4">
                     {item.thumb_url ? (
@@ -84,16 +79,19 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
                     )}
                     <div className="flex-1 min-w-0">
                         <h3 className="text-sm font-semibold text-gray-900 line-clamp-2">{item.name}</h3>
-                        <div className="flex flex-wrap items-center gap-2 mt-2">
-                            {hasValidPrice ? (
-                                <span className="text-lg font-bold text-gray-900">
-                                    {formatPrice(item.best_effective_price!, priceUnit)}
-                                </span>
-                            ) : (
-                                <span className="text-lg text-gray-400">---</span>
-                            )}
-                            <PriceTrendBadge trend={trend} priceDropPercent={priceDropPercent} />
-                            <span className="text-xs text-gray-500">({item.stores.length}店舗)</span>
+                        <div className="flex items-center gap-2 mt-2">
+                            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
+                                {hasValidPrice ? (
+                                    <span className="text-lg font-bold text-gray-900">
+                                        {formatPrice(item.best_effective_price!, priceUnit)}
+                                    </span>
+                                ) : (
+                                    <span className="text-lg text-gray-400">---</span>
+                                )}
+                                <PriceTrendBadge trend={trend} priceDropPercent={priceDropPercent} />
+                                <span className="text-xs text-gray-500">({item.stores.length}店舗)</span>
+                            </div>
+                            <FavoriteButton itemName={item.name} size="md" />
                         </div>
                     </div>
                 </div>
