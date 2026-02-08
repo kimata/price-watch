@@ -433,6 +433,8 @@ class TestGetItems:
         mock_history_manager = MagicMock()
         mock_history_manager.get_all_items.return_value = mock_items
         mock_history_manager.get_latest.return_value = None
+        mock_history_manager.get_all_latest.return_value = {}
+        mock_history_manager.get_all_stats.return_value = {}
 
         with (
             patch.object(price_watch.webapi.cache._target_config_cache, "get", return_value=None),

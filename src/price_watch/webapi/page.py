@@ -454,6 +454,8 @@ def _process_item(
     target_config: price_watch.target.TargetConfig | None,
     *,
     include_history: bool = True,
+    all_latest: dict[int, price_watch.models.LatestPriceRecord] | None = None,
+    all_stats: dict[int, price_watch.models.ItemStats] | None = None,
 ) -> ProcessedStoreData | None:
     """1つのアイテムを処理してストアデータを構築.
 
@@ -462,6 +464,8 @@ def _process_item(
         days: 期間（日数）
         target_config: ターゲット設定
         include_history: 履歴を含めるかどうか（軽量API用にFalseを指定）
+        all_latest: 一括取得した最新価格（パフォーマンス最適化用）
+        all_stats: 一括取得した統計情報（パフォーマンス最適化用）
     """
     history = price_watch.webapi.cache.get_history_manager()
 
@@ -469,15 +473,21 @@ def _process_item(
     point_rate = _get_point_rate(target_config, item.store)
     price_unit = _get_price_unit(target_config, item.store)
 
-    # 最新価格を取得
-    latest = history.get_latest(item.id)
+    # 最新価格を取得（一括取得データがあれば使用）
+    latest = all_latest.get(item.id) if all_latest is not None else history.get_latest(item.id)
+
     if not latest:
         # 履歴がないアイテムも表示（在庫なしとして）
         store_entry = _build_store_entry_without_history_from_record(item, point_rate, price_unit)
         return ProcessedStoreData(store_entry=store_entry, thumb_url=item.thumb_url)
 
-    # 統計情報を取得
-    stats = history.get_stats(item.id, days)
+    # 統計情報を取得（一括取得データがあれば使用）
+    if all_stats is not None:
+        stats = all_stats.get(
+            item.id, price_watch.models.ItemStats(lowest_price=None, highest_price=None, data_count=0)
+        )
+    else:
+        stats = history.get_stats(item.id, days)
 
     # 価格履歴を取得（include_history=False の場合はスキップ）
     hist: list[price_watch.models.PriceRecord] = []
@@ -499,6 +509,8 @@ def _collect_stores_for_name(
     target_config: price_watch.target.TargetConfig | None,
     *,
     include_history: bool = True,
+    all_latest: dict[int, price_watch.models.LatestPriceRecord] | None = None,
+    all_stats: dict[int, price_watch.models.ItemStats] | None = None,
 ) -> list[ProcessedStoreData]:
     """指定されたアイテム名に対応する全ストアのデータを収集."""
     store_data_list: list[ProcessedStoreData] = []
@@ -507,7 +519,14 @@ def _collect_stores_for_name(
             continue
         if target_item_keys and item.item_key not in target_item_keys:
             continue
-        store_data = _process_item(item, days, target_config, include_history=include_history)
+        store_data = _process_item(
+            item,
+            days,
+            target_config,
+            include_history=include_history,
+            all_latest=all_latest,
+            all_stats=all_stats,
+        )
         if store_data:
             store_data_list.append(store_data)
     return store_data_list
@@ -520,6 +539,8 @@ def _group_items_by_name(
     target_config: price_watch.target.TargetConfig | None,
     *,
     include_history: bool = True,
+    all_latest: dict[int, price_watch.models.LatestPriceRecord] | None = None,
+    all_stats: dict[int, price_watch.models.ItemStats] | None = None,
 ) -> dict[str, list[ProcessedStoreData]]:
     """アイテムを名前でグルーピング.
 
@@ -529,6 +550,8 @@ def _group_items_by_name(
         days: 期間（日数）
         target_config: ターゲット設定
         include_history: 履歴を含めるかどうか（軽量API用にFalseを指定）
+        all_latest: 一括取得した最新価格（パフォーマンス最適化用）
+        all_stats: 一括取得した統計情報（パフォーマンス最適化用）
     """
     items_by_name: dict[str, list[ProcessedStoreData]] = {}
     processed_keys: set[str] = set()
@@ -549,6 +572,8 @@ def _group_items_by_name(
             days,
             target_config,
             include_history=include_history,
+            all_latest=all_latest,
+            all_stats=all_stats,
         )
         if store_data_list:
             items_by_name[item.name] = store_data_list
@@ -642,11 +667,22 @@ def get_items(
         target_config = price_watch.webapi.cache.get_target_config()
         target_item_keys = _get_target_item_keys(target_config)
 
-        all_items = price_watch.webapi.cache.get_history_manager().get_all_items()
+        history = price_watch.webapi.cache.get_history_manager()
+        all_items = history.get_all_items()
+
+        # パフォーマンス最適化: 最新価格と統計情報を一括取得
+        all_latest = history.get_all_latest()
+        all_stats = history.get_all_stats(days)
 
         # アイテム名でグルーピング（履歴なしで軽量化）
         items_by_name = _group_items_by_name(
-            all_items, target_item_keys, days, target_config, include_history=False
+            all_items,
+            target_item_keys,
+            days,
+            target_config,
+            include_history=False,
+            all_latest=all_latest,
+            all_stats=all_stats,
         )
 
         # カテゴリーマッピングを構築（アイテム名 → カテゴリー名）

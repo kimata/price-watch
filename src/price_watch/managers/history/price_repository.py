@@ -742,6 +742,79 @@ class PriceRepository:
             )
             return [row["price"] for row in cur.fetchall()]
 
+    def get_all_latest(self) -> dict[int, price_watch.models.LatestPriceRecord]:
+        """全アイテムの最新価格を一括取得.
+
+        Returns:
+            アイテムID → 最新価格情報のマッピング
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+            # サブクエリで各アイテムの最新レコードを取得
+            cur.execute(
+                """
+                SELECT ph.item_id, ph.price, ph.stock, ph.crawl_status, ph.time
+                FROM price_history ph
+                INNER JOIN (
+                    SELECT item_id, MAX(time) as max_time
+                    FROM price_history
+                    GROUP BY item_id
+                ) latest ON ph.item_id = latest.item_id AND ph.time = latest.max_time
+                """
+            )
+            result: dict[int, price_watch.models.LatestPriceRecord] = {}
+            for row in cur.fetchall():
+                item_id = row["item_id"]
+                result[item_id] = price_watch.models.LatestPriceRecord.from_dict(row)
+            return result
+
+    def get_all_stats(self, days: int | None = None) -> dict[int, price_watch.models.ItemStats]:
+        """全アイテムの統計情報を一括取得.
+
+        Args:
+            days: 期間（日数）
+
+        Returns:
+            アイテムID → 統計情報のマッピング
+        """
+        with self.db.connect() as conn:
+            cur = conn.cursor()
+
+            if days and days > 0:
+                cur.execute(
+                    """
+                    SELECT
+                        item_id,
+                        MIN(price) as lowest_price,
+                        MAX(price) as highest_price,
+                        COUNT(*) as data_count
+                    FROM price_history
+                    WHERE time >= datetime('now', 'localtime', ?)
+                      AND price IS NOT NULL
+                    GROUP BY item_id
+                    """,
+                    (f"-{days} days",),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT
+                        item_id,
+                        MIN(price) as lowest_price,
+                        MAX(price) as highest_price,
+                        COUNT(*) as data_count
+                    FROM price_history
+                    WHERE price IS NOT NULL
+                    GROUP BY item_id
+                    """
+                )
+
+            result: dict[int, price_watch.models.ItemStats] = {}
+            for row in cur.fetchall():
+                item_id = row["item_id"]
+                result[item_id] = price_watch.models.ItemStats.from_dict(row)
+            return result
+
     def get_lowest_price_across_stores_in_yen(
         self,
         item_name: str,

@@ -467,6 +467,25 @@ class HistoryManager:
         """
         return self.events.count_by_price(item_id, prices)
 
+    def get_all_latest(self) -> dict[int, LatestPriceRecord]:
+        """全アイテムの最新価格を一括取得.
+
+        Returns:
+            アイテムID → 最新価格情報のマッピング
+        """
+        return self.prices.get_all_latest()
+
+    def get_all_stats(self, days: int | None = None) -> dict[int, ItemStats]:
+        """全アイテムの統計情報を一括取得.
+
+        Args:
+            days: 期間（日数）
+
+        Returns:
+            アイテムID → 統計情報のマッピング
+        """
+        return self.prices.get_all_stats(days)
+
     @staticmethod
     def generate_item_key(
         url: str | None = None,
