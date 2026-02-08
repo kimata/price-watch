@@ -53,6 +53,10 @@ def check(
             result.price = product_info.price
             result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
             logging.info("[ヨドバシ] %s: 価格取得成功 ¥%s", item.name, f"{product_info.price:,}")
+        elif not product_info.in_stock:
+            # 販売終了/販売休止の場合は価格なしでも成功扱い
+            result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
+            logging.info("[ヨドバシ] %s: 販売終了（価格情報なし）", item.name)
         else:
             result.crawl_status = price_watch.models.CrawlStatus.FAILURE
             logging.warning("[ヨドバシ] %s: 価格取得失敗", item.name)
