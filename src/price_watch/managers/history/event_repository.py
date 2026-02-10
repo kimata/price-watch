@@ -150,7 +150,8 @@ class EventRepository:
                     COALESCE(
                         i.thumb_url,
                         (SELECT thumb_url FROM items WHERE name = i.name AND thumb_url IS NOT NULL LIMIT 1)
-                    ) as thumb_url
+                    ) as thumb_url,
+                    i.price_unit
                 FROM events e
                 JOIN items i ON e.item_id = i.id
                 ORDER BY e.created_at DESC
@@ -266,7 +267,8 @@ class EventRepository:
                     COALESCE(
                         i.thumb_url,
                         (SELECT thumb_url FROM items WHERE name = i.name AND thumb_url IS NOT NULL LIMIT 1)
-                    ) as thumb_url
+                    ) as thumb_url,
+                    i.price_unit
                 FROM events e
                 JOIN items i ON e.item_id = i.id
                 WHERE i.item_key = ?

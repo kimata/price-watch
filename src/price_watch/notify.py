@@ -310,11 +310,13 @@ def _build_event_message(
     """イベント通知メッセージを構築."""
     parts: list[str] = []
 
+    price_unit = item.price_unit
+
     match event_result.event_type:
         case price_watch.event.EventType.BACK_IN_STOCK:
             parts.append("*在庫が復活しました*")
             if event_result.price is not None:
-                parts.append(f"価格: *{event_result.price:,}円*")
+                parts.append(f"価格: *{event_result.price:,}{price_unit}*")
 
         case price_watch.event.EventType.CRAWL_FAILURE:
             parts.append("*24時間以上クロールに失敗しています*")
@@ -327,8 +329,10 @@ def _build_event_message(
         case price_watch.event.EventType.LOWEST_PRICE:
             if event_result.old_price is not None and event_result.price is not None:
                 drop = event_result.old_price - event_result.price
+                old = f"{event_result.old_price:,}{price_unit}"
+                new = f"{event_result.price:,}{price_unit}"
                 parts.append("*過去最安値を更新！*")
-                parts.append(f"{event_result.old_price:,}円 → *{event_result.price:,}円* (-{drop:,}円)")
+                parts.append(f"{old} → *{new}* (-{drop:,}{price_unit})")
             else:
                 parts.append("*過去最安値を更新しました*")
 
@@ -339,8 +343,10 @@ def _build_event_message(
                 and event_result.threshold_days is not None
             ):
                 drop = event_result.old_price - event_result.price
+                old = f"{event_result.old_price:,}{price_unit}"
+                new = f"{event_result.price:,}{price_unit}"
                 parts.append(f"*{event_result.threshold_days}日間の最安値から値下げ*")
-                parts.append(f"{event_result.old_price:,}円 → *{event_result.price:,}円* (-{drop:,}円)")
+                parts.append(f"{old} → *{new}* (-{drop:,}{price_unit})")
             else:
                 parts.append("*価格が下がりました*")
 

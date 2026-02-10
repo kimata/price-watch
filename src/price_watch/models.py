@@ -310,6 +310,7 @@ class EventRecord:
     store: str | None = None
     url: str | None = None
     thumb_url: str | None = None
+    price_unit: str = "円"
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> EventRecord:
@@ -329,6 +330,7 @@ class EventRecord:
             store=d.get("store"),
             url=d.get("url"),
             thumb_url=d.get("thumb_url"),
+            price_unit=d.get("price_unit") or "円",
         )
 
 

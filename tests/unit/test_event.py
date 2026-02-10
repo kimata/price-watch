@@ -78,6 +78,7 @@ class TestFormatEventMessage:
         price: int | None = None,
         old_price: int | None = None,
         threshold_days: int | None = None,
+        price_unit: str = "円",
     ) -> EventRecord:
         """テスト用の EventRecord を作成"""
         return EventRecord(
@@ -93,6 +94,7 @@ class TestFormatEventMessage:
             threshold_days=threshold_days,
             notified=False,
             created_at="2024-01-15T10:00:00",
+            price_unit=price_unit,
         )
 
     def test_back_in_stock(self) -> None:
@@ -164,6 +166,38 @@ class TestFormatEventMessage:
         event = self._create_event_record(event_type="back_in_stock", item_name=None)
         msg = format_event_message(event)
         assert "不明" in msg
+
+    def test_lowest_price_with_foreign_currency(self) -> None:
+        """過去最安値メッセージ（外貨: ドル）"""
+        event = self._create_event_record(
+            event_type="lowest_price",
+            item_name="テスト商品",
+            price=80,
+            old_price=100,
+            price_unit="ドル",
+        )
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "過去最安値" in msg
+        assert "100ドル" in msg
+        assert "80ドル" in msg
+        assert "円" not in msg
+
+    def test_price_drop_with_foreign_currency(self) -> None:
+        """価格下落メッセージ（外貨: ドル）"""
+        event = self._create_event_record(
+            event_type="price_drop",
+            item_name="テスト商品",
+            price=80,
+            old_price=100,
+            threshold_days=7,
+            price_unit="ドル",
+        )
+        msg = format_event_message(event)
+        assert "テスト商品" in msg
+        assert "7日間" in msg
+        assert "20ドル" in msg  # 値下げ額
+        assert "円" not in msg
 
 
 # === format_event_title テスト ===

@@ -398,6 +398,7 @@ def format_event_message(event: EventRecord) -> str:
     price = event.price
     old_price = event.old_price
     threshold_days = event.threshold_days
+    price_unit = event.price_unit
 
     match event_type:
         case EventType.BACK_IN_STOCK.value:
@@ -411,13 +412,16 @@ def format_event_message(event: EventRecord) -> str:
 
         case EventType.LOWEST_PRICE.value:
             if price is not None and old_price is not None:
-                return f"{item_name} が過去最安値を更新: {old_price:,}円 → {price:,}円"
+                return f"{item_name} が過去最安値を更新: {old_price:,}{price_unit} → {price:,}{price_unit}"
             return f"{item_name} が過去最安値を更新しました"
 
         case EventType.PRICE_DROP.value:
             if price is not None and old_price is not None and threshold_days is not None:
                 drop = old_price - price
-                return f"{item_name} が{threshold_days}日間で{drop:,}円値下げ: {old_price:,}円 → {price:,}円"
+                return (
+                    f"{item_name} が{threshold_days}日間で{drop:,}{price_unit}値下げ: "
+                    f"{old_price:,}{price_unit} → {price:,}{price_unit}"
+                )
             return f"{item_name} の価格が下がりました"
 
         case _:
