@@ -7,6 +7,67 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-02-12
+
+### ✨ Added
+
+- **チャート静的画像生成** — トップページのチャートを Canvas から静的 PNG 画像に変更（Selenium + Chart.js）
+- **ChartImageWorker** — Flask リクエストとバックグラウンド生成を単一スレッドで処理するワーカーを実装
+- **target.yaml Web エディタ** — パスワード認証付きの Web UI でアイテム・ストアを編集、Git Push 機能も搭載
+- **楽天市場検索ストア** — 楽天市場 API を使用したキーワード検索による価格監視に対応
+- **ヨドバシ.com 専用スクレイピング** — `my_lib.store.yodobashi.scrape` を使用した専用スクレイパーと商品検索機能を追加
+- **Amazon 商品検索** — ASIN を選択して監視対象に追加できる検索機能を実装
+- **アフィリエイト ID 対応** — ストアごとにアフィリエイト ID を設定可能に
+- **価格記録編集ページ** — 過去の価格記録を編集・削除する管理機能を追加
+- **ストア順序のドラッグ&ドロップ** — target.yaml エディタでストア一覧の順序をドラッグ操作で変更可能に
+- **target.yaml 変更時の Slack 通知** — アイテム追加・削除・変更を Slack に通知
+- **フリマ検索のリトライ・ウォームアップ** — 失敗アイテムを1回リトライ、初回アクセス前のウォームアップ機能を追加
+- **グローバルエラーハンドラー** — フロントエンドの未処理エラーをキャッチして表示
+- **フロントエンド UI 改善** — お気に入り機能、検索フィルター、ページネーション、ストアアイコン表示
+- イベント通知とログに外貨（`price_unit`）を表示
+- Twitter 共有メッセージに最安値とストア名を追加
+- 巡回完了時にページコンテンツを自動更新（SSE）
+- グラフで通貨を円換算して表示
+
+### 🔄 Changed
+
+- チャート画像生成のタイムアウトを 30 秒から 120 秒に延長
+- タイムアウト時は 503 エラーではなくプレースホルダー画像を返す（10 秒キャッシュでリトライを促す）
+- ChartImageWorker 用に専用の Chrome プロファイルディレクトリを使用
+- アイテム詳細ページのストア別価格表示を大きく
+- アイテム詳細ページのセクション順序を変更
+- API レスポンスに Cache-Control ヘッダーを追加
+
+### 🐛 Fixed
+
+- E2E テストを静的チャート画像に対応
+- Selenium テストの並列実行時の Chrome プロファイル競合を修正
+- ChartImage コンポーネントに一意の key を追加（同一行の商品で同じグラフが表示される問題を修正）
+- ヨドバシ販売終了商品を在庫なしとして正しく処理
+- 価格要素がない販売終了商品を在庫なしとして扱う
+- Slack 通知のサムネイル URL が二重パスになる問題を修正
+- Web API の target.yaml キャッシュが CLI 指定のパスを参照しない問題を修正
+
+### 🔒 Security
+
+- URL ガードによる SSRF 対策を追加
+- check-item API を target.yaml 保存済みアイテムのみに制限
+- パスワード認証をハッシュ検証に変更
+- config.yaml 読み込み失敗時に API を無効化
+- IP ベースの認証失敗レート制限を追加
+- 1 時間に 5 回認証失敗ごとに Slack 通知を送信
+
+### ⚡ Performance
+
+- `/api/items` の N+1 クエリ問題を解消
+- フロントエンドのパフォーマンス改善
+- テストジョブの並列実行を有効化
+- CI のキャッシュ最適化
+
+### 📝 Documentation
+
+- README にクイックスタートと Web 編集機能の説明を追加
+
 ## [0.1.3] - 2026-01-28
 
 ### ✨ Added
@@ -151,7 +212,8 @@
 - pre-commit 設定
 - Renovate 設定
 
-[Unreleased]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.3...HEAD
+[Unreleased]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.4...HEAD
+[0.1.4]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.3...v0.1.4
 [0.1.3]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.2...v0.1.3
 [0.1.2]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.1...v0.1.2
 [0.1.1]: https://gitlab.green-rabbit.net/kimata/price-watch/compare/v0.1.0...v0.1.1
