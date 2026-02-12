@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Price Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.13/dayjs.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: white;
+            font-family: {{ font_family }}, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #chart-container {
+            width: {{ width }}px;
+            height: {{ height }}px;
+        }
+        canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="chart-container">
+        <canvas id="priceChart"></canvas>
+    </div>
+
+    <!-- Chart.js 共通ロジック（PriceChart.tsx と共有） -->
+    <script>
+{{ chart_common_js | safe }}
+    </script>
+
+    <script>
+        // データ（Python から注入）
+        const chartDataJson = {{ chart_data_json | safe }};
+        const storeDefinitionsJson = {{ store_definitions_json | safe }};
+
+        // 共通ロジックへの参照
+        const PriceChartCommon = window.PriceChartCommon;
+
+        // グラフを描画
+        function renderChart() {
+            const stores = chartDataJson.stores;
+            const storeDefinitions = storeDefinitionsJson;
+            const priceUnit = chartDataJson.price_unit || "円";
+
+            // 全ストアの時間を収集
+            const allTimes = new Set();
+            stores.forEach(store => {
+                store.history.forEach(h => {
+                    allTimes.add(h.time);
+                });
+            });
+
+            // 現在時刻を追加
+            allTimes.add(new Date().toISOString());
+
+            const sortedTimes = Array.from(allTimes).sort();
+
+            // ラベルを作成（共通ロジックを使用）
+            const labelFormatter = PriceChartCommon.createLabelFormatter(sortedTimes, dayjs);
+            const labels = sortedTimes.map(labelFormatter);
+
+            // 通貨レート取得関数
+            const getCurrencyRate = (storeName) => {
+                const store = stores.find(s => s.store === storeName);
+                return store?.currency_rate || 1.0;
+            };
+
+            // データセットを作成（共通ロジックを使用）
+            const datasets = PriceChartCommon.createDatasets(
+                stores,
+                storeDefinitions,
+                sortedTimes,
+                getCurrencyRate
+            );
+
+            // グラフオプションを作成（共通ロジックを使用）
+            const chartOptions = PriceChartCommon.createStaticChartOptions({
+                stores: stores,
+                sortedTimes: sortedTimes,
+                getCurrencyRate: getCurrencyRate,
+                priceUnit: priceUnit,
+                largeLabels: {{ large_labels | lower }},
+                dayjs: dayjs
+            });
+
+            // グラフを作成
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: datasets
+                },
+                options: chartOptions
+            });
+
+            // レンダリング完了を通知（Selenium が待機するため）
+            window.chartRendered = true;
+        }
+
+        // DOMContentLoaded で実行
+        document.addEventListener('DOMContentLoaded', renderChart);
+    </script>
+</body>
+</html>

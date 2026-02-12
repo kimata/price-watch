@@ -20,10 +20,9 @@ import {
 } from "chart.js";
 import type { ChartOptions, LegendItem, ChartEvent, Chart, Plugin, ChartType, TooltipPositionerFunction } from "chart.js";
 import annotationPlugin from "chartjs-plugin-annotation";
-import type { AnnotationOptions } from "chartjs-plugin-annotation";
 import dayjs from "dayjs";
 import type { StoreEntry, StoreDefinition } from "../types";
-import { formatPriceForChart, formatPriceForYAxis } from "../utils/formatPrice";
+import { formatPriceForChart } from "../utils/formatPrice";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler, annotationPlugin);
 
@@ -47,111 +46,19 @@ Tooltip.positioners.fixedBottom = function (elements, _eventPosition) {
     };
 };
 
-// デフォルトの色（target.yaml で color が指定されていない場合）
-const DEFAULT_COLORS = [
-    { border: "rgb(59, 130, 246)", bg: "rgba(59, 130, 246, 0.1)" }, // Blue
-    { border: "rgb(239, 68, 68)", bg: "rgba(239, 68, 68, 0.1)" }, // Red
-    { border: "rgb(34, 197, 94)", bg: "rgba(34, 197, 94, 0.1)" }, // Green
-    { border: "rgb(168, 85, 247)", bg: "rgba(168, 85, 247, 0.1)" }, // Purple
-    { border: "rgb(249, 115, 22)", bg: "rgba(249, 115, 22, 0.1)" }, // Orange
-    { border: "rgb(236, 72, 153)", bg: "rgba(236, 72, 153, 0.1)" }, // Pink
-];
+// Chart.js 共通ロジック（window.PriceChartCommon）を使用
+// 共通ロジックは frontend/public/chart-common.js で定義
+// 型定義は frontend/src/types/chart-common.d.ts で定義
 
 /**
- * Hex カラーコードを RGB に変換
- */
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result
-        ? {
-              r: parseInt(result[1], 16),
-              g: parseInt(result[2], 16),
-              b: parseInt(result[3], 16),
-          }
-        : null;
-}
-
-/**
- * ストア名から色を取得
+ * ストア名から色を取得（共通ロジックのラッパー）
  */
 function getStoreColor(
     storeName: string,
     storeDefinitions: StoreDefinition[],
     fallbackIndex: number
 ): { border: string; bg: string } {
-    const storeDef = storeDefinitions.find((s) => s.name === storeName);
-    if (storeDef?.color) {
-        const rgb = hexToRgb(storeDef.color);
-        if (rgb) {
-            return {
-                border: `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`,
-                bg: `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.1)`,
-            };
-        }
-    }
-    // フォールバック: デフォルト色を使用
-    return DEFAULT_COLORS[fallbackIndex % DEFAULT_COLORS.length];
-}
-
-/**
- * 全ストアで在庫なしの期間を検出
- * 連続した在庫なし期間を配列で返す
- * 条件: データがあるストアのうち、全て在庫なしの場合
- * 注意: 同じ時間帯に複数のデータがある場合、1つでも在庫ありなら在庫ありとみなす
- */
-function findOutOfStockPeriods(
-    stores: StoreEntry[],
-    sortedTimes: string[]
-): { start: number; end: number }[] {
-    if (stores.length === 0 || sortedTimes.length === 0) {
-        return [];
-    }
-
-    const periods: { start: number; end: number }[] = [];
-    let periodStart: number | null = null;
-
-    for (let i = 0; i < sortedTimes.length; i++) {
-        const time = sortedTimes[i];
-        const timeHour = dayjs(time).format("YYYY-MM-DD HH:00");
-
-        // この時間でデータがあるストアのうち、全て在庫なしかどうかをチェック
-        let hasDataForTime = false;
-        let anyInStock = false;
-
-        for (const store of stores) {
-            // 同じ時間帯の全てのエントリをチェック（1つでも在庫ありなら在庫ありとみなす）
-            const historyItems = store.history.filter(
-                (h) => dayjs(h.time).format("YYYY-MM-DD HH:00") === timeHour
-            );
-            if (historyItems.length > 0) {
-                hasDataForTime = true;
-                // この時間帯で1つでも在庫ありがあれば在庫ありとみなす
-                if (historyItems.some((h) => h.stock !== 0)) {
-                    anyInStock = true;
-                    break;
-                }
-            }
-        }
-
-        // データがあり、かつ全て在庫なしの場合のみ灰色にする
-        if (hasDataForTime && !anyInStock) {
-            if (periodStart === null) {
-                periodStart = i;
-            }
-        } else {
-            if (periodStart !== null) {
-                periods.push({ start: periodStart, end: i - 1 });
-                periodStart = null;
-            }
-        }
-    }
-
-    // 最後まで在庫なしが続いている場合
-    if (periodStart !== null) {
-        periods.push({ start: periodStart, end: sortedTimes.length - 1 });
-    }
-
-    return periods;
+    return window.PriceChartCommon.getStoreColor(storeName, storeDefinitions, fallbackIndex);
 }
 
 /**
@@ -333,59 +240,36 @@ function PriceChart({
         // 日時をソート
         const sortedTimes = Array.from(allTimes).sort();
 
-        // ラベルの表示形式をデータの期間に応じて調整
-        const formatLabel = (timeStr: string, _index: number, allTimes: string[]): string => {
-            const time = dayjs(timeStr);
-            const firstTime = dayjs(allTimes[0]);
-            const lastTime = dayjs(allTimes[allTimes.length - 1]);
-            const spanDays = lastTime.diff(firstTime, "day");
+        // ラベルフォーマット（共通ロジックを使用）
+        const labelFormatter = window.PriceChartCommon.createLabelFormatter(sortedTimes, dayjs);
+        const labels = sortedTimes.map(labelFormatter);
 
-            if (spanDays <= 3) {
-                // 3日以内：日付と時刻
-                return time.format("M月D日 H:mm");
-            } else {
-                // 3日超：日付のみ（ラベルが長くなりすぎるため時刻は省略）
-                return time.format("M月D日");
-            }
-        };
+        // データセット作成用のストアデータを準備
+        const storesForChart = stores.map((store) => ({
+            store: store.store,
+            history: store.history.map((h) => ({
+                time: h.time,
+                effective_price: h.effective_price,
+                price: h.price,
+                stock: h.stock,
+            })),
+            currency_rate: getCurrencyRate(store.store),
+        }));
 
-        const labels = sortedTimes.map((t, i) => formatLabel(t, i, sortedTimes));
+        // データセットを作成（共通ロジックを使用）
+        const baseDatasets = window.PriceChartCommon.createDatasets(
+            storesForChart,
+            storeDefinitions,
+            sortedTimes,
+            getCurrencyRate
+        );
 
-        // ストアごとのデータセットを作成
-        const datasets = stores.map((store, index) => {
-            const color = getStoreColor(store.store, storeDefinitions, index);
-            const rate = getCurrencyRate(store.store);
-
-            // 時間ごとの effective_price をマップ（正確な時刻で、円換算済み）
-            const priceMap = new Map<string, number | null>();
-            store.history.forEach((h) => {
-                // 円換算
-                const convertedPrice = h.effective_price !== null ? Math.round(h.effective_price * rate) : null;
-                priceMap.set(h.time, convertedPrice);
-            });
-
-            // sortedTimes に沿って値を配列化（データなしは undefined、価格なしは null）
-            const data = sortedTimes.map((time) => {
-                const price = priceMap.get(time);
-                // undefined の場合はデータなし → null に変換
-                // null の場合は在庫なしで価格取得できず → グラフ上は null
-                return price === undefined ? null : price;
-            });
-
-            return {
-                label: store.store,
-                data,
-                borderColor: color.border,
-                backgroundColor: color.border, // 凡例用（塗りつぶし四角）
-                fill: false,
-                tension: 0.3,
-                pointRadius: 0, // 普段は点を非表示
-                pointHoverRadius: 6, // ホバー時に点を表示
-                spanGaps: true,
-                // 選択された系列以外は非表示
-                hidden: selectedLabel !== null && store.store !== selectedLabel,
-            };
-        });
+        // React 固有のプロパティ（hidden）を追加
+        const datasets = baseDatasets.map((dataset) => ({
+            ...dataset,
+            // 選択された系列以外は非表示
+            hidden: selectedLabel !== null && dataset.label !== selectedLabel,
+        }));
 
         return { chartData: { labels, datasets }, sortedTimes };
     }, [stores, storeDefinitions, selectedLabel, getCurrencyRate]);
@@ -554,66 +438,38 @@ function PriceChart({
     );
 
     const options: ChartOptions<"line"> = useMemo(() => {
-        // 全ストアの価格から min/max を計算（null は除外、円換算済み）
-        const allPrices: number[] = [];
-        stores.forEach((store) => {
-            const rate = getCurrencyRate(store.store);
-            store.history.forEach((h) => {
-                if (h.effective_price !== null) {
-                    allPrices.push(Math.round(h.effective_price * rate));
-                }
-            });
-        });
+        // データセット作成用のストアデータを準備
+        const storesForChart = stores.map((store) => ({
+            store: store.store,
+            history: store.history.map((h) => ({
+                time: h.time,
+                effective_price: h.effective_price,
+                price: h.price,
+                stock: h.stock,
+            })),
+            currency_rate: getCurrencyRate(store.store),
+        }));
 
-        // 全ストアで在庫なしの期間を検出し、annotation を生成
-        const outOfStockPeriods = findOutOfStockPeriods(stores, sortedTimes);
-        const annotations: Record<string, AnnotationOptions> = {};
+        // 共通ロジックでベースオプションを生成
+        const baseOptions = window.PriceChartCommon.createStaticChartOptions({
+            stores: storesForChart,
+            sortedTimes: sortedTimes,
+            getCurrencyRate: getCurrencyRate,
+            priceUnit: priceUnit,
+            largeLabels: largeLabels,
+            dayjs: dayjs,
+        }) as ChartOptions<"line">;
 
-        const totalPoints = sortedTimes.length;
-        outOfStockPeriods.forEach((period, index) => {
-            const periodLength = period.end - period.start + 1;
-            const isMoreThanHalf = periodLength > totalPoints / 2;
-            annotations[`outOfStock${index}`] = {
-                type: "box",
-                xMin: period.start - 0.5,
-                xMax: period.end + 0.5,
-                backgroundColor: "rgba(200, 200, 200, 0.3)",
-                borderWidth: 0,
-                label: {
-                    display: isMoreThanHalf, // 全期間の半分以上の場合のみラベル表示
-                    content: "在庫なし",
-                    position: "center",
-                    color: "rgba(120, 120, 120, 0.8)",
-                    font: { size: 9 },
-                },
-            };
-        });
-
-        // 価格データがない場合のデフォルト設定
-        const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0;
-        const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : 100;
-        const padding = (maxPrice - minPrice) * 0.1 || maxPrice * 0.1;
-
+        // React 固有の機能をマージ
         return {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: false, // ちらつき抑制のためアニメーションを無効化
-            interaction: {
-                mode: "index",
-                intersect: false,
-            },
+            ...baseOptions,
             plugins: {
+                ...baseOptions.plugins,
                 legend: {
-                    display: true,
-                    position: "top" as const,
+                    ...(baseOptions.plugins?.legend as object),
                     onClick: handleLegendClick,
                     labels: {
-                        usePointStyle: true,
-                        pointStyle: "rect",
-                        boxWidth: largeLabels ? 14 : 10,
-                        boxHeight: largeLabels ? 14 : 10,
-                        padding: largeLabels ? 16 : 8,
-                        font: { size: largeLabels ? 13 : 10 },
+                        ...((baseOptions.plugins?.legend as { labels?: object })?.labels as object),
                         // 選択中の系列を強調（非選択は薄く）
                         generateLabels: (chart) => {
                             const datasets = chart.data.datasets;
@@ -636,31 +492,6 @@ function PriceChart({
                 tooltip: {
                     enabled: false, // 組み込みツールチップを無効化
                     external: externalTooltipHandler,
-                },
-                annotation: {
-                    annotations,
-                },
-            },
-            scales: {
-                x: {
-                    grid: {
-                        display: false,
-                    },
-                    ticks: {
-                        maxTicksLimit: 6,
-                        font: { size: largeLabels ? 12 : 10 },
-                        color: largeLabels ? "#4b5563" : undefined,
-                    },
-                },
-                y: {
-                    min: Math.max(0, minPrice - padding),
-                    max: maxPrice + padding,
-                    ticks: {
-                        callback: (value) => formatPriceForYAxis(Number(value), priceUnit),
-                        precision: 0,
-                        font: { size: largeLabels ? 13 : 10 },
-                        color: largeLabels ? "#374151" : undefined,
-                    },
                 },
             },
         };

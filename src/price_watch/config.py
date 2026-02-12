@@ -242,11 +242,26 @@ class FontMapConfig:
 
 
 @dataclass(frozen=True)
+class ChartFontConfig:
+    """チャート用フォント設定"""
+
+    family: str | None = None
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> ChartFontConfig:
+        """dict から ChartFontConfig を生成"""
+        return cls(
+            family=data.get("family"),
+        )
+
+
+@dataclass(frozen=True)
 class FontConfig:
     """フォント設定"""
 
     path: pathlib.Path | None
     map: FontMapConfig
+    chart: ChartFontConfig
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> FontConfig:
@@ -257,6 +272,7 @@ class FontConfig:
         return cls(
             path=path,
             map=FontMapConfig.parse(data.get("map", {})),
+            chart=ChartFontConfig.parse(data.get("chart", {})),
         )
 
     def get_font_path(self, font_key: str) -> pathlib.Path | None:

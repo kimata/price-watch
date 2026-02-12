@@ -132,6 +132,12 @@
                         "en_medium": { "type": "string" },
                         "en_bold": { "type": "string" }
                     }
+                },
+                "chart": {
+                    "type": "object",
+                    "properties": {
+                        "family": { "type": "string" }
+                    }
                 }
             }
         },
