@@ -361,11 +361,8 @@ export default function App() {
                 ) : (
                     <VirtualizedItemGrid
                         items={items}
-                        storeDefinitions={storeDefinitions}
                         onItemClick={handleItemClick}
-                        period={period}
                         categories={categories}
-                        checkIntervalSec={checkIntervalSec}
                     />
                 )}
 

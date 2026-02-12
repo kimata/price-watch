@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import flask
 from flask_pydantic import validate
 
+import price_watch.chart_image
 import price_watch.event
 import price_watch.managers.history
 import price_watch.metrics
@@ -734,6 +735,100 @@ def serve_thumb(filename: str) -> flask.Response:
         mimetype="image/png",
         max_age=86400,  # 24時間キャッシュ
     )
+
+
+@blueprint.route("/chart/<item_key>.png")
+def serve_chart_image(item_key: str) -> flask.Response:
+    """チャート画像を配信.
+
+    - キャッシュが有効なら配信
+    - なければオンデマンド生成
+    - Cache-Control: public, max-age=10800 (3時間)
+    """
+    try:
+        # 設定を取得
+        app_config = price_watch.webapi.cache.get_app_config()
+        if app_config is None:
+            return flask.Response("Configuration not found", status=500)
+
+        cache_dir = app_config.data.cache
+        db_path = app_config.data.price
+
+        # キャッシュをチェック
+        cache_path = price_watch.chart_image.get_cache_path(item_key, cache_dir)
+        if price_watch.chart_image.is_cache_valid(cache_path):
+            return flask.send_file(
+                cache_path,
+                mimetype="image/png",
+                max_age=10800,  # 3時間キャッシュ
+            )
+
+        # キャッシュがない場合はオンデマンド生成
+        target_config = price_watch.webapi.cache.get_target_config()
+
+        # 通貨換算レートを構築
+        currency_rates: dict[str, float] = {}
+        if app_config.check.currency:
+            for cr in app_config.check.currency:
+                currency_rates[cr.label] = cr.rate
+
+        # アイテムデータを取得
+        result = price_watch.chart_image._get_item_data_from_db(
+            item_key, db_path, target_config, currency_rates
+        )
+        if result[0] is None:
+            return flask.Response("Item not found", status=404)
+
+        item_name: str = result[0]
+        stores_data: list[price_watch.chart_image.StoreChartData] = result[1]
+
+        if not stores_data:
+            return flask.Response("No store data", status=404)
+
+        # ストア定義を取得（色情報用）
+        store_definitions = []
+        if target_config is not None:
+            store_definitions = [
+                price_watch.chart_image.StoreDefinition(name=s.name, color=s.color)
+                for s in target_config.stores
+            ]
+
+        # チャートデータを作成
+        chart_data = price_watch.chart_image.ChartData(
+            item_name=item_name,
+            item_key=item_key,
+            stores=stores_data,
+            store_definitions=store_definitions,
+        )
+
+        # フォント設定を取得
+        font_family = None
+        if app_config.font is not None and app_config.font.chart.family is not None:
+            font_family = app_config.font.chart.family
+
+        # WebDriver を取得（キャッシュされたドライバーを使用）
+        driver = price_watch.webapi.cache.get_chart_driver()
+
+        # 画像を生成
+        img = price_watch.chart_image.generate_chart_image(
+            chart_data,
+            driver=driver,
+            data_path=app_config.data.selenium,
+            font_family=font_family,
+        )
+
+        # キャッシュに保存
+        price_watch.chart_image.save_chart_image(img, cache_path)
+
+        return flask.send_file(
+            cache_path,
+            mimetype="image/png",
+            max_age=10800,  # 3時間キャッシュ
+        )
+
+    except Exception:
+        logging.exception("Error serving chart image")
+        return flask.Response("Internal server error", status=500)
 
 
 @blueprint.route("/api/items/<item_key>/history")

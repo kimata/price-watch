@@ -27,6 +27,7 @@ import my_lib.logger
 import my_lib.webapp.event
 
 import price_watch.app_context
+import price_watch.chart_image
 import price_watch.const
 import price_watch.managers.history
 import price_watch.notify
@@ -51,6 +52,7 @@ class AppRunner:
     app: PriceWatchApp
     _processor: price_watch.processor.ItemProcessor | None = field(default=None, init=False)
     _loop: int = field(default=0, init=False)
+    _last_chart_generation_time: float = field(default=0.0, init=False)
 
     @property
     def processor(self) -> price_watch.processor.ItemProcessor:
@@ -113,6 +115,10 @@ class AppRunner:
 
             self._do_work()
 
+            # 巡回完了後、チャート画像生成が必要なら実行
+            if self._should_generate_charts():
+                self._generate_chart_images()
+
             # 作業終了時刻を記録（スリープ前）
             self.app.metrics_manager.record_work_ended(time.time())
 
@@ -139,6 +145,47 @@ class AppRunner:
         self.app.shutdown()
 
         return True
+
+    def _should_generate_charts(self) -> bool:
+        """チャート画像生成が必要かどうかを判定.
+
+        3時間経過していれば True を返す。
+        """
+        now = time.time()
+        elapsed = now - self._last_chart_generation_time
+        return elapsed >= price_watch.const.CHART_GENERATION_INTERVAL_SEC
+
+    def _generate_chart_images(self) -> None:
+        """全アイテムのチャート画像を生成."""
+        logging.info("Starting background chart image generation...")
+
+        # 通貨換算レートを構築
+        currency_rates: dict[str, float] = {}
+        if self.app.config.check.currency:
+            for cr in self.app.config.check.currency:
+                currency_rates[cr.label] = cr.rate
+
+        # フォント設定を取得
+        font_family = None
+        if self.app.config.font is not None and self.app.config.font.chart.family is not None:
+            font_family = self.app.config.font.chart.family
+
+        try:
+            generated = price_watch.chart_image.generate_all_chart_images(
+                cache_dir=self.app.config.data.cache,
+                db_path=self.app.config.data.price,
+                target_config=self.app.config_manager.target,
+                currency_rates=currency_rates,
+                data_path=self.app.config.data.selenium,
+                font_family=font_family,
+                should_terminate=lambda: self.app.should_terminate,
+            )
+            logging.info("Background chart image generation completed: %d images", generated)
+        except Exception:
+            logging.exception("Failed to generate chart images")
+
+        # 生成時刻を更新
+        self._last_chart_generation_time = time.time()
 
     def _do_work(self) -> None:
         """監視処理を実行."""

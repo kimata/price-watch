@@ -1,8 +1,8 @@
 import { memo, useMemo, useCallback } from "react";
 import { ClockIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
-import type { Item, StoreDefinition, Period } from "../types";
-import LazyPriceChart from "./LazyPriceChart";
+import type { Item } from "../types";
+import ChartImage from "./ChartImage";
 import StoreRow from "./StoreRow";
 import FavoriteButton from "./FavoriteButton";
 import PriceTrendBadge from "./PriceTrendBadge";
@@ -11,13 +11,10 @@ import { formatPrice } from "../utils/formatPrice";
 
 interface ItemCardProps {
     item: Item;
-    storeDefinitions: StoreDefinition[];
     onClick?: (item: Item) => void;
-    period?: Period;
-    checkIntervalSec?: number;
 }
 
-function ItemCard({ item, storeDefinitions, onClick, period = "30", checkIntervalSec = 1800 }: ItemCardProps) {
+function ItemCard({ item, onClick }: ItemCardProps) {
     // ストアを実質価格の安い順にソート（価格nullのものは後ろに）
     const sortedStores = useMemo(() => {
         return [...item.stores].sort((a, b) => {
@@ -112,7 +109,7 @@ function ItemCard({ item, storeDefinitions, onClick, period = "30", checkInterva
             {/* グラフと最終更新を下部に配置 */}
             <div className="mt-auto">
                 <div className="px-4 pb-4">
-                    <LazyPriceChart stores={item.stores} storeDefinitions={storeDefinitions} period={period} checkIntervalSec={checkIntervalSec} />
+                    <ChartImage itemKey={item.stores[0]?.item_key ?? ""} className="h-40" />
                 </div>
 
                 <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
@@ -132,8 +129,6 @@ export default memo(ItemCard, (prev, next) => {
     const nextItemKey = next.item.stores[0]?.item_key ?? "";
 
     if (prevItemKey !== nextItemKey) return false;
-    if (prev.period !== next.period) return false;
-    if (prev.checkIntervalSec !== next.checkIntervalSec) return false;
 
     // ストアの更新日時で変更を検出
     const prevUpdated = prev.item.stores.map((s) => s.last_updated).join(",");

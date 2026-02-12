@@ -220,3 +220,64 @@ def quit_yodobashi_driver() -> None:
             logging.info("Quitting Yodobashi search WebDriver")
             my_lib.selenium_util.quit_driver_gracefully(_yodobashi_driver)
             _yodobashi_driver = None
+
+
+# チャート画像生成用 WebDriver 管理
+_chart_driver: selenium.webdriver.remote.webdriver.WebDriver | None = None
+_chart_driver_lock: threading.Lock = threading.Lock()
+
+
+def get_chart_driver() -> selenium.webdriver.remote.webdriver.WebDriver | None:
+    """チャート画像生成用の WebDriver を取得（遅延初期化）.
+
+    オンデマンドでチャート画像を生成する際に使用する。
+    WebAPI リクエスト間でドライバーを再利用して効率化する。
+
+    Returns:
+        WebDriver インスタンス（初期化失敗時は None）
+    """
+    global _chart_driver
+
+    with _chart_driver_lock:
+        if _chart_driver is not None:
+            return _chart_driver
+
+        config = get_app_config()
+        if config is None:
+            logging.error("Cannot create chart driver: config not available")
+            return None
+
+        try:
+            import price_watch.chart_image
+
+            logging.info("Creating chart image WebDriver")
+            # chart_image モジュールの専用ドライバー作成関数を使用
+            css_width = int(price_watch.chart_image.CHART_WIDTH / price_watch.chart_image.DEVICE_PIXEL_RATIO)
+            css_height = int(
+                price_watch.chart_image.CHART_HEIGHT / price_watch.chart_image.DEVICE_PIXEL_RATIO
+            )
+            driver = price_watch.chart_image._create_headless_driver(
+                config.data.selenium,
+                css_width,
+                css_height,
+                price_watch.chart_image.DEVICE_PIXEL_RATIO,
+            )
+            _chart_driver = driver
+            return driver
+        except Exception:
+            logging.exception("Failed to create chart image WebDriver")
+            return None
+
+
+def quit_chart_driver() -> None:
+    """チャート画像生成用 WebDriver を終了."""
+    global _chart_driver
+
+    with _chart_driver_lock:
+        if _chart_driver is not None:
+            logging.info("Quitting chart image WebDriver")
+            try:
+                _chart_driver.quit()
+            except Exception:
+                logging.exception("Error quitting chart driver")
+            _chart_driver = None

@@ -2,18 +2,15 @@ import { useMemo, useCallback, useRef, useLayoutEffect, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { HeartIcon } from "@heroicons/react/24/solid";
 import { HeartIcon as HeartOutlineIcon } from "@heroicons/react/24/outline";
-import type { Item, StoreDefinition, Period } from "../types";
+import type { Item } from "../types";
 import ItemCard from "./ItemCard";
 import PermalinkHeading from "./PermalinkHeading";
 import { useFavorites } from "../contexts/FavoritesContext";
 
 interface VirtualizedItemGridProps {
     items: Item[];
-    storeDefinitions: StoreDefinition[];
     onItemClick: (item: Item) => void;
-    period: Period;
     categories: string[];
-    checkIntervalSec?: number;
 }
 
 /** カテゴリー名からアンカーIDを生成 */
@@ -44,11 +41,8 @@ function getColumnCount(): number {
  */
 export default function VirtualizedItemGrid({
     items,
-    storeDefinitions,
     onItemClick,
-    period,
     categories,
-    checkIntervalSec = 1800,
 }: VirtualizedItemGridProps) {
     const parentRef = useRef<HTMLDivElement>(null);
     const columnCountRef = useRef(getColumnCount());
@@ -262,10 +256,7 @@ export default function VirtualizedItemGrid({
                                 <ItemCard
                                     key={item.name}
                                     item={item}
-                                    storeDefinitions={storeDefinitions}
                                     onClick={onItemClick}
-                                    period={period}
-                                    checkIntervalSec={checkIntervalSec}
                                 />
                             ))}
                         </div>
@@ -385,10 +376,7 @@ export default function VirtualizedItemGrid({
                                         <ItemCard
                                             key={item.name}
                                             item={item}
-                                            storeDefinitions={storeDefinitions}
                                             onClick={onItemClick}
-                                            period={period}
-                                            checkIntervalSec={checkIntervalSec}
                                         />
                                     ))}
                                 </div>

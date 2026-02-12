@@ -25,6 +25,7 @@ import pathlib
 import re
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -565,6 +566,144 @@ def _list_items(db_path: pathlib.Path) -> list[tuple[str, str, str]]:
     all_items = manager.get_all_items()
 
     return [(item.item_key, item.name, item.store) for item in all_items]
+
+
+def generate_all_chart_images(
+    cache_dir: pathlib.Path,
+    db_path: pathlib.Path,
+    target_config: Any,
+    currency_rates: dict[str, float],
+    data_path: pathlib.Path,
+    font_family: str | None = None,
+    ttl_sec: int = CACHE_TTL_SEC,
+    should_terminate: Callable[[], bool] | None = None,
+) -> int:
+    """全アイテムのチャート画像を一括生成.
+
+    - 1つのWebDriverを共有して効率化
+    - キャッシュが有効なアイテムはスキップ
+    - should_terminate で中断可能
+
+    Args:
+        cache_dir: キャッシュディレクトリ
+        db_path: データベースディレクトリパス
+        target_config: ターゲット設定（色情報用）
+        currency_rates: 通貨換算レート（price_unit -> rate のマッピング）
+        data_path: Chrome データディレクトリのパス
+        font_family: CSS font-family 名（None の場合はシステムフォント）
+        ttl_sec: キャッシュ有効期間（秒）
+        should_terminate: 終了判定コールバック
+
+    Returns:
+        生成した画像数
+    """
+    import price_watch.managers.history
+
+    logging.info("Starting background chart image generation...")
+
+    # HistoryManager を初期化
+    manager = price_watch.managers.history.HistoryManager.create(db_path)
+    manager.initialize()
+    all_items = manager.get_all_items()
+
+    if not all_items:
+        logging.info("No items found in database, skipping chart generation")
+        return 0
+
+    # 商品名でグループ化して重複を除去
+    unique_names: set[str] = set()
+    items_to_process: list[tuple[str, str]] = []  # (item_key, item_name)
+
+    for item in all_items:
+        if item.name not in unique_names:
+            unique_names.add(item.name)
+            items_to_process.append((item.item_key, item.name))
+
+    logging.info("Found %d unique items for chart generation", len(items_to_process))
+
+    # キャッシュが無効なアイテムのみフィルタリング
+    items_needing_generation: list[tuple[str, str]] = []
+    for item_key, item_name in items_to_process:
+        cache_path = get_cache_path(item_key, cache_dir)
+        if not is_cache_valid(cache_path, ttl_sec):
+            items_needing_generation.append((item_key, item_name))
+
+    if not items_needing_generation:
+        logging.info("All chart images are cached, skipping generation")
+        return 0
+
+    logging.info(
+        "Generating %d chart images (skipped %d cached)",
+        len(items_needing_generation),
+        len(items_to_process) - len(items_needing_generation),
+    )
+
+    # CSS ピクセルサイズを計算
+    css_width = int(CHART_WIDTH / DEVICE_PIXEL_RATIO)
+    css_height = int(CHART_HEIGHT / DEVICE_PIXEL_RATIO)
+
+    # WebDriver を作成
+    driver = _create_headless_driver(data_path, css_width, css_height, DEVICE_PIXEL_RATIO)
+
+    generated_count = 0
+    try:
+        # ストア定義を取得（色情報用）
+        store_definitions = []
+        if target_config is not None:
+            store_definitions = [StoreDefinition(name=s.name, color=s.color) for s in target_config.stores]
+
+        for item_key, _item_name in items_needing_generation:
+            # 終了判定
+            if should_terminate is not None and should_terminate():
+                logging.info("Chart generation interrupted by termination signal")
+                break
+
+            try:
+                # アイテムデータを取得
+                result = _get_item_data_from_db(item_key, db_path, target_config, currency_rates)
+                if result[0] is None:
+                    logging.debug("Skipping item %s: not found in database", item_key)
+                    continue
+
+                name: str = result[0]
+                stores_data: list[StoreChartData] = result[1]
+
+                if not stores_data:
+                    logging.debug("Skipping item %s: no store data", item_key)
+                    continue
+
+                # チャートデータを作成
+                chart_data = ChartData(
+                    item_name=name,
+                    item_key=item_key,
+                    stores=stores_data,
+                    store_definitions=store_definitions,
+                )
+
+                # 画像を生成
+                img = generate_chart_image(
+                    chart_data,
+                    driver=driver,
+                    data_path=data_path,
+                    font_family=font_family,
+                )
+
+                # 保存
+                cache_path = get_cache_path(item_key, cache_dir)
+                save_chart_image(img, cache_path)
+                generated_count += 1
+
+                logging.debug("Generated chart image for %s", name)
+
+            except Exception:
+                logging.exception("Failed to generate chart image for %s", item_key)
+                continue
+
+    finally:
+        driver.quit()
+
+    logging.info("Generated %d chart images", generated_count)
+    return generated_count
 
 
 if __name__ == "__main__":

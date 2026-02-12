@@ -27,3 +27,6 @@ ERROR_NOTIFY_COUNT = 6
 
 # ストア設定の制限
 STORE_ACTION_MAX_COUNT = 10
+
+# チャート画像バックグラウンド生成間隔（秒）- 3時間
+CHART_GENERATION_INTERVAL_SEC = 3 * 60 * 60

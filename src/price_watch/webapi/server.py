@@ -285,6 +285,7 @@ def term(handle: ServerHandle) -> None:
     stop_db_watcher()
     price_watch.webapi.cache.stop_file_watcher()
     price_watch.webapi.cache.quit_yodobashi_driver()
+    price_watch.webapi.cache.quit_chart_driver()
     handle.server.shutdown()
     handle.server.server_close()
 
