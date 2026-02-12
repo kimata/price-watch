@@ -196,12 +196,16 @@ class PriceWatchApp:
         logging.info("WebUI server started on port %d", self.port)
 
         # チャート画像生成ワーカーを起動
+        # メインのクローラーと別のプロファイルディレクトリを使用
+        chart_worker_data_path = self.config.data.selenium / "chart_worker"
+        chart_worker_data_path.mkdir(parents=True, exist_ok=True)
+
         font_family = None
         if self.config.font is not None:
             font_family = self.config.font.chart.family
         price_watch.chart_image_worker.init_worker(
             cache_dir=self.config.data.cache,
-            data_path=self.config.data.selenium,
+            data_path=chart_worker_data_path,
             font_family=font_family,
         )
         logging.info("ChartImageWorker started")
