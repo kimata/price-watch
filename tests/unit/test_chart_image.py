@@ -184,33 +184,40 @@ class TestGenerateChartImage:
 
     def test_basic_chart_generation(self, sample_chart_data: price_watch.chart_image.ChartData) -> None:
         """基本的なチャート生成."""
-        img = price_watch.chart_image.generate_chart_image(sample_chart_data)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_path = pathlib.Path(tmpdir) / "chrome_data"
+            img = price_watch.chart_image.generate_chart_image(sample_chart_data, data_path=data_path)
 
-        assert isinstance(img, Image.Image)
-        # Selenium スクリーンショットのサイズはブラウザウィンドウに依存
-        assert img.size[0] > 0
-        assert img.size[1] > 0
-        assert img.mode in ("RGB", "RGBA")
+            assert isinstance(img, Image.Image)
+            # Selenium スクリーンショットのサイズはブラウザウィンドウに依存
+            assert img.size[0] > 0
+            assert img.size[1] > 0
+            assert img.mode in ("RGB", "RGBA")
 
     def test_empty_data_chart(self, empty_chart_data: price_watch.chart_image.ChartData) -> None:
         """空データでもエラーにならない."""
-        img = price_watch.chart_image.generate_chart_image(empty_chart_data)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_path = pathlib.Path(tmpdir) / "chrome_data"
+            img = price_watch.chart_image.generate_chart_image(empty_chart_data, data_path=data_path)
 
-        assert isinstance(img, Image.Image)
+            assert isinstance(img, Image.Image)
 
     def test_custom_size(self, sample_chart_data: price_watch.chart_image.ChartData) -> None:
         """カスタムサイズでの生成."""
-        width = 400
-        height = 200
-        img = price_watch.chart_image.generate_chart_image(
-            sample_chart_data,
-            width=width,
-            height=height,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            data_path = pathlib.Path(tmpdir) / "chrome_data"
+            width = 400
+            height = 200
+            img = price_watch.chart_image.generate_chart_image(
+                sample_chart_data,
+                width=width,
+                height=height,
+                data_path=data_path,
+            )
 
-        assert isinstance(img, Image.Image)
-        assert img.size[0] > 0
-        assert img.size[1] > 0
+            assert isinstance(img, Image.Image)
+            assert img.size[0] > 0
+            assert img.size[1] > 0
 
 
 class TestCacheOperations:
@@ -259,9 +266,11 @@ class TestCacheOperations:
         """画像の保存と読み込み."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
+            # 並列テストでの Chrome プロファイル競合を避けるため、一意の data_path を使用
+            data_path = pathlib.Path(tmpdir) / "chrome_data"
 
             # 画像を生成して保存
-            img = price_watch.chart_image.generate_chart_image(sample_chart_data)
+            img = price_watch.chart_image.generate_chart_image(sample_chart_data, data_path=data_path)
             output_path = cache_dir / "test.png"
             price_watch.chart_image.save_chart_image(img, output_path)
 
@@ -277,11 +286,14 @@ class TestCacheOperations:
         """キャッシュ有無による画像生成."""
         with tempfile.TemporaryDirectory() as tmpdir:
             cache_dir = pathlib.Path(tmpdir)
+            # 並列テストでの Chrome プロファイル競合を避けるため、一意の data_path を使用
+            data_path = pathlib.Path(tmpdir) / "chrome_data"
 
             # 初回: 画像生成
             path1 = price_watch.chart_image.get_or_generate_chart_image(
                 sample_chart_data,
                 cache_dir,
+                data_path=data_path,
             )
             assert path1.exists()
             mtime1 = path1.stat().st_mtime
@@ -290,6 +302,7 @@ class TestCacheOperations:
             path2 = price_watch.chart_image.get_or_generate_chart_image(
                 sample_chart_data,
                 cache_dir,
+                data_path=data_path,
             )
             assert path2 == path1
             assert path2.stat().st_mtime == mtime1
