@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """API エンドポイント."""
 
+import io
 import json
 import logging
 import pathlib
@@ -9,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import flask
 from flask_pydantic import validate
+from PIL import Image, ImageDraw
 
 import price_watch.chart_image
 import price_watch.chart_image_worker
@@ -25,6 +27,48 @@ import price_watch.webapi.schemas
 
 if TYPE_CHECKING:
     from price_watch.target import ResolvedItem
+
+# チャート画像生成のタイムアウト（秒）
+CHART_GENERATION_TIMEOUT_SEC = 120.0
+
+# プレースホルダー画像のキャッシュ時間（秒）- 短くしてリトライを促す
+PLACEHOLDER_CACHE_SEC = 10
+
+
+def _generate_placeholder_image() -> io.BytesIO:
+    """チャート生成中のプレースホルダー画像を生成.
+
+    Returns:
+        PNG画像のバイトストリーム
+    """
+    # チャートと同じサイズで作成
+    width = 800
+    height = 320
+    img = Image.new("RGB", (width, height), color=(248, 250, 252))  # bg-gray-50
+
+    draw = ImageDraw.Draw(img)
+
+    # 枠線を描画
+    draw.rectangle([(0, 0), (width - 1, height - 1)], outline=(229, 231, 235))  # gray-200
+
+    # テキストを描画（フォント指定なしでデフォルトフォント使用）
+    text = "Loading..."
+    # テキストのバウンディングボックスを取得
+    bbox = draw.textbbox((0, 0), text)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+
+    # 中央に配置
+    x = (width - text_width) // 2
+    y = (height - text_height) // 2
+    draw.text((x, y), text, fill=(156, 163, 175))  # gray-400
+
+    # PNG形式でバイトストリームに保存
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
+
 
 blueprint = flask.Blueprint("page", __name__)
 
@@ -767,9 +811,16 @@ def serve_chart_image(item_key: str) -> flask.Response:
         # ワーカーを取得
         worker = price_watch.chart_image_worker.get_worker()
         if worker is None:
-            # ワーカーが未初期化の場合はエラー
+            # ワーカーが未初期化の場合はプレースホルダーを返す
             logging.warning("ChartImageWorker not initialized, returning placeholder")
-            return flask.Response("Chart generation not available", status=503)
+            placeholder = _generate_placeholder_image()
+            response = flask.send_file(
+                placeholder,
+                mimetype="image/png",
+            )
+            response.cache_control.max_age = PLACEHOLDER_CACHE_SEC
+            response.cache_control.public = True
+            return response
 
         # キャッシュがない場合はオンデマンド生成
         target_config = price_watch.webapi.cache.get_target_config()
@@ -809,11 +860,21 @@ def serve_chart_image(item_key: str) -> flask.Response:
             store_definitions=store_definitions,
         )
 
-        # ワーカー経由で画像を生成（タイムアウト 30 秒）
-        result_path = worker.request_chart(chart_data, timeout=30.0)
+        # ワーカー経由で画像を生成
+        result_path = worker.request_chart(chart_data, timeout=CHART_GENERATION_TIMEOUT_SEC)
 
         if result_path is None:
-            return flask.Response("Chart generation timed out or failed", status=503)
+            # タイムアウトまたはエラー時はプレースホルダー画像を返す
+            # 短いキャッシュ時間を設定してリトライを促す
+            logging.info("Returning placeholder for %s (generation pending)", item_key)
+            placeholder = _generate_placeholder_image()
+            response = flask.send_file(
+                placeholder,
+                mimetype="image/png",
+            )
+            response.cache_control.max_age = PLACEHOLDER_CACHE_SEC
+            response.cache_control.public = True
+            return response
 
         return flask.send_file(
             result_path,
@@ -823,7 +884,15 @@ def serve_chart_image(item_key: str) -> flask.Response:
 
     except Exception:
         logging.exception("Error serving chart image")
-        return flask.Response("Internal server error", status=500)
+        # エラー時もプレースホルダーを返す
+        placeholder = _generate_placeholder_image()
+        response = flask.send_file(
+            placeholder,
+            mimetype="image/png",
+        )
+        response.cache_control.max_age = PLACEHOLDER_CACHE_SEC
+        response.cache_control.public = True
+        return response
 
 
 @blueprint.route("/api/items/<item_key>/history")
