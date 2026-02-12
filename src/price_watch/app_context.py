@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import my_lib.footprint
 
+import price_watch.chart_image_worker
 import price_watch.exceptions
 import price_watch.managers
 import price_watch.thumbnail
@@ -194,6 +195,17 @@ class PriceWatchApp:
         )
         logging.info("WebUI server started on port %d", self.port)
 
+        # チャート画像生成ワーカーを起動
+        font_family = None
+        if self.config.font is not None:
+            font_family = self.config.font.chart.family
+        price_watch.chart_image_worker.init_worker(
+            cache_dir=self.config.data.cache,
+            data_path=self.config.data.selenium,
+            font_family=font_family,
+        )
+        logging.info("ChartImageWorker started")
+
     def stop_webui_server(self) -> None:
         """WebUI サーバーを停止."""
         if self._server_handle is not None:
@@ -257,6 +269,10 @@ class PriceWatchApp:
         # シグナル受信をログ出力
         if self._received_signal is not None:
             logging.warning("Received signal %d", self._received_signal)
+
+        # チャート画像生成ワーカーを停止
+        price_watch.chart_image_worker.stop_worker()
+        logging.info("ChartImageWorker stopped")
 
         # WebUI サーバーを停止
         self.stop_webui_server()

@@ -11,6 +11,7 @@ import flask
 from flask_pydantic import validate
 
 import price_watch.chart_image
+import price_watch.chart_image_worker
 import price_watch.event
 import price_watch.managers.history
 import price_watch.metrics
@@ -742,7 +743,7 @@ def serve_chart_image(item_key: str) -> flask.Response:
     """チャート画像を配信.
 
     - キャッシュが有効なら配信
-    - なければオンデマンド生成
+    - なければ ChartImageWorker 経由で生成
     - Cache-Control: public, max-age=10800 (3時間)
     """
     try:
@@ -762,6 +763,13 @@ def serve_chart_image(item_key: str) -> flask.Response:
                 mimetype="image/png",
                 max_age=10800,  # 3時間キャッシュ
             )
+
+        # ワーカーを取得
+        worker = price_watch.chart_image_worker.get_worker()
+        if worker is None:
+            # ワーカーが未初期化の場合はエラー
+            logging.warning("ChartImageWorker not initialized, returning placeholder")
+            return flask.Response("Chart generation not available", status=503)
 
         # キャッシュがない場合はオンデマンド生成
         target_config = price_watch.webapi.cache.get_target_config()
@@ -801,27 +809,14 @@ def serve_chart_image(item_key: str) -> flask.Response:
             store_definitions=store_definitions,
         )
 
-        # フォント設定を取得
-        font_family = None
-        if app_config.font is not None and app_config.font.chart.family is not None:
-            font_family = app_config.font.chart.family
+        # ワーカー経由で画像を生成（タイムアウト 30 秒）
+        result_path = worker.request_chart(chart_data, timeout=30.0)
 
-        # WebDriver を取得（キャッシュされたドライバーを使用）
-        driver = price_watch.webapi.cache.get_chart_driver()
-
-        # 画像を生成
-        img = price_watch.chart_image.generate_chart_image(
-            chart_data,
-            driver=driver,
-            data_path=app_config.data.selenium,
-            font_family=font_family,
-        )
-
-        # キャッシュに保存
-        price_watch.chart_image.save_chart_image(img, cache_path)
+        if result_path is None:
+            return flask.Response("Chart generation timed out or failed", status=503)
 
         return flask.send_file(
-            cache_path,
+            result_path,
             mimetype="image/png",
             max_age=10800,  # 3時間キャッシュ
         )

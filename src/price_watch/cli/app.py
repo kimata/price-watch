@@ -28,6 +28,7 @@ import my_lib.webapp.event
 
 import price_watch.app_context
 import price_watch.chart_image
+import price_watch.chart_image_worker
 import price_watch.const
 import price_watch.managers.history
 import price_watch.notify
@@ -156,8 +157,13 @@ class AppRunner:
         return elapsed >= price_watch.const.CHART_GENERATION_INTERVAL_SEC
 
     def _generate_chart_images(self) -> None:
-        """全アイテムのチャート画像を生成."""
+        """全アイテムのチャート画像を ChartImageWorker 経由で生成."""
         logging.info("Starting background chart image generation...")
+
+        worker = price_watch.chart_image_worker.get_worker()
+        if worker is None:
+            logging.warning("ChartImageWorker not initialized, skipping chart generation")
+            return
 
         # 通貨換算レートを構築
         currency_rates: dict[str, float] = {}
@@ -165,27 +171,73 @@ class AppRunner:
             for cr in self.app.config.check.currency:
                 currency_rates[cr.label] = cr.rate
 
-        # フォント設定を取得
-        font_family = None
-        if self.app.config.font is not None and self.app.config.font.chart.family is not None:
-            font_family = self.app.config.font.chart.family
-
         try:
-            generated = price_watch.chart_image.generate_all_chart_images(
-                cache_dir=self.app.config.data.cache,
-                db_path=self.app.config.data.price,
-                target_config=self.app.config_manager.target,
-                currency_rates=currency_rates,
-                data_path=self.app.config.data.selenium,
-                font_family=font_family,
+            # 全アイテムのチャートデータを収集
+            chart_data_list = self._collect_chart_data(currency_rates)
+
+            # ワーカーにバッチ投入
+            added = worker.submit_batch(
+                chart_data_list,
                 should_terminate=lambda: self.app.should_terminate,
             )
-            logging.info("Background chart image generation completed: %d images", generated)
+            logging.info("Submitted %d chart generation requests to worker", added)
         except Exception:
-            logging.exception("Failed to generate chart images")
+            logging.exception("Failed to submit chart generation requests")
 
         # 生成時刻を更新
         self._last_chart_generation_time = time.time()
+
+    def _collect_chart_data(
+        self, currency_rates: dict[str, float]
+    ) -> list[price_watch.chart_image.ChartData]:
+        """全アイテムのチャートデータを収集."""
+        db_path = self.app.config.data.price
+        target_config = self.app.config_manager.target
+
+        # ストア定義を取得（色情報用）
+        store_definitions = [
+            price_watch.chart_image.StoreDefinition(name=s.name, color=s.color) for s in target_config.stores
+        ]
+
+        # 全アイテムを取得
+        manager = price_watch.managers.history.HistoryManager.create(db_path)
+        manager.initialize()
+        all_items = manager.get_all_items()
+
+        if not all_items:
+            return []
+
+        # 商品名でグループ化して重複を除去
+        unique_names: set[str] = set()
+        chart_data_list: list[price_watch.chart_image.ChartData] = []
+
+        for item in all_items:
+            if item.name in unique_names:
+                continue
+            unique_names.add(item.name)
+
+            # アイテムデータを取得
+            result = price_watch.chart_image._get_item_data_from_db(
+                item.item_key, db_path, target_config, currency_rates
+            )
+            if result[0] is None:
+                continue
+
+            item_name: str = result[0]
+            stores_data: list[price_watch.chart_image.StoreChartData] = result[1]
+
+            if not stores_data:
+                continue
+
+            chart_data = price_watch.chart_image.ChartData(
+                item_name=item_name,
+                item_key=item.item_key,
+                stores=stores_data,
+                store_definitions=store_definitions,
+            )
+            chart_data_list.append(chart_data)
+
+        return chart_data_list
 
     def _do_work(self) -> None:
         """監視処理を実行."""
