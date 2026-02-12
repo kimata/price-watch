@@ -109,7 +109,7 @@ function ItemCard({ item, onClick }: ItemCardProps) {
             {/* グラフと最終更新を下部に配置 */}
             <div className="mt-auto">
                 <div className="px-4 pb-4">
-                    <ChartImage itemKey={item.stores[0]?.item_key ?? ""} className="h-40" />
+                    <ChartImage key={item.stores[0]?.item_key ?? ""} itemKey={item.stores[0]?.item_key ?? ""} className="h-40" />
                 </div>
 
                 <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 flex items-center gap-1 text-xs text-gray-500">
