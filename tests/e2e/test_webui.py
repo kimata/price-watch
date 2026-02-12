@@ -61,17 +61,17 @@ class TestWebuiE2E:
         """価格履歴ページのチャート表示テスト
 
         1. 価格履歴ページにアクセス
-        2. チャートが表示されることを確認
+        2. チャート画像が表示されることを確認
         """
         page.set_viewport_size({"width": 1920, "height": 1080})
 
         page.goto(price_url(host, port), wait_until="domcontentloaded")
 
-        # Chart.js のキャンバス要素が存在することを確認
-        canvas_elements = page.locator("canvas")
+        # 静的チャート画像が存在することを確認（ChartImage コンポーネントの img 要素）
+        chart_images = page.locator('img[alt="価格推移グラフ"]')
 
-        # チャートが1つ以上存在（ローディング完了まで待機）
-        expect(canvas_elements.first).to_be_visible(timeout=30000)
+        # チャート画像が1つ以上存在（ローディング完了まで待機）
+        expect(chart_images.first).to_be_visible(timeout=30000)
 
     def test_price_page_period_selector(self, page, host, port):
         """期間セレクタのテスト
