@@ -98,8 +98,9 @@ export function usePushNotification(itemKey: string): UsePushNotificationResult 
     });
 
     // Push 通知の状態を取得
+    // currentEndpoint をクエリキーに含めることで、endpoint 変更時に自動的に再フェッチ
     const statusQuery = useQuery({
-        queryKey: pushQueryKeys.status(itemKey),
+        queryKey: [...pushQueryKeys.status(itemKey), currentEndpoint],
         queryFn: () => fetchPushStatus(itemKey, currentEndpoint || undefined),
         enabled: isSupported && !!itemKey,
     });
@@ -148,11 +149,19 @@ export function usePushNotification(itemKey: string): UsePushNotificationResult 
                 },
             });
 
-            setCurrentEndpoint(subscription.endpoint);
+            // 新しいエンドポイントを返す
+            return subscription.endpoint;
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: pushQueryKeys.status(itemKey) });
+        onSuccess: (newEndpoint) => {
+            // 状態を更新
+            setCurrentEndpoint(newEndpoint);
             setError(null);
+
+            // クエリデータを直接設定（再フェッチを待たずに即座に反映）
+            queryClient.setQueryData([...pushQueryKeys.status(itemKey), newEndpoint], {
+                subscribed: true,
+                subscription_count: 1,
+            });
         },
         onError: (e: Error) => {
             setError(e.message);
@@ -173,8 +182,13 @@ export function usePushNotification(itemKey: string): UsePushNotificationResult 
             // ※ここでは解除しない。他のアイテムでも同じサブスクリプションを使用している可能性があるため
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: pushQueryKeys.status(itemKey) });
             setError(null);
+
+            // クエリデータを直接設定（再フェッチを待たずに即座に反映）
+            queryClient.setQueryData([...pushQueryKeys.status(itemKey), currentEndpoint], {
+                subscribed: false,
+                subscription_count: 0,
+            });
         },
         onError: (e: Error) => {
             setError(e.message);
