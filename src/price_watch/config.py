@@ -291,6 +291,25 @@ class FontConfig:
 
 
 @dataclass(frozen=True)
+class WebPushConfig:
+    """Web Push 設定"""
+
+    vapid_private_key: str
+    vapid_public_key: str
+    vapid_claims_email: str
+
+    @classmethod
+    def parse(cls, data: dict[str, Any]) -> WebPushConfig:
+        """dict から WebPushConfig を生成"""
+        vapid = data.get("vapid", {})
+        return cls(
+            vapid_private_key=vapid["private_key"],
+            vapid_public_key=vapid["public_key"],
+            vapid_claims_email=vapid.get("claims_email", "mailto:admin@example.com"),
+        )
+
+
+@dataclass(frozen=True)
 class GitSyncConfig:
     """Git 同期設定"""
 
@@ -384,6 +403,7 @@ class AppConfig:
     liveness: LivenessConfig
     edit: EditConfig
     font: FontConfig | None = None
+    webpush: WebPushConfig | None = None
 
     @classmethod
     def parse(cls, data: dict[str, Any]) -> AppConfig:
@@ -421,6 +441,11 @@ class AppConfig:
         if "font" in data:
             font = FontConfig.parse(data["font"])
 
+        # WebPush 設定
+        webpush = None
+        if "webpush" in data:
+            webpush = WebPushConfig.parse(data["webpush"])
+
         return cls(
             check=check,
             slack=slack,
@@ -431,6 +456,7 @@ class AppConfig:
             liveness=liveness,
             edit=edit,
             font=font,
+            webpush=webpush,
         )
 
 

@@ -181,3 +181,48 @@ class MetricsFailuresQueryParams(BaseSchema):
     """Query parameters for failures endpoint."""
 
     days: int = Field(default=7, ge=1, le=365)
+
+
+# === Web Push 関連スキーマ ===
+
+
+class PushSubscriptionKeys(BaseSchema):
+    """Push subscription keys (p256dh and auth)."""
+
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseSchema):
+    """Request body for /api/push/subscribe endpoint."""
+
+    item_key: str
+    endpoint: str
+    keys: PushSubscriptionKeys
+
+
+class PushUnsubscribeRequest(BaseSchema):
+    """Request body for /api/push/unsubscribe endpoint."""
+
+    item_key: str
+    endpoint: str
+
+
+class PushStatusResponse(BaseSchema):
+    """Response for /api/items/<item_key>/push/status endpoint."""
+
+    subscribed: bool
+    subscription_count: int
+
+
+class PushVapidKeyResponse(BaseSchema):
+    """Response for /api/push/vapid-public-key endpoint."""
+
+    public_key: str
+
+
+class PushSubscribeResponse(BaseSchema):
+    """Response for /api/push/subscribe endpoint."""
+
+    success: bool
+    subscription_id: int | None = None

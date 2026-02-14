@@ -1728,3 +1728,105 @@ def api_sysinfo() -> flask.Response:
             "load_average": load_average,
         }
     )
+
+
+# === Web Push API ===
+
+
+@blueprint.route("/api/push/vapid-public-key")
+def api_push_vapid_public_key() -> flask.Response | tuple[flask.Response, int]:
+    """VAPID 公開鍵を取得."""
+    try:
+        app_config = price_watch.webapi.cache.get_app_config()
+        if app_config is None or app_config.webpush is None:
+            error = price_watch.webapi.schemas.ErrorResponse(error="Web Push not configured")
+            return flask.jsonify(error.model_dump()), 503
+
+        response = price_watch.webapi.schemas.PushVapidKeyResponse(
+            public_key=app_config.webpush.vapid_public_key
+        )
+        return flask.jsonify(response.model_dump())
+
+    except Exception:
+        logging.exception("Error getting VAPID public key")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        return flask.jsonify(error.model_dump()), 500
+
+
+@blueprint.route("/api/push/subscribe", methods=["POST"])
+@validate()
+def api_push_subscribe(
+    body: price_watch.webapi.schemas.PushSubscribeRequest,
+) -> flask.Response | tuple[flask.Response, int]:
+    """Push 通知をサブスクライブ."""
+    try:
+        history_manager = price_watch.webapi.cache.get_history_manager()
+
+        subscription_id = history_manager.push.subscribe(
+            item_key=body.item_key,
+            endpoint=body.endpoint,
+            p256dh=body.keys.p256dh,
+            auth=body.keys.auth,
+        )
+
+        response = price_watch.webapi.schemas.PushSubscribeResponse(
+            success=True,
+            subscription_id=subscription_id,
+        )
+        return flask.jsonify(response.model_dump())
+
+    except Exception:
+        logging.exception("Error subscribing to push notifications")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        return flask.jsonify(error.model_dump()), 500
+
+
+@blueprint.route("/api/push/unsubscribe", methods=["POST"])
+@validate()
+def api_push_unsubscribe(
+    body: price_watch.webapi.schemas.PushUnsubscribeRequest,
+) -> flask.Response | tuple[flask.Response, int]:
+    """Push 通知をアンサブスクライブ."""
+    try:
+        history_manager = price_watch.webapi.cache.get_history_manager()
+
+        success = history_manager.push.unsubscribe(
+            item_key=body.item_key,
+            endpoint=body.endpoint,
+        )
+
+        return flask.jsonify({"success": success})
+
+    except Exception:
+        logging.exception("Error unsubscribing from push notifications")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        return flask.jsonify(error.model_dump()), 500
+
+
+@blueprint.route("/api/items/<item_key>/push/status")
+def api_push_status(item_key: str) -> flask.Response | tuple[flask.Response, int]:
+    """Push 通知のサブスクリプション状態を取得.
+
+    クエリパラメータ endpoint でサブスクライブ状態を確認します。
+    endpoint が指定されていない場合は subscribed=False を返します。
+    """
+    try:
+        endpoint = flask.request.args.get("endpoint", "")
+        history_manager = price_watch.webapi.cache.get_history_manager()
+
+        subscribed = False
+        if endpoint:
+            subscribed = history_manager.push.is_subscribed(item_key, endpoint)
+
+        subscription_count = history_manager.push.count_subscriptions(item_key)
+
+        response = price_watch.webapi.schemas.PushStatusResponse(
+            subscribed=subscribed,
+            subscription_count=subscription_count,
+        )
+        return flask.jsonify(response.model_dump())
+
+    except Exception:
+        logging.exception("Error getting push subscription status")
+        error = price_watch.webapi.schemas.ErrorResponse(error="Internal server error")
+        return flask.jsonify(error.model_dump()), 500

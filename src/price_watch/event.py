@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import price_watch.config
+    import price_watch.models
     from price_watch.managers import HistoryManager
     from price_watch.models import EventRecord
 
@@ -450,3 +451,44 @@ def format_event_title(event_type: str) -> str:
             return "価格下落"
         case _:
             return "イベント"
+
+
+def format_event_message_for_push(
+    result: EventResult,
+    item: price_watch.models.CheckedItem,
+) -> str:
+    """Web Push 通知用のメッセージを生成.
+
+    Args:
+        result: イベント結果
+        item: チェック済みアイテム
+
+    Returns:
+        Push 通知用にフォーマットされたメッセージ
+    """
+    event_type = result.event_type.value
+    item_name = item.name
+    price = result.price
+    old_price = result.old_price
+    threshold_days = result.threshold_days
+    price_unit = item.price_unit
+
+    match event_type:
+        case EventType.BACK_IN_STOCK.value:
+            if price is not None:
+                return f"{item_name}\n{price:,}{price_unit}で在庫復活"
+            return f"{item_name}\n在庫が復活しました"
+
+        case EventType.LOWEST_PRICE.value:
+            if price is not None and old_price is not None:
+                return f"{item_name}\n{old_price:,}{price_unit} → {price:,}{price_unit}"
+            return f"{item_name}\n過去最安値を更新"
+
+        case EventType.PRICE_DROP.value:
+            if price is not None and old_price is not None and threshold_days is not None:
+                drop = old_price - price
+                return f"{item_name}\n{drop:,}{price_unit}値下げ ({threshold_days}日間)"
+            return f"{item_name}\n価格が下がりました"
+
+        case _:
+            return f"{item_name}\nイベントが発生しました"

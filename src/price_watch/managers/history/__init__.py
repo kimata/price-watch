@@ -14,6 +14,7 @@ from price_watch.managers.history.connection import HistoryDBConnection
 from price_watch.managers.history.event_repository import EventRepository
 from price_watch.managers.history.item_repository import ItemRepository
 from price_watch.managers.history.price_repository import PriceRepository
+from price_watch.managers.history.push_repository import PushRepository, PushSubscription
 from price_watch.managers.history.utils import generate_item_key, url_hash
 
 if TYPE_CHECKING:
@@ -33,6 +34,8 @@ __all__ = [
     "HistoryManager",
     "ItemRepository",
     "PriceRepository",
+    "PushRepository",
+    "PushSubscription",
     "generate_item_key",
     "url_hash",
 ]
@@ -49,12 +52,14 @@ class HistoryManager:
     items: ItemRepository = field(init=False)
     prices: PriceRepository = field(init=False)
     events: EventRepository = field(init=False)
+    push: PushRepository = field(init=False)
 
     def __post_init__(self) -> None:
         """Repository インスタンスを初期化."""
         self.items = ItemRepository(db=self.db)
         self.prices = PriceRepository(db=self.db, item_repo=self.items)
         self.events = EventRepository(db=self.db)
+        self.push = PushRepository(db=self.db)
 
     @classmethod
     def create(cls, data_path: pathlib.Path) -> HistoryManager:
@@ -75,6 +80,7 @@ class HistoryManager:
         テーブルとインデックスを作成します。
         """
         self.db.initialize()
+        self.push.initialize_table()
 
     # --- 後方互換性のための委譲メソッド ---
 

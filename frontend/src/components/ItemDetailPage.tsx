@@ -10,6 +10,7 @@ import LoadingSpinner from "./LoadingSpinner";
 import Footer from "./Footer";
 import PermalinkHeading from "./PermalinkHeading";
 import FavoriteButton from "./FavoriteButton";
+import PushNotificationButton from "./PushNotificationButton";
 import ShareButtons from "./ShareButtons";
 import { ChartSkeleton } from "./skeletons";
 import { useItemDetails, useItemEvents } from "../hooks/useItems";
@@ -109,9 +110,11 @@ export default function ItemDetailPage({
 
     const hasValidPrice = displayItem.best_effective_price !== null;
 
-    // 最安ストアの通貨単位を取得
+    // 最安ストアの情報を取得
     const bestStoreEntry = displayItem.stores.find((s) => s.store === displayItem.best_store);
     const priceUnit = bestStoreEntry?.price_unit ?? "円";
+    // 通知用のitem_key（最安ストアのitem_keyを使用）
+    const notificationItemKey = bestStoreEntry?.item_key ?? displayItem.stores[0]?.item_key ?? "";
 
     return (
         <div className="min-h-screen bg-gray-100">
@@ -146,7 +149,12 @@ export default function ItemDetailPage({
                         <div className="flex-1 min-w-0 flex flex-col">
                             <div className="flex items-start justify-between gap-2 mb-2">
                                 <h1 className="text-xl font-bold text-gray-900">{displayItem.name}</h1>
-                                <FavoriteButton itemName={displayItem.name} size="lg" />
+                                <div className="flex items-center gap-2">
+                                    {notificationItemKey && (
+                                        <PushNotificationButton itemKey={notificationItemKey} size="lg" />
+                                    )}
+                                    <FavoriteButton itemName={displayItem.name} size="lg" />
+                                </div>
                             </div>
                             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0 mb-2">
                                 {hasValidPrice ? (

@@ -15,6 +15,7 @@ import selenium.common.exceptions
 import price_watch.const
 import price_watch.event
 import price_watch.log_format
+import price_watch.managers.history
 import price_watch.managers.metrics_manager
 import price_watch.models
 import price_watch.notify
@@ -25,6 +26,7 @@ import price_watch.store.scrape
 import price_watch.store.yahoo
 import price_watch.store.yodobashi
 import price_watch.target
+import price_watch.webpush
 
 if TYPE_CHECKING:
     from price_watch.app_context import PriceWatchApp
@@ -675,9 +677,14 @@ class ItemProcessor:
         if last.price is not None:
             item.old_price = last.price
 
+        # item_key を解決（Web Push 通知用）
+        resolved_item_key = item_key
+        if resolved_item_key is None and item.url:
+            resolved_item_key = price_watch.managers.history.url_hash(item.url)
+
         # イベント判定（価格履歴挿入前に判定することで、今回の価格を含めずに最安値を計算）
         crawl_status = 1 if item.crawl_status == price_watch.models.CrawlStatus.SUCCESS else 0
-        self._check_and_notify_events(item, last, item_id, crawl_status)
+        self._check_and_notify_events(item, last, item_id, crawl_status, item_key=resolved_item_key)
 
         # 価格履歴を挿入
         history.insert_price_history(item_id, item)
@@ -717,6 +724,8 @@ class ItemProcessor:
         last: price_watch.models.PriceHistoryRecord,
         item_id: int,
         crawl_status: int,
+        *,
+        item_key: str | None = None,
     ) -> None:
         """イベントを判定して通知."""
         history = self.app.history_manager
@@ -739,7 +748,7 @@ class ItemProcessor:
             )
             if result is not None and result.should_notify:
                 result.price = current_price
-                self._notify_and_record_event(result, item, item_id)
+                self._notify_and_record_event(result, item, item_id, item_key=item_key)
 
             # 価格関連イベント
             if current_price is not None and current_stock == 1:
@@ -754,7 +763,7 @@ class ItemProcessor:
                     all_currency_rates=all_currency_rates,
                 )
                 if result is not None and result.should_notify:
-                    self._notify_and_record_event(result, item, item_id)
+                    self._notify_and_record_event(result, item, item_id, item_key=item_key)
 
                 if windows:
                     result = price_watch.event.check_price_drop(
@@ -767,22 +776,24 @@ class ItemProcessor:
                         all_currency_rates=all_currency_rates,
                     )
                     if result is not None and result.should_notify:
-                        self._notify_and_record_event(result, item, item_id)
+                        self._notify_and_record_event(result, item, item_id, item_key=item_key)
         else:
-            # クロール失敗時
+            # クロール失敗時（Web Push 通知は送らない）
             result = price_watch.event.check_crawl_failure(history, item_id)
             if result is not None and result.should_notify:
-                self._notify_and_record_event(result, item, item_id)
+                self._notify_and_record_event(result, item, item_id, item_key=item_key)
 
             result = price_watch.event.check_data_retrieval_failure(history, item_id)
             if result is not None and result.should_notify:
-                self._notify_and_record_event(result, item, item_id)
+                self._notify_and_record_event(result, item, item_id, item_key=item_key)
 
     def _notify_and_record_event(
         self,
         result: price_watch.event.EventResult,
         item: price_watch.models.CheckedItem,
         item_id: int,
+        *,
+        item_key: str | None = None,
     ) -> None:
         """イベントを通知して記録."""
         logging.warning(
@@ -794,11 +805,73 @@ class ItemProcessor:
         # イベント発生時点の URL をスナップショットとして保存
         result.url = item.url
 
+        # Slack 通知
         notified = (
             price_watch.notify.event(self.config.slack, result, item, self.config.webapp.external_url)
             is not None
         )
+
+        # Web Push 通知（価格系イベントのみ）
+        if price_watch.webpush.is_notifiable_event(result.event_type.value):
+            self._send_web_push_notification(result, item, item_key=item_key)
+
         price_watch.event.record_event(self.app.history_manager, result, item_id, notified=notified)
+
+    def _send_web_push_notification(
+        self,
+        result: price_watch.event.EventResult,
+        item: price_watch.models.CheckedItem,
+        *,
+        item_key: str | None = None,
+    ) -> None:
+        """Web Push 通知を送信.
+
+        Args:
+            result: イベント結果
+            item: チェック済みアイテム
+            item_key: アイテムキー（検索系ストア用）
+        """
+        # Web Push 設定がない場合はスキップ
+        if self.config.webpush is None:
+            return
+
+        # item_key を解決（検索系でない場合は URL から生成）
+        resolved_key = item_key
+        if resolved_key is None and item.url:
+            resolved_key = price_watch.managers.history.url_hash(item.url)
+
+        if resolved_key is None:
+            logging.warning("Cannot send Web Push: item_key is None")
+            return
+
+        # WebPushService を作成
+        service = price_watch.webpush.WebPushService(
+            config=self.config.webpush,
+            history_manager=self.app.history_manager,
+        )
+
+        # 通知タイトルと本文を生成
+        title = price_watch.event.format_event_title(result.event_type.value)
+        body = price_watch.event.format_event_message_for_push(result, item)
+
+        # 通知 URL を構築（アイテム詳細ページ）
+        url: str | None = None
+        if self.config.webapp.external_url:
+            url = f"{self.config.webapp.external_url}/price/items/{resolved_key}"
+
+        # 通知を送信
+        try:
+            count = service.send_notification(
+                item_key=resolved_key,
+                title=title,
+                body=body,
+                url=url,
+                tag=resolved_key,
+            )
+            if count > 0:
+                logging.info("Web Push notification sent to %d subscribers for %s", count, item.name)
+        except Exception:
+            logging.exception("Failed to send Web Push notification for %s", item.name)
 
     def _handle_crawl_failure(
         self,

@@ -1169,6 +1169,15 @@ wheels = [
 ]
 
 [[package]]
+name = "http-ece"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7c/af/249d1576653b69c20b9ac30e284b63bd94af6a175d72d87813235caf2482/http_ece-1.2.1.tar.gz", hash = "sha256:8c6ab23116bbf6affda894acfd5f2ca0fb8facbcbb72121c11c75c33e7ce8cff", size = 8830, upload-time = "2024-08-08T00:10:47.301Z" }
+
+[[package]]
 name = "humanfriendly"
 version = "10.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2187,6 +2196,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pydantic" },
     { name = "pydub" },
+    { name = "pywebpush" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
     { name = "selenium" },
@@ -2231,6 +2241,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.1.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydub", specifier = ">=0.25.1" },
+    { name = "pywebpush", specifier = ">=2.0.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruamel-yaml", specifier = ">=0.18.6" },
     { name = "selenium", specifier = ">=4.39.0" },
@@ -2386,6 +2397,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/15/dd6fd869753ce82ff64dcbc18356093471a5a5adf4f77ed1f805d473d859/psutil-7.2.1-cp36-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:99a4cd17a5fdd1f3d014396502daa70b5ec21bf4ffe38393e152f8e449757d67", size = 147402, upload-time = "2025-12-29T08:26:39.21Z" },
     { url = "https://files.pythonhosted.org/packages/34/68/d9317542e3f2b180c4306e3f45d3c922d7e86d8ce39f941bb9e2e9d8599e/psutil-7.2.1-cp37-abi3-win_amd64.whl", hash = "sha256:b1b0671619343aa71c20ff9767eced0483e4fc9e1f489d50923738caf6a03c17", size = 136938, upload-time = "2025-12-29T08:26:41.036Z" },
     { url = "https://files.pythonhosted.org/packages/3e/73/2ce007f4198c80fcf2cb24c169884f833fe93fbc03d55d302627b094ee91/psutil-7.2.1-cp37-abi3-win_arm64.whl", hash = "sha256:0d67c1822c355aa6f7314d92018fb4268a76668a536f133599b91edd48759442", size = 133836, upload-time = "2025-12-29T08:26:43.086Z" },
+]
+
+[[package]]
+name = "py-vapid"
+version = "1.9.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/ed/c648c8018fab319951764f4babe68ddcbbff7f2bbcd7ff7e531eac1788c8/py_vapid-1.9.4.tar.gz", hash = "sha256:a004023560cbc54e34fc06380a0580f04ffcc788e84fb6d19e9339eeb6551a28", size = 74750, upload-time = "2026-01-05T22:13:25.201Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7f/15/f9d0171e1ad863ca49e826d5afb6b50566f20dc9b4f76965096d3555ce9e/py_vapid-1.9.4-py2.py3-none-any.whl", hash = "sha256:f165a5bf90dcf966b226114f01f178f137579a09784c7f0628fa2f0a299741b6", size = 23912, upload-time = "2026-01-05T20:42:05.455Z" },
 ]
 
 [[package]]
@@ -2740,6 +2763,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f8/bf/abbd3cdfb8fbc7fb3d4d38d320f2441b1e7cbe29be4f23797b4a2b5d8aac/pytz-2025.2.tar.gz", hash = "sha256:360b9e3dbb49a209c21ad61809c7fb453643e048b38924c765813546746e81c3", size = 320884, upload-time = "2025-03-25T02:25:00.538Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/c4/34e93fe5f5429d7570ec1fa436f1986fb1f00c3e0f43a589fe2bbcd22c3f/pytz-2025.2-py2.py3-none-any.whl", hash = "sha256:5ddf76296dd8c44c26eb8f4b6f35488f3ccbf6fbbd7adee0b7262d43f0ec2f00", size = 509225, upload-time = "2025-03-25T02:24:58.468Z" },
+]
+
+[[package]]
+name = "pywebpush"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "cryptography" },
+    { name = "http-ece" },
+    { name = "py-vapid" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/87/d9/e497a24bc9f659bfc0e570382a41e6b2d6726fbcfa4d85aaa23fe9c81ba2/pywebpush-2.3.0.tar.gz", hash = "sha256:d1e27db8de9e6757c1875f67292554bd54c41874c36f4b5c4ebb5442dce204f2", size = 28489, upload-time = "2026-02-09T23:30:18.574Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3d/d8/ac21241cf8007cb93255eabf318da4f425ec0f75d28c366992253aa8c1b2/pywebpush-2.3.0-py3-none-any.whl", hash = "sha256:3d97469fb14d4323c362319d438183737249a4115b50e146ce233e7f01e3cf98", size = 22851, upload-time = "2026-02-09T23:30:16.093Z" },
 ]
 
 [[package]]
