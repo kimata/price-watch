@@ -182,42 +182,45 @@ class TestRenderChartHtml:
 class TestGenerateChartImage:
     """generate_chart_image 関数のテスト（Selenium 必要）."""
 
-    def test_basic_chart_generation(self, sample_chart_data: price_watch.chart_image.ChartData) -> None:
+    def test_basic_chart_generation(
+        self, sample_chart_data: price_watch.chart_image.ChartData, tmp_path: pathlib.Path
+    ) -> None:
         """基本的なチャート生成."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            data_path = pathlib.Path(tmpdir) / "chrome_data"
-            img = price_watch.chart_image.generate_chart_image(sample_chart_data, data_path=data_path)
+        data_path = tmp_path / "chrome_data"
+        img = price_watch.chart_image.generate_chart_image(sample_chart_data, data_path=data_path)
 
-            assert isinstance(img, Image.Image)
-            # Selenium スクリーンショットのサイズはブラウザウィンドウに依存
-            assert img.size[0] > 0
-            assert img.size[1] > 0
-            assert img.mode in ("RGB", "RGBA")
+        assert isinstance(img, Image.Image)
+        # Selenium スクリーンショットのサイズはブラウザウィンドウに依存
+        assert img.size[0] > 0
+        assert img.size[1] > 0
+        assert img.mode in ("RGB", "RGBA")
 
-    def test_empty_data_chart(self, empty_chart_data: price_watch.chart_image.ChartData) -> None:
+    def test_empty_data_chart(
+        self, empty_chart_data: price_watch.chart_image.ChartData, tmp_path: pathlib.Path
+    ) -> None:
         """空データでもエラーにならない."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            data_path = pathlib.Path(tmpdir) / "chrome_data"
-            img = price_watch.chart_image.generate_chart_image(empty_chart_data, data_path=data_path)
+        data_path = tmp_path / "chrome_data"
+        img = price_watch.chart_image.generate_chart_image(empty_chart_data, data_path=data_path)
 
-            assert isinstance(img, Image.Image)
+        assert isinstance(img, Image.Image)
 
-    def test_custom_size(self, sample_chart_data: price_watch.chart_image.ChartData) -> None:
+    def test_custom_size(
+        self, sample_chart_data: price_watch.chart_image.ChartData, tmp_path: pathlib.Path
+    ) -> None:
         """カスタムサイズでの生成."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            data_path = pathlib.Path(tmpdir) / "chrome_data"
-            width = 400
-            height = 200
-            img = price_watch.chart_image.generate_chart_image(
-                sample_chart_data,
-                width=width,
-                height=height,
-                data_path=data_path,
-            )
+        data_path = tmp_path / "chrome_data"
+        width = 400
+        height = 200
+        img = price_watch.chart_image.generate_chart_image(
+            sample_chart_data,
+            width=width,
+            height=height,
+            data_path=data_path,
+        )
 
-            assert isinstance(img, Image.Image)
-            assert img.size[0] > 0
-            assert img.size[1] > 0
+        assert isinstance(img, Image.Image)
+        assert img.size[0] > 0
+        assert img.size[1] > 0
 
 
 class TestCacheOperations:
@@ -262,50 +265,50 @@ class TestCacheOperations:
         assert ":" not in result
 
     @pytest.mark.selenium
-    def test_save_and_load_chart_image(self, sample_chart_data: price_watch.chart_image.ChartData) -> None:
+    def test_save_and_load_chart_image(
+        self, sample_chart_data: price_watch.chart_image.ChartData, tmp_path: pathlib.Path
+    ) -> None:
         """画像の保存と読み込み."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_dir = pathlib.Path(tmpdir)
-            # 並列テストでの Chrome プロファイル競合を避けるため、一意の data_path を使用
-            data_path = pathlib.Path(tmpdir) / "chrome_data"
+        # 並列テストでの Chrome プロファイル競合を避けるため、一意の data_path を使用
+        data_path = tmp_path / "chrome_data"
 
-            # 画像を生成して保存
-            img = price_watch.chart_image.generate_chart_image(sample_chart_data, data_path=data_path)
-            output_path = cache_dir / "test.png"
-            price_watch.chart_image.save_chart_image(img, output_path)
+        # 画像を生成して保存
+        img = price_watch.chart_image.generate_chart_image(sample_chart_data, data_path=data_path)
+        output_path = tmp_path / "test.png"
+        price_watch.chart_image.save_chart_image(img, output_path)
 
-            # ファイルが存在することを確認
-            assert output_path.exists()
+        # ファイルが存在することを確認
+        assert output_path.exists()
 
-            # 読み込んで検証
-            loaded_img = Image.open(output_path)
-            assert loaded_img.size == img.size
+        # 読み込んで検証
+        loaded_img = Image.open(output_path)
+        assert loaded_img.size == img.size
 
     @pytest.mark.selenium
-    def test_get_or_generate_chart_image(self, sample_chart_data: price_watch.chart_image.ChartData) -> None:
+    def test_get_or_generate_chart_image(
+        self, sample_chart_data: price_watch.chart_image.ChartData, tmp_path: pathlib.Path
+    ) -> None:
         """キャッシュ有無による画像生成."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            cache_dir = pathlib.Path(tmpdir)
-            # 並列テストでの Chrome プロファイル競合を避けるため、一意の data_path を使用
-            data_path = pathlib.Path(tmpdir) / "chrome_data"
+        # 並列テストでの Chrome プロファイル競合を避けるため、一意の data_path を使用
+        data_path = tmp_path / "chrome_data"
 
-            # 初回: 画像生成
-            path1 = price_watch.chart_image.get_or_generate_chart_image(
-                sample_chart_data,
-                cache_dir,
-                data_path=data_path,
-            )
-            assert path1.exists()
-            mtime1 = path1.stat().st_mtime
+        # 初回: 画像生成
+        path1 = price_watch.chart_image.get_or_generate_chart_image(
+            sample_chart_data,
+            tmp_path,
+            data_path=data_path,
+        )
+        assert path1.exists()
+        mtime1 = path1.stat().st_mtime
 
-            # 2回目: キャッシュから取得（ファイル更新なし）
-            path2 = price_watch.chart_image.get_or_generate_chart_image(
-                sample_chart_data,
-                cache_dir,
-                data_path=data_path,
-            )
-            assert path2 == path1
-            assert path2.stat().st_mtime == mtime1
+        # 2回目: キャッシュから取得（ファイル更新なし）
+        path2 = price_watch.chart_image.get_or_generate_chart_image(
+            sample_chart_data,
+            tmp_path,
+            data_path=data_path,
+        )
+        assert path2 == path1
+        assert path2.stat().st_mtime == mtime1
 
 
 class TestFontPaths:
