@@ -111,6 +111,9 @@ class AppRunner:
         """
         self.app.metrics_manager.start_session()
 
+        # 起動直後に DB 内の既存データからチャート画像を生成（巡回完了を待たない）
+        self._generate_chart_images()
+
         while not self.app.should_terminate:
             start_time = time.time()
 
