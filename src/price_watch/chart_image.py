@@ -229,6 +229,8 @@ def _create_headless_driver(
 ) -> WebDriver:
     """軽量なヘッドレス Chrome ドライバーを作成.
 
+    undetected_chromedriver 経由で作成し、chromedriver の管理を委譲する。
+
     Args:
         data_path: Chrome データディレクトリのパス
         css_width: CSS ピクセル幅
@@ -238,30 +240,27 @@ def _create_headless_driver(
     Returns:
         WebDriver インスタンス
     """
-    import selenium.webdriver
-    import selenium.webdriver.chrome.options
-    import selenium.webdriver.chrome.service
+    import my_lib.selenium_util
 
-    options = selenium.webdriver.chrome.options.Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument(f"--force-device-scale-factor={device_scale_factor}")
-    options.add_argument("--lang=ja-JP")
+    driver = my_lib.selenium_util.create_driver(
+        profile_name="chart_generator",
+        data_path=data_path,
+        is_headless=True,
+        stealth_mode=False,
+    )
 
-    # プロファイルディレクトリを設定
-    profile_path = data_path / "chart_generator"
-    profile_path.mkdir(parents=True, exist_ok=True)
-    options.add_argument(f"--user-data-dir={profile_path}")
+    # force-device-scale-factor を CDP 経由で設定
+    driver.execute_cdp_cmd(
+        "Emulation.setDeviceMetricsOverride",
+        {
+            "width": css_width + 100,
+            "height": css_height + 200,
+            "deviceScaleFactor": device_scale_factor,
+            "mobile": False,
+        },
+    )
 
-    service = selenium.webdriver.chrome.service.Service()
-    driver = selenium.webdriver.Chrome(service=service, options=options)
-
-    # ウィンドウサイズを CSS ピクセルで設定（余裕を持たせる）
-    # --window-size オプションは headless Chrome で正しく機能しないため、
-    # ドライバー作成後に set_window_size() を使用
-    # スクリーンショットは device_scale_factor 倍のサイズになる
+    # ウィンドウサイズを CSS ピクセルで設定
     driver.set_window_size(css_width + 100, css_height + 200)
 
     return driver
