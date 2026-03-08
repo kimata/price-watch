@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useRef, useLayoutEffect, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { HeartIcon } from "@heroicons/react/24/solid";
 import { HeartIcon as HeartOutlineIcon } from "@heroicons/react/24/outline";
 import type { Item } from "../types";
@@ -44,7 +44,7 @@ export default function VirtualizedItemGrid({
     onItemClick,
     categories,
 }: VirtualizedItemGridProps) {
-    const parentRef = useRef<HTMLDivElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
     const columnCountRef = useRef(getColumnCount());
     const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
     const { isFavorite } = useFavorites();
@@ -164,29 +164,39 @@ export default function VirtualizedItemGrid({
         [rows]
     );
 
-    const virtualizer = useVirtualizer({
+    const virtualizer = useWindowVirtualizer({
         count: rows.length,
-        getScrollElement: () => parentRef.current,
         estimateSize,
         overscan: 3,
+        scrollMargin: listRef.current?.offsetTop ?? 0,
     });
 
     const handleCategoryClick = useCallback((category: string) => {
         const categoryId = categoryToId(category);
-        const el = document.getElementById(categoryId);
-        if (el) {
-            // URL にハッシュを追加（履歴に追加しない）
-            const url = new URL(window.location.href);
-            url.hash = categoryId;
-            window.history.replaceState(window.history.state, "", url.toString());
+        // URL にハッシュを追加（履歴に追加しない）
+        const url = new URL(window.location.href);
+        url.hash = categoryId;
+        window.history.replaceState(window.history.state, "", url.toString());
 
-            // 要素の位置を取得して、オフセットを考慮してスクロール
-            const rect = el.getBoundingClientRect();
-            const offset = 24; // 余白
-            const y = rect.top + window.scrollY - offset;
-            window.scrollTo({ top: y, behavior: "smooth" });
+        if (shouldVirtualize) {
+            // 仮想スクロール時は virtualizer で該当行までスクロール
+            const rowIndex = rows.findIndex(
+                (row) => row.type === "header" && row.category === category
+            );
+            if (rowIndex >= 0) {
+                virtualizer.scrollToIndex(rowIndex, { align: "start" });
+            }
+        } else {
+            // 非仮想化時は DOM 要素に直接スクロール
+            const el = document.getElementById(categoryId);
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                const offset = 24; // 余白
+                const y = rect.top + window.scrollY - offset;
+                window.scrollTo({ top: y, behavior: "smooth" });
+            }
         }
-    }, []);
+    }, [shouldVirtualize, rows, virtualizer]);
 
     // アイテム数が少ない場合は従来のレンダリングを使用
     if (!shouldVirtualize) {
@@ -319,13 +329,7 @@ export default function VirtualizedItemGrid({
             )}
 
             {filteredItems.length > 0 && (
-            <div
-                ref={parentRef}
-                style={{
-                    height: "calc(100vh - 200px)",
-                    overflow: "auto",
-                }}
-            >
+            <div ref={listRef}>
                 <div
                     style={{
                         height: `${virtualizer.getTotalSize()}px`,
@@ -346,7 +350,7 @@ export default function VirtualizedItemGrid({
                                         left: 0,
                                         width: "100%",
                                         height: `${virtualRow.size}px`,
-                                        transform: `translateY(${virtualRow.start}px)`,
+                                        transform: `translateY(${virtualRow.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
                                     }}
                                 >
                                     <PermalinkHeading
@@ -367,7 +371,7 @@ export default function VirtualizedItemGrid({
                                     top: 0,
                                     left: 0,
                                     width: "100%",
-                                    transform: `translateY(${virtualRow.start}px)`,
+                                    transform: `translateY(${virtualRow.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
                                     paddingBottom: "24px",
                                 }}
                             >
