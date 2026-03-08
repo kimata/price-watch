@@ -97,12 +97,9 @@ export function useItemEvents(stores: StoreEntry[]) {
     const query = useQuery({
         queryKey: ["itemEvents", storeKeys],
         queryFn: async (): Promise<Event[]> => {
-            // 全ストアのイベントを取得してマージ
-            const allEvents: Event[] = [];
-            for (const store of stores) {
-                const response = await fetchItemEvents(store.item_key, 20);
-                allEvents.push(...response.events);
-            }
+            // 全ストアのイベントを並列で取得してマージ
+            const responses = await Promise.all(stores.map((store) => fetchItemEvents(store.item_key, 20)));
+            const allEvents: Event[] = responses.flatMap((r) => r.events);
             // 日時でソート（新しい順）
             allEvents.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
             // 重複を除去（同じIDのイベント）

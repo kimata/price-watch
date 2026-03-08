@@ -814,6 +814,8 @@ class TestItemDetailPage:
 
         mock_history_manager = MagicMock()
         mock_history_manager.get_all_items.return_value = mock_items
+        mock_history_manager.get_all_latest.return_value = {1: mock_latest}
+        mock_history_manager.get_all_stats.return_value = {1: mock_stats}
         mock_history_manager.get_latest.return_value = mock_latest
         mock_history_manager.get_stats.return_value = mock_stats
         mock_history_manager.get_history.return_value = (mock_items[0], [])
@@ -1512,6 +1514,8 @@ class TestGetItemDataForOgp:
 
         mock_history_manager = MagicMock()
         mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_all_latest.return_value = {1: mock_latest}
+        mock_history_manager.get_all_stats.return_value = {1: mock_stats}
         mock_history_manager.get_latest.return_value = mock_latest
         mock_history_manager.get_stats.return_value = mock_stats
         mock_history_manager.get_history.return_value = (mock_item, [])
@@ -1564,6 +1568,8 @@ class TestOgpImageSuccess:
 
         mock_history_manager = MagicMock()
         mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_all_latest.return_value = {1: mock_latest}
+        mock_history_manager.get_all_stats.return_value = {1: mock_stats}
         mock_history_manager.get_latest.return_value = mock_latest
         mock_history_manager.get_stats.return_value = mock_stats
         mock_history_manager.get_history.return_value = (mock_item, [])
@@ -1613,6 +1619,8 @@ class TestOgpImageSuccess:
 
         mock_history_manager = MagicMock()
         mock_history_manager.get_all_items.return_value = [mock_item]
+        mock_history_manager.get_all_latest.return_value = {1: mock_latest}
+        mock_history_manager.get_all_stats.return_value = {1: mock_stats}
         mock_history_manager.get_latest.return_value = mock_latest
         mock_history_manager.get_stats.return_value = mock_stats
         mock_history_manager.get_history.return_value = (mock_item, [])

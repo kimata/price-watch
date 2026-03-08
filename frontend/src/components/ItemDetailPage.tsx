@@ -67,34 +67,40 @@ export default function ItemDetailPage({
         }, validUpdates[0].last_updated);
     }, [displayItem.stores]);
 
-    // 価格統計
+    // 価格統計（lowest_price/highest_price はストアデータから即時取得可能）
     const priceStats = useMemo(() => {
-        const allPrices: number[] = [];
+        // ストアの統計情報から即座に算出（履歴データ不要）
+        const allLowest = displayItem.stores.map((s) => s.lowest_price).filter((p): p is number => p !== null);
+        const allHighest = displayItem.stores.map((s) => s.highest_price).filter((p): p is number => p !== null);
+        const lowestPrice = allLowest.length > 0 ? Math.min(...allLowest) : null;
+        const highestPrice = allHighest.length > 0 ? Math.max(...allHighest) : null;
+
+        // 平均・件数は履歴データから算出（履歴読み込み完了後に有効になる）
+        const hasHistory = displayItem.stores.some((s) => s.history.length > 0);
+        let averagePrice: number | null = null;
         let dataCount = 0;
-        const minByTime = new Map<string, number>();
-        displayItem.stores.forEach((store) => {
-            store.history.forEach((h) => {
-                dataCount++;
-                if (h.effective_price !== null) {
-                    allPrices.push(h.effective_price);
-                    const existing = minByTime.get(h.time);
-                    if (existing === undefined || h.effective_price < existing) {
-                        minByTime.set(h.time, h.effective_price);
+
+        if (hasHistory) {
+            const minByTime = new Map<string, number>();
+            displayItem.stores.forEach((store) => {
+                store.history.forEach((h) => {
+                    dataCount++;
+                    if (h.effective_price !== null) {
+                        const existing = minByTime.get(h.time);
+                        if (existing === undefined || h.effective_price < existing) {
+                            minByTime.set(h.time, h.effective_price);
+                        }
                     }
-                }
+                });
             });
-        });
-        const minValues = Array.from(minByTime.values());
-        const averagePrice =
-            minValues.length > 0
-                ? Math.round(minValues.reduce((sum, price) => sum + price, 0) / minValues.length)
-                : null;
-        return {
-            lowestPrice: allPrices.length > 0 ? Math.min(...allPrices) : null,
-            highestPrice: allPrices.length > 0 ? Math.max(...allPrices) : null,
-            averagePrice,
-            dataCount,
-        };
+            const minValues = Array.from(minByTime.values());
+            averagePrice =
+                minValues.length > 0
+                    ? Math.round(minValues.reduce((sum, price) => sum + price, 0) / minValues.length)
+                    : null;
+        }
+
+        return { lowestPrice, highestPrice, averagePrice, dataCount, hasHistory };
     }, [displayItem.stores]);
 
     const lastUpdatedRelative = useMemo(() => {
@@ -226,14 +232,22 @@ export default function ItemDetailPage({
                         <div className="col-span-2 sm:col-span-1 text-center p-4 bg-gray-50 rounded-lg">
                             <div className="text-sm text-gray-600 mb-2">期間内最安値平均</div>
                             <div className="text-xl font-semibold text-gray-600">
-                                {priceStats.averagePrice !== null
-                                    ? formatPrice(priceStats.averagePrice, priceUnit)
-                                    : "-"}
+                                {loadingItem && !priceStats.hasHistory ? (
+                                    <div className="h-7 w-24 mx-auto bg-gray-200 rounded animate-pulse" />
+                                ) : priceStats.averagePrice !== null ? (
+                                    formatPrice(priceStats.averagePrice, priceUnit)
+                                ) : (
+                                    "-"
+                                )}
                             </div>
                         </div>
                     </div>
                     <div className="mt-4 text-sm text-gray-500">
-                        データポイント数: {priceStats.dataCount}
+                        {loadingItem && !priceStats.hasHistory ? (
+                            <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
+                        ) : (
+                            <>データポイント数: {priceStats.dataCount}</>
+                        )}
                     </div>
                 </div>
 

@@ -1059,16 +1059,24 @@ def _build_ogp_data(
 def _get_item_data_for_ogp(
     item_key: str,
     days: int | None = 30,
+    *,
+    include_history: bool = False,
 ) -> tuple[str | None, list[price_watch.webapi.schemas.StoreEntry]]:
     """OGP 用のアイテムデータを取得.
 
     item_key からアイテム名を特定し、同名の全ストアのデータを返す。
 
+    Args:
+        item_key: アイテムキー
+        days: 期間（日数）
+        include_history: 履歴を含めるかどうか（OGP画像生成時はTrue、HTML生成時はFalse）
+
     Returns:
         (アイテム名, ストアエントリリスト) のタプル。アイテムが見つからない場合は (None, [])
     """
     target_config = price_watch.webapi.cache.get_target_config()
-    all_items = price_watch.webapi.cache.get_history_manager().get_all_items()
+    history = price_watch.webapi.cache.get_history_manager()
+    all_items = history.get_all_items()
 
     # item_key からアイテム名を特定
     primary = next((item for item in all_items if item.item_key == item_key), None)
@@ -1078,6 +1086,10 @@ def _get_item_data_for_ogp(
     item_name = primary.name
     target_item_keys = _get_target_item_keys(target_config)
 
+    # パフォーマンス最適化: 最新価格と統計情報を一括取得
+    all_latest = history.get_all_latest()
+    all_stats = history.get_all_stats(days)
+
     # 同名の全ストアのデータを収集
     store_data_list = _collect_stores_for_name(
         item_name,
@@ -1085,7 +1097,9 @@ def _get_item_data_for_ogp(
         target_item_keys,
         days,
         target_config,
-        include_history=True,
+        include_history=include_history,
+        all_latest=all_latest,
+        all_stats=all_stats,
     )
 
     stores = [sd.store_entry for sd in store_data_list]
@@ -1273,8 +1287,8 @@ def ogp_image(item_key: str) -> flask.Response:
         # フォント設定を取得
         font_paths = price_watch.webapi.ogp.FontPaths.from_config(app_config.font)
 
-        # アイテムデータを取得
-        item_name, stores = _get_item_data_for_ogp(item_key)
+        # アイテムデータを取得（OGP画像にはチャート用の履歴が必要）
+        item_name, stores = _get_item_data_for_ogp(item_key, include_history=True)
 
         if item_name is None or not stores:
             return flask.Response("Item not found", status=404)
@@ -1319,8 +1333,8 @@ def ogp_image_square(item_key: str) -> flask.Response:
         # フォント設定を取得
         font_paths = price_watch.webapi.ogp.FontPaths.from_config(app_config.font)
 
-        # アイテムデータを取得
-        item_name, stores = _get_item_data_for_ogp(item_key)
+        # アイテムデータを取得（OGP画像にはチャート用の履歴が必要）
+        item_name, stores = _get_item_data_for_ogp(item_key, include_history=True)
 
         if item_name is None or not stores:
             return flask.Response("Item not found", status=404)
