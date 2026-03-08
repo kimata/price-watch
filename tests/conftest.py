@@ -58,8 +58,11 @@ def _clear():
     """各テスト前にステートをクリア"""
     import my_lib.notify.slack
 
+    import price_watch.webapi.auth_rate_limiter
+
     my_lib.notify.slack._interval_clear()
     my_lib.notify.slack._hist_clear()
+    price_watch.webapi.auth_rate_limiter.clear_state()
 
 
 # === データベースフィクスチャ ===

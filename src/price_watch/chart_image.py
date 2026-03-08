@@ -240,16 +240,36 @@ def _create_headless_driver(
     Returns:
         WebDriver インスタンス
     """
-    import my_lib.selenium_util
+    try:
+        import my_lib.selenium_util
 
-    driver = my_lib.selenium_util.create_driver(
-        profile_name="chart_generator",
-        data_path=data_path,
-        is_headless=True,
-        stealth_mode=False,
-    )
+        driver = my_lib.selenium_util.create_driver(
+            profile_name="chart_generator",
+            data_path=data_path,
+            is_headless=True,
+            stealth_mode=False,
+        )
+    except Exception:
+        logging.warning("undetected_chromedriver での作成に失敗、標準ドライバーにフォールバック")
 
-    # force-device-scale-factor を CDP 経由で設定
+        import selenium.webdriver
+        import selenium.webdriver.chrome.options
+
+        options = selenium.webdriver.chrome.options.Options()
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument(f"--force-device-scale-factor={device_scale_factor}")
+        options.add_argument("--lang=ja-JP")
+
+        profile_path = data_path / "chart_generator"
+        profile_path.mkdir(parents=True, exist_ok=True)
+        options.add_argument(f"--user-data-dir={profile_path}")
+
+        driver = selenium.webdriver.Chrome(options=options)
+
+    # デバイスメトリクスを CDP 経由で設定
     driver.execute_cdp_cmd(
         "Emulation.setDeviceMetricsOverride",
         {
