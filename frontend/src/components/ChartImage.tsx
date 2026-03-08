@@ -51,7 +51,6 @@ function ChartImage({ itemKey, className = "" }: ChartImageProps) {
                 className={`w-full h-full object-contain rounded ${isLoading ? "opacity-0" : "opacity-100"} transition-opacity duration-200`}
                 onLoad={handleLoad}
                 onError={handleError}
-                loading="lazy"
             />
         </div>
     );
