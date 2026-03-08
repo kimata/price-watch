@@ -344,12 +344,13 @@ export default function VirtualizedItemGrid({
                             return (
                                 <div
                                     key={virtualRow.key}
+                                    data-index={virtualRow.index}
+                                    ref={virtualizer.measureElement}
                                     style={{
                                         position: "absolute",
                                         top: 0,
                                         left: 0,
                                         width: "100%",
-                                        height: `${virtualRow.size}px`,
                                         transform: `translateY(${virtualRow.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
                                     }}
                                 >
@@ -366,6 +367,8 @@ export default function VirtualizedItemGrid({
                         return (
                             <div
                                 key={virtualRow.key}
+                                data-index={virtualRow.index}
+                                ref={virtualizer.measureElement}
                                 style={{
                                     position: "absolute",
                                     top: 0,
