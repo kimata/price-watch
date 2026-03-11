@@ -184,11 +184,14 @@ class AppRunner:
                 should_terminate=lambda: self.app.should_terminate,
             )
             logging.info("Submitted %d chart generation requests to worker", added)
+
+            # 実際に生成リクエストがあった場合のみ生成時刻を更新
+            # 0件の場合（全キャッシュ有効）は更新しない。
+            # キャッシュが期限切れになった後の次回チェックで再生成を実行するため。
+            if added > 0:
+                self._last_chart_generation_time = time.time()
         except Exception:
             logging.exception("Failed to submit chart generation requests")
-
-        # 生成時刻を更新
-        self._last_chart_generation_time = time.time()
 
     def _collect_chart_data(
         self, currency_rates: dict[str, float]
