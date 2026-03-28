@@ -157,27 +157,33 @@ class ChartImageWorker:
         if price_watch.chart_image.is_cache_valid(cache_path, self._ttl_sec):
             return cache_path
 
-        # 既に同じリクエストが処理中なら、そのリクエストを待つ
+        # 既に同じリクエストが処理中か確認し、なければ新規作成（1回のロックで完結）
+        request: ChartRequest | None = None
+        existing_request: ChartRequest | None = None
         with self._pending_lock:
             if item_key in self._pending_requests:
                 existing_request = self._pending_requests[item_key]
-                # 既存のリクエストの完了を待つ
-                if existing_request.result_event.wait(timeout=timeout):
-                    if existing_request.error is not None:
-                        logging.warning(
-                            "Chart generation failed for %s: %s", item_key, existing_request.error
-                        )
-                        return None
-                    return existing_request.result_path
-                return None
+            else:
+                request = ChartRequest(
+                    item_key=item_key,
+                    chart_data=chart_data,
+                    priority=RequestPriority.HIGH,
+                )
+                self._pending_requests[item_key] = request
 
-            # 新しいリクエストを作成
-            request = ChartRequest(
-                item_key=item_key,
-                chart_data=chart_data,
-                priority=RequestPriority.HIGH,
-            )
-            self._pending_requests[item_key] = request
+        # 既存リクエストがある場合はロックの外で完了を待つ
+        # NOTE: ロック保持中に wait すると Worker の finally ブロックが
+        # _pending_lock を取得できずデッドロックになる
+        if existing_request is not None:
+            if existing_request.result_event.wait(timeout=timeout):
+                if existing_request.error is not None:
+                    logging.warning("Chart generation failed for %s: %s", item_key, existing_request.error)
+                    return None
+                return existing_request.result_path
+            logging.warning("Chart generation timed out for %s", item_key)
+            return None
+
+        assert request is not None  # noqa: S101
 
         # キューに追加
         self._enqueue(request)
