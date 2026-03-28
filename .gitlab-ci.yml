@@ -99,7 +99,7 @@ test-typecheck:
     needs: []
 
     before_script:
-        - uv sync --locked --no-editable
+        - uv sync --frozen --no-editable
 
     script:
         - uv run python -m pyright
@@ -122,7 +122,7 @@ test-pytest:
     needs: []
 
     before_script:
-        - uv sync --locked --no-editable
+        - uv sync --frozen --no-editable
 
     script:
         - uv run pytest
@@ -177,7 +177,7 @@ test-webui:
             while read id; do docker stop -t 5 $id; done || true
 
         # テスト用のダミー価格履歴DBを作成
-        - uv sync --locked --no-editable
+        - uv sync --frozen --no-editable
         - mkdir -p test_data
         - uv run python scripts/create_test_history_db.py -o test_data/price.db
 
