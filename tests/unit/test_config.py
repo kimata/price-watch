@@ -210,10 +210,8 @@ class TestStoreConfig:
         data = {
             "amazon": {
                 "associate": "test-22",
-                "access_key": "ACCESSKEY",
-                "secret_key": "SECRETKEY",
-                "host": "webservices.amazon.co.jp",
-                "region": "us-west-2",
+                "credential_id": "CREDENTIALID",
+                "credential_secret": "CREDENTIALSECRET",
             }
         }
         result = StoreConfig.parse(data)
@@ -460,10 +458,8 @@ class TestAppConfig:
             "store": {
                 "amazon": {
                     "associate": "test-22",
-                    "access_key": "key",
-                    "secret_key": "secret",
-                    "host": "webservices.amazon.co.jp",
-                    "region": "us-west-2",
+                    "credential_id": "key",
+                    "credential_secret": "secret",
                 }
             },
         }

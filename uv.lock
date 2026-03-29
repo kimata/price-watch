@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-03-22T11:53:17.821060056Z"
+exclude-newer = "2026-03-22T12:09:58.212936317Z"
 exclude-newer-span = "P1W"
 
 [[package]]
@@ -142,33 +142,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/76/641ae371508676492379f16e2fa48f4e2c11741bd63c48be4b12a6b09cba/aiosignal-1.4.0-py3-none-any.whl", hash = "sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e", size = 7490, upload-time = "2025-07-03T22:54:42.156Z" },
-]
-
-[[package]]
-name = "amazon-paapi5"
-version = "1.1.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "amightygirl-paapi5-python-sdk" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/54/47/e9de691e36985ad9397a52f63064a28c5d160020bbe695236af7c78b792b/amazon-paapi5-1.1.2.tar.gz", hash = "sha256:5a4fce03a664b49e9ac0409c91014ea7ae91aa1c0868047c919b1b135e51ce75", size = 13512, upload-time = "2020-03-12T07:13:28.252Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8a/be/a9d5f366eb7b59cdff8123b4a15fe4fa5354fd5e3d4604ec9aaa02cfe3e6/amazon_paapi5-1.1.2-py3-none-any.whl", hash = "sha256:7a747c5e82db11b7ac77c74eec04b80456de06eca272254157be644bfa87cff9", size = 13278, upload-time = "2020-03-12T07:13:27.394Z" },
-]
-
-[[package]]
-name = "amightygirl-paapi5-python-sdk"
-version = "1.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "python-dateutil" },
-    { name = "six" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/12/a3/80923767044df21f8d80c84a25f2995d7f433cb8c2f3416e61c824b141c5/amightygirl.paapi5-python-sdk-1.0.0.tar.gz", hash = "sha256:9d1f03bca56911e1dc779e81202260988cfea3f48bc71d5fb5688e2ee79c709b", size = 52032, upload-time = "2019-12-06T15:47:24.533Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/7d/c3/382bef55a6d94584b2c23812cf06da8250f29061a6bfb36dc5764a633368/amightygirl.paapi5_python_sdk-1.0.0-py3-none-any.whl", hash = "sha256:03703b228f8f93f1d3473e98054ebde7a4ca3184dd7f3645b4b95f4cdf9229d1", size = 179813, upload-time = "2019-12-06T15:47:21.888Z" },
 ]
 
 [[package]]
@@ -2189,7 +2162,6 @@ wheels = [
 name = "price-watch"
 source = { editable = "." }
 dependencies = [
-    { name = "amazon-paapi5" },
     { name = "argon2-cffi" },
     { name = "beautifulsoup4" },
     { name = "docopt" },
@@ -2201,6 +2173,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pydantic" },
     { name = "pydub" },
+    { name = "python-amazon-paapi" },
     { name = "pywebpush" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
@@ -2234,7 +2207,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "amazon-paapi5", specifier = ">=1.1.2" },
     { name = "argon2-cffi", specifier = ">=23.1.0" },
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "docopt", specifier = ">=0.6.2" },
@@ -2246,6 +2218,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.1.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "pydub", specifier = ">=0.25.1" },
+    { name = "python-amazon-paapi", specifier = ">=6.2.0" },
     { name = "pywebpush", specifier = ">=2.0.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "ruamel-yaml", specifier = ">=0.18.6" },

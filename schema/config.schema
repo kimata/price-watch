@@ -84,10 +84,9 @@
                     "type": "object",
                     "properties": {
                         "associate": { "type": "string" },
-                        "access_key": { "type": "string" },
-                        "secret_key": { "type": "string" },
-                        "host": { "type": "string" },
-                        "region": { "type": "string" }
+                        "credential_id": { "type": "string" },
+                        "credential_secret": { "type": "string" },
+                        "version": { "type": "string" }
                     }
                 },
                 "yahoo": {

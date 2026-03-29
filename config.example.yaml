@@ -14,13 +14,11 @@ slack:
         interval_min: 60
 
 store:
-    # PA-API で価格を取得するための設定
+    # Creators API で価格を取得するための設定
     amazon:
         associate: XXXXXX-22
-        access_key: XXXXXXXXXXXXXXXXXXXX
-        secret_key: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-        host: webservices.amazon.co.jp
-        region: us-west-2
+        credential_id: XXXXXXXXXXXXXXXXXXXX
+        credential_secret: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
     # Yahoo!ショッピング API で価格を取得するための設定
     yahoo:

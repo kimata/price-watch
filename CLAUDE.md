@@ -360,10 +360,8 @@ slack:
 store:
     amazon:
         associate: "XXXXXX-22"
-        access_key: "..."
-        secret_key: "..."
-        host: "webservices.amazon.co.jp"
-        region: "us-west-2"
+        credential_id: "..."
+        credential_secret: "..."
 
     yahoo:
         client_id: "..."
