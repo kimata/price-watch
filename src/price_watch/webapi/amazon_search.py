@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Amazon 検索 API エンドポイント.
 
-Amazon PA-API を使用したキーワード検索機能を提供します。
+Amazon Creators API を使用したキーワード検索機能を提供します。
 """
 
 import logging
@@ -10,7 +10,7 @@ import flask
 import my_lib.store.amazon.api
 from pydantic import BaseModel, Field
 
-import price_watch.store.amazon.paapi_rate_limiter
+import price_watch.store.amazon.api_rate_limiter
 import price_watch.webapi.cache
 
 blueprint = flask.Blueprint("amazon_search", __name__)
@@ -45,7 +45,7 @@ class ErrorResponse(BaseModel):
 
 
 def _is_amazon_api_available() -> bool:
-    """Amazon PA-API が利用可能かどうかを判定."""
+    """Amazon Creators API が利用可能か���うかを判定."""
     app_config = price_watch.webapi.cache.get_app_config()
     if app_config is None:
         return False
@@ -75,7 +75,7 @@ def search() -> flask.Response | tuple[flask.Response, int]:
         error = ErrorResponse(error="リクエストの形式が正しくありません")
         return flask.jsonify(error.model_dump()), 400
 
-    # Amazon PA-API 設定の確認
+    # Amazon Creators API 設定の確認
     app_config = price_watch.webapi.cache.get_app_config()
     if app_config is None:
         error = ErrorResponse(error="サーバー設定の読み込みに失敗しました")
@@ -83,11 +83,11 @@ def search() -> flask.Response | tuple[flask.Response, int]:
 
     amazon_api_config = app_config.store.amazon_api
     if amazon_api_config is None:
-        error = ErrorResponse(error="Amazon PA-API が設定されていません")
+        error = ErrorResponse(error="Amazon Creators API が設定されていません")
         return flask.jsonify(error.model_dump()), 503
 
     # レート制限を適用
-    rate_limiter = price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter()
+    rate_limiter = price_watch.store.amazon.api_rate_limiter.get_rate_limiter()
     rate_limiter.acquire()
 
     # 検索実行

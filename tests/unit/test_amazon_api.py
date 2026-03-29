@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # ruff: noqa: S101
 """
-store/amazon/paapi.py のユニットテスト
+store/amazon/api.py のユニットテスト
 
-Amazon PA-API による価格チェックを検証します。
+Amazon Creators API による価格チェックを検証します。
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 import price_watch.models
-import price_watch.store.amazon.paapi
+import price_watch.store.amazon.api
 from price_watch.target import CheckMethod, ResolvedItem
 
 
@@ -47,7 +47,7 @@ class TestCheckItemList:
     def test_empty_list_returns_empty(self):
         """空のリストは空のリストを返す"""
         mock_config = MagicMock()
-        result = price_watch.store.amazon.paapi.check_item_list(mock_config, [])
+        result = price_watch.store.amazon.api.check_item_list(mock_config, [])
         assert result == []
 
     def test_no_amazon_api_config_returns_empty(self):
@@ -56,7 +56,7 @@ class TestCheckItemList:
         mock_config.store.amazon_api = None
 
         item_list = [_create_resolved_item(name="Test", asin="B12345")]
-        result = price_watch.store.amazon.paapi.check_item_list(mock_config, item_list)
+        result = price_watch.store.amazon.api.check_item_list(mock_config, item_list)
 
         assert result == []
 
@@ -78,13 +78,13 @@ class TestCheckItemList:
 
         with (
             patch("my_lib.store.amazon.api.check_item_list", return_value=mock_result_items),
-            patch("price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter") as mock_rate_limiter,
+            patch("price_watch.store.amazon.api_rate_limiter.get_rate_limiter") as mock_rate_limiter,
             patch("price_watch.thumbnail.save_thumb", return_value="/price/thumb/abc.png"),
         ):
             mock_rate_limiter.return_value.__enter__ = MagicMock(return_value=None)
             mock_rate_limiter.return_value.__exit__ = MagicMock(return_value=None)
 
-            result = price_watch.store.amazon.paapi.check_item_list(mock_config, item_list)
+            result = price_watch.store.amazon.api.check_item_list(mock_config, item_list)
 
         assert len(result) == 2
         assert result[0].stock == price_watch.models.StockStatus.IN_STOCK
@@ -105,12 +105,12 @@ class TestCheckItemList:
 
         with (
             patch("my_lib.store.amazon.api.check_item_list", return_value=mock_result_items),
-            patch("price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter") as mock_rate_limiter,
+            patch("price_watch.store.amazon.api_rate_limiter.get_rate_limiter") as mock_rate_limiter,
         ):
             mock_rate_limiter.return_value.__enter__ = MagicMock(return_value=None)
             mock_rate_limiter.return_value.__exit__ = MagicMock(return_value=None)
 
-            result = price_watch.store.amazon.paapi.check_item_list(mock_config, item_list)
+            result = price_watch.store.amazon.api.check_item_list(mock_config, item_list)
 
         assert result[0].stock == price_watch.models.StockStatus.OUT_OF_STOCK
 
@@ -125,12 +125,12 @@ class TestCheckItemList:
 
         with (
             patch("my_lib.store.amazon.api.check_item_list", return_value=mock_result_items),
-            patch("price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter") as mock_rate_limiter,
+            patch("price_watch.store.amazon.api_rate_limiter.get_rate_limiter") as mock_rate_limiter,
         ):
             mock_rate_limiter.return_value.__enter__ = MagicMock(return_value=None)
             mock_rate_limiter.return_value.__exit__ = MagicMock(return_value=None)
 
-            result = price_watch.store.amazon.paapi.check_item_list(mock_config, item_list)
+            result = price_watch.store.amazon.api.check_item_list(mock_config, item_list)
 
         assert result[0].stock == price_watch.models.StockStatus.OUT_OF_STOCK
 
@@ -147,13 +147,13 @@ class TestCheckItemList:
 
         with (
             patch("my_lib.store.amazon.api.check_item_list", return_value=mock_result_items),
-            patch("price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter") as mock_rate_limiter,
+            patch("price_watch.store.amazon.api_rate_limiter.get_rate_limiter") as mock_rate_limiter,
             patch("price_watch.thumbnail.save_thumb", return_value=None),  # 保存失敗
         ):
             mock_rate_limiter.return_value.__enter__ = MagicMock(return_value=None)
             mock_rate_limiter.return_value.__exit__ = MagicMock(return_value=None)
 
-            result = price_watch.store.amazon.paapi.check_item_list(mock_config, item_list)
+            result = price_watch.store.amazon.api.check_item_list(mock_config, item_list)
 
         assert result[0].thumb_url == "https://original.com/thumb.jpg"
 
@@ -169,11 +169,11 @@ class TestCheckItemList:
                 "my_lib.store.amazon.api.check_item_list",
                 side_effect=Exception("API Error"),
             ),
-            patch("price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter") as mock_rate_limiter,
+            patch("price_watch.store.amazon.api_rate_limiter.get_rate_limiter") as mock_rate_limiter,
         ):
             mock_rate_limiter.return_value.__enter__ = MagicMock(return_value=None)
             mock_rate_limiter.return_value.__exit__ = MagicMock(return_value=None)
 
-            result = price_watch.store.amazon.paapi.check_item_list(mock_config, item_list)
+            result = price_watch.store.amazon.api.check_item_list(mock_config, item_list)
 
         assert result == []

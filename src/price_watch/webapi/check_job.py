@@ -124,7 +124,7 @@ def _run_check_job(
         item_def: target.yaml から取得したアイテム定義
         store_def: target.yaml から取得したストア定義
     """
-    import price_watch.store.amazon.paapi as paapi
+    import price_watch.store.amazon.api as amazon_api
     import price_watch.store.flea_market as flea_market
     import price_watch.store.scrape as scrape
     import price_watch.store.yahoo as yahoo
@@ -211,7 +211,7 @@ def _run_check_job(
             job.message_queue.put(JobMessage(type="result", data=job.result))
 
         elif resolved_item.check_method == CheckMethod.AMAZON_PAAPI:
-            results = paapi.check_item_list(config, [resolved_item])
+            results = amazon_api.check_item_list(config, [resolved_item])
 
             if results:
                 result = results[0]

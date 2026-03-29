@@ -389,7 +389,7 @@ class ResolvedItem:
         elif url is None:
             raise ValueError(f"Item '{item.name}' has no url or asin")
 
-        # Amazon PA-API の URL にアフィリエイトタグを付与
+        # Amazon Creators API の URL にアフィリエイトタグを付与
         if store_affiliate_id and store_check_method == CheckMethod.AMAZON_PAAPI and url:
             import price_watch.affiliate
 

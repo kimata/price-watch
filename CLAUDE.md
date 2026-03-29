@@ -4,11 +4,11 @@
 
 ## 概要
 
-商品価格を監視して通知するスクリプトです。オンラインショップの価格をスクレイピングまたは Amazon PA-API で取得し、価格変動や在庫復活を検出して Slack に通知します。Selenium と undetected-chromedriver を使用してブラウザを操作します。
+商品価格を監視して通知するスクリプトです。オンラインショップの価格をスクレイピングまたは Amazon Creators API で取得し、価格変動や在庫復活を検出して Slack に通知します。Selenium と undetected-chromedriver を使用してブラウザを操作します。
 
 対応ショップ:
 
-- Amazon.co.jp（PA-API / スクレイピング）
+- Amazon.co.jp（Creators API / スクレイピング）
 - メルカリ（キーワード検索）
 - ラクマ（キーワード検索）
 - PayPayフリマ（キーワード検索）
@@ -170,8 +170,8 @@ src/
     │   ├── yahoo.py            # Yahoo!ショッピング検索
     │   ├── rakuten.py          # 楽天市場検索
     │   └── amazon/             # Amazon 関連モジュール
-    │       ├── paapi.py        # Amazon PA-API による価格取得
-    │       └── paapi_rate_limiter.py # PA-API レート制限
+    │       ├── api.py           # Amazon Creators API による価格取得
+    │       └── api_rate_limiter.py # API レート制限
     │
     ├── captcha.py              # CAPTCHA 処理（reCAPTCHA 音声認識）
     ├── event.py                # イベント検出・記録（価格変動、在庫復活等）
@@ -225,7 +225,7 @@ success = runner.execute()
 
 #### ItemProcessor (`processor.py`)
 
-各チェック方法（スクレイピング、PA-API、メルカリ、Yahoo、楽天）の共通処理を提供。
+各チェック方法（スクレイピング、Creators API、メルカリ、Yahoo、楽天）の共通処理を提供。
 
 ```python
 processor = ItemProcessor(app=app, loop=0)
@@ -256,7 +256,7 @@ price-watch (cli/app.py)
 ├── AppRunner.execute() → メイン監視ループ
 │   └── ItemProcessor.process_all() → 全アイテム処理
 │       ├── process_scrape_items() → 汎用スクレイピング
-│       ├── process_amazon_items() → PA-API
+│       ├── process_amazon_items() → Creators API
 │       ├── process_flea_market_items() → フリマ検索（メルカリ・ラクマ・PayPayフリマ）
 │       ├── process_yahoo_items() → Yahoo検索
 │       ├── process_rakuten_items() → 楽天検索
@@ -275,7 +275,7 @@ PriceWatchError     # 基底例外
 ├── ScrapeError     # スクレイピングエラー
 │   ├── CrawlError  # クロール処理エラー
 │   └── SessionError # Selenium セッションエラー
-├── PaapiError      # Amazon PA-API エラー
+├── AmazonApiError  # Amazon Creators API エラー
 ├── NotificationError # 通知送信エラー
 ├── HistoryError    # 履歴 DB エラー
 └── BrowserError    # ブラウザエラー

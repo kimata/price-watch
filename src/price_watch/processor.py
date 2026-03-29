@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """アイテム処理.
 
-スクレイピング、PA-API、フリマ検索、Yahoo検索の共通処理を抽出したプロセッサ。
+スクレイピング、Creators API、フリマ検索、Yahoo検索の共通処理を抽出したプロセッサ。
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import price_watch.managers.history
 import price_watch.managers.metrics_manager
 import price_watch.models
 import price_watch.notify
-import price_watch.store.amazon.paapi
+import price_watch.store.amazon.api
 import price_watch.store.flea_market
 import price_watch.store.rakuten
 import price_watch.store.scrape
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 class ItemProcessor:
     """アイテム処理クラス.
 
-    各チェック方法（スクレイピング、PA-API、フリマ検索、Yahoo検索）の共通処理を提供します。
+    各チェック方法（スクレイピング、Creators API、フリマ検索、Yahoo検索）の共通処理を提供します。
     """
 
     app: PriceWatchApp
@@ -60,7 +60,7 @@ class ItemProcessor:
         # 1. スクレイピング対象
         self.process_scrape_items(item_list)
 
-        # 2. Amazon PA-API 対象
+        # 2. Amazon Creators API 対象
         self.process_amazon_items(item_list)
 
         # 3. フリマ検索対象（メルカリ・ラクマ・PayPayフリマ）
@@ -171,7 +171,7 @@ class ItemProcessor:
         return crawl_success
 
     def process_amazon_items(self, item_list: list[ResolvedItem]) -> None:
-        """Amazon PA-API 対象アイテムを処理.
+        """Amazon Creators API 対象アイテムを処理.
 
         Args:
             item_list: 全アイテムリスト
@@ -186,9 +186,9 @@ class ItemProcessor:
         # デバッグモードでは1アイテムのみ
         if self.app.debug_mode:
             amazon_items = amazon_items[:1]
-            logging.info("[デバッグモード] Amazon PA-API: 1件のアイテムをチェック")
+            logging.info("[デバッグモード] Amazon Creators API: 1件のアイテムをチェック")
         else:
-            logging.info("[Amazon PA-API] %d件のアイテムをチェック中...", len(amazon_items))
+            logging.info("[Amazon Creators API] %d件のアイテムをチェック中...", len(amazon_items))
 
         store_name = amazon_items[0].store
         with price_watch.managers.metrics_manager.StoreContext(
@@ -196,13 +196,13 @@ class ItemProcessor:
         ) as store_ctx:
             success_count = 0
             try:
-                for checked in price_watch.store.amazon.paapi.check_item_list(self.config, amazon_items):
+                for checked in price_watch.store.amazon.api.check_item_list(self.config, amazon_items):
                     self._process_data(checked)
                     success_count += 1
                     store_ctx.record_success()
                 self.app.update_liveness()
             except Exception:
-                logging.exception("Failed to check Amazon PA-API items")
+                logging.exception("Failed to check Amazon Creators API items")
                 # 残りのアイテムは失敗扱い
                 failed_count = len(amazon_items) - success_count
                 for _ in range(failed_count):

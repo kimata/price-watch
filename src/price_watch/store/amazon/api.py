@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Amazon PA-API を使った価格チェック."""
+"""Amazon Creators API を使った価格チェック."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import my_lib.store.amazon.api
 import my_lib.store.amazon.config
 
 import price_watch.models
-import price_watch.store.amazon.paapi_rate_limiter
+import price_watch.store.amazon.api_rate_limiter
 import price_watch.thumbnail
 
 if TYPE_CHECKING:
@@ -44,8 +44,8 @@ def check_item_list(config: AppConfig, item_list: list[ResolvedItem]) -> list[pr
         ]
 
         # レートリミッターで API 呼び出し間隔を制御（1 TPS）
-        with price_watch.store.amazon.paapi_rate_limiter.get_rate_limiter(tps=1.0):
-            # PA-API で価格チェック
+        with price_watch.store.amazon.api_rate_limiter.get_rate_limiter(tps=1.0):
+            # Creators API で価格チェック
             result_items = my_lib.store.amazon.api.check_item_list(api_config, amazon_items)
 
         # 結果を元の item_list に反映
@@ -76,5 +76,5 @@ def check_item_list(config: AppConfig, item_list: list[ResolvedItem]) -> list[pr
 
         return checked_items
     except Exception:
-        logging.exception("PA-API での価格取得に失敗しました")
+        logging.exception("Creators API での価格取得に失敗しました")
         return []

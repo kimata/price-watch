@@ -265,7 +265,7 @@ class TestProcessAmazonItems:
         )
 
         with patch(
-            "price_watch.store.amazon.paapi.check_item_list",
+            "price_watch.store.amazon.api.check_item_list",
             return_value=[mock_checked],
         ):
             processor.process_amazon_items(items)
@@ -303,7 +303,7 @@ class TestProcessAmazonItems:
                 received_items.extend(item_list)  # type: ignore[arg-type]
             return []
 
-        with patch("price_watch.store.amazon.paapi.check_item_list", side_effect=check_mock):
+        with patch("price_watch.store.amazon.api.check_item_list", side_effect=check_mock):
             processor.process_amazon_items(items)
 
         # デバッグモードでは1アイテムのリストで呼ばれる
@@ -323,7 +323,7 @@ class TestProcessAmazonItems:
             )
         ]
 
-        with patch("price_watch.store.amazon.paapi.check_item_list", side_effect=Exception("Error")):
+        with patch("price_watch.store.amazon.api.check_item_list", side_effect=Exception("Error")):
             processor.process_amazon_items(items)
         # No exception raised
 

@@ -1,7 +1,7 @@
 """
-PA-API レートリミッター
+Amazon API レートリミッター
 
-Amazon Product Advertising API のレート制限（TPS）を管理します。
+Amazon Creators API のレート制限（TPS）を管理します。
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class PaapiRateLimiter:
-    """PA-API レートリミッター
+class ApiRateLimiter:
+    """Amazon API レートリミッター
 
     TPS（Transactions Per Second）制限に従い、API 呼び出しの間隔を制御します。
     """
@@ -32,12 +32,12 @@ class PaapiRateLimiter:
 
             if elapsed < min_interval:
                 wait_time = min_interval - elapsed
-                logging.debug("PA-API rate limit: waiting %.3f seconds", wait_time)
+                logging.debug("Amazon API rate limit: waiting %.3f seconds", wait_time)
                 time.sleep(wait_time)
 
             self._last_call_time = time.time()
 
-    def __enter__(self) -> PaapiRateLimiter:
+    def __enter__(self) -> ApiRateLimiter:
         """コンテキストマネージャーとして使用可能."""
         self.acquire()
         return self
@@ -47,12 +47,12 @@ class PaapiRateLimiter:
 
 
 # モジュールレベルのレートリミッター（シングルトン）
-_rate_limiter: PaapiRateLimiter | None = None
+_rate_limiter: ApiRateLimiter | None = None
 
 
-def get_rate_limiter(tps: float = 1.0) -> PaapiRateLimiter:
+def get_rate_limiter(tps: float = 1.0) -> ApiRateLimiter:
     """レートリミッターを取得（シングルトン）."""
     global _rate_limiter
     if _rate_limiter is None:
-        _rate_limiter = PaapiRateLimiter(tps=tps)
+        _rate_limiter = ApiRateLimiter(tps=tps)
     return _rate_limiter

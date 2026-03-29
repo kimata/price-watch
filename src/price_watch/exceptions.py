@@ -42,10 +42,10 @@ class SessionError(ScrapeError):
     """
 
 
-class PaapiError(PriceWatchError):
-    """Amazon PA-API エラー.
+class AmazonApiError(PriceWatchError):
+    """Amazon Creators API エラー.
 
-    PA-API 呼び出しに失敗した場合。
+    Creators API 呼び出しに失敗した場合。
     """
 
 

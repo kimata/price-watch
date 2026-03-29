@@ -63,7 +63,7 @@ class StockStatus(Enum):
 class PriceResult:
     """価格チェック結果.
 
-    スクレイピングや PA-API から取得した価格情報を保持します。
+    スクレイピングや Creators API から取得した価格情報を保持します。
     """
 
     price: int | None
@@ -77,7 +77,7 @@ class CheckedItem:
     """チェック済みアイテム.
 
     価格チェック後のアイテム情報を保持します。
-    スクレイピング、PA-API、メルカリ検索で共通のデータ構造として使用します。
+    スクレイピング、Creators API、メルカリ検索で共通のデータ構造として使用します。
     """
 
     name: str
@@ -113,7 +113,7 @@ class CheckedItem:
             初期状態の CheckedItem
         """
         # 検索系ストアの場合のみ search_keyword を設定
-        # （Amazon PA-API やスクレイピングでは URL から item_key を生成するため）
+        # （Amazon Creators API やスクレイピングでは URL から item_key を生成するため）
         import price_watch.target
 
         if item.check_method in price_watch.target.SEARCH_CHECK_METHODS:
