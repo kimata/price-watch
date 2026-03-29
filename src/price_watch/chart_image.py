@@ -66,6 +66,9 @@ _TEMPLATE_DIR = pathlib.Path(__file__).parent / "templates"
 # Chart.js 共通ロジックファイル（PriceChart.tsx と共有）
 _CHART_COMMON_JS = pathlib.Path(__file__).parent.parent.parent / "frontend" / "public" / "chart-common.js"
 
+# ベンダー JS ディレクトリ（CDN 不要でローカルから読み込むため）
+_VENDOR_JS_DIR = pathlib.Path(__file__).parent / "vendor" / "js"
+
 
 @dataclass(frozen=True)
 class FontPaths:
@@ -209,6 +212,13 @@ def _render_chart_html(
     else:
         logging.warning("共通 JS ファイルが見つかりません: %s", _CHART_COMMON_JS)
 
+    # ベンダー JS のローカルパスを解決（CDN 不要にする）
+    vendor_js_paths = {
+        "chart_js_path": str(_VENDOR_JS_DIR / "chart.umd.min.js"),
+        "annotation_plugin_path": str(_VENDOR_JS_DIR / "chartjs-plugin-annotation.min.js"),
+        "dayjs_path": str(_VENDOR_JS_DIR / "dayjs.min.js"),
+    }
+
     # テンプレートをレンダリング
     return template.render(
         width=css_width,
@@ -218,6 +228,7 @@ def _render_chart_html(
         font_family=font_family_str,
         chart_common_js=chart_common_js,
         large_labels=large_labels,
+        **vendor_js_paths,
     )
 
 
