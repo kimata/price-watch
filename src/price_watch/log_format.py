@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 EMOJI_NEW = "🚀"  # 初回収集
 EMOJI_PRICE_DOWN = "📉"  # 価格下落
 EMOJI_BACK_IN_STOCK = "✅"  # 在庫復活
-EMOJI_OUT_OF_STOCK = "❌"  # 在庫切れ
+EMOJI_OUT_OF_STOCK = "🈚"  # 在庫切れ
 EMOJI_IN_STOCK = "📦"  # 在庫あり
 EMOJI_CRAWLING = "🔍"  # クロール中
 
