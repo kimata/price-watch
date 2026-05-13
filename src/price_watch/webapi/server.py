@@ -164,10 +164,6 @@ def create_app(
     # NOTE: アクセスログは無効にする
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-    # my_lib.webapp の設定
-    my_lib.webapp.config.URL_PREFIX = URL_PREFIX
-    my_lib.webapp.config.STATIC_DIR_PATH = static_dir_path
-
     app = flask.Flask("price_watch_webui")
 
     # config.yaml の読み込み（必須）
@@ -210,8 +206,17 @@ def create_app(
 
     # フロントエンド静的ファイル（React アプリ）
     if static_dir_path.exists():
-        app.register_blueprint(my_lib.webapp.base.blueprint, url_prefix=URL_PREFIX)
-        app.register_blueprint(my_lib.webapp.base.blueprint_default)
+        webapp_environment = my_lib.webapp.config.WebappEnvironment(
+            url_prefix=URL_PREFIX,
+            static_dir_path=static_dir_path,
+        )
+        app.register_blueprint(
+            my_lib.webapp.base.create_static_blueprint(environment=webapp_environment),
+            url_prefix=URL_PREFIX,
+        )
+        app.register_blueprint(
+            my_lib.webapp.base.create_root_redirect_blueprint(url_prefix=URL_PREFIX),
+        )
     app.register_blueprint(my_lib.webapp.event.blueprint, url_prefix=URL_PREFIX)
     app.register_blueprint(my_lib.webapp.util.blueprint, url_prefix=URL_PREFIX)
 

@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import my_lib.store.amazon.api
-import my_lib.store.amazon.config
+import my_lib.store.amazon.models
 
 import price_watch.models
 import price_watch.store.amazon.api_rate_limiter
@@ -40,7 +40,7 @@ def check_item_list(config: AppConfig, item_list: list[ResolvedItem]) -> list[pr
 
         # ResolvedItem を AmazonItem に変換
         amazon_items = [
-            my_lib.store.amazon.config.AmazonItem(asin=item.asin or "", url=item.url) for item in item_list
+            my_lib.store.amazon.models.AmazonItem(asin=item.asin or "", url=item.url) for item in item_list
         ]
 
         # レートリミッターで API 呼び出し間隔を制御（1 TPS）

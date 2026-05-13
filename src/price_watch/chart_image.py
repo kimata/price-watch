@@ -240,8 +240,6 @@ def _create_headless_driver(
 ) -> WebDriver:
     """軽量なヘッドレス Chrome ドライバーを作成.
 
-    undetected_chromedriver 経由で作成し、chromedriver の管理を委譲する。
-
     Args:
         data_path: Chrome データディレクトリのパス
         css_width: CSS ピクセル幅
@@ -251,34 +249,12 @@ def _create_headless_driver(
     Returns:
         WebDriver インスタンス
     """
-    try:
-        import my_lib.selenium_util
-
-        driver = my_lib.selenium_util.create_driver(
-            profile_name="chart_generator",
-            data_path=data_path,
-            is_headless=True,
-            stealth_mode=False,
-        )
-    except Exception:
-        logging.warning("undetected_chromedriver での作成に失敗、標準ドライバーにフォールバック")
-
-        import selenium.webdriver
-        import selenium.webdriver.chrome.options
-
-        options = selenium.webdriver.chrome.options.Options()
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument(f"--force-device-scale-factor={device_scale_factor}")
-        options.add_argument("--lang=ja-JP")
-
-        profile_path = data_path / "chart_generator"
-        profile_path.mkdir(parents=True, exist_ok=True)
-        options.add_argument(f"--user-data-dir={profile_path}")
-
-        driver = selenium.webdriver.Chrome(options=options)
+    driver = my_lib.selenium_util.create_driver(
+        profile_name="chart_generator",
+        data_path=data_path,
+        is_headless=True,
+        stealth_mode=False,
+    )
 
     # デバイスメトリクスを CDP 経由で設定
     driver.execute_cdp_cmd(
@@ -349,6 +325,7 @@ def generate_chart_image(
             data_path.mkdir(parents=True, exist_ok=True)
             driver = _create_headless_driver(data_path, css_width, css_height, device_pixel_ratio)
             own_driver = True
+        assert driver is not None  # noqa: S101
 
         try:
             # HTML ファイルを開く
