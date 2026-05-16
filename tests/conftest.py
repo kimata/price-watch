@@ -7,7 +7,6 @@
 """
 
 import logging
-import os
 import pathlib
 import unittest.mock
 
@@ -22,7 +21,7 @@ import price_watch.webapi.server
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_undetected_chromedriver_cache(tmp_path_factory, worker_id):
-    """pytest-xdist の並列ワーカーごとに独立した HOME を使う。
+    """pytest-xdist の並列ワーカーごとに undetected_chromedriver のキャッシュを分離。
 
     `undetected_chromedriver.Patcher.auto()` は `~/.local/share/undetected_chromedriver/`
     のバイナリを unlink → 再ダウンロード → unzip → rename する処理を chrome 起動の
@@ -32,22 +31,18 @@ def _isolate_undetected_chromedriver_cache(tmp_path_factory, worker_id):
 
     Patcher 内部の Lock はプロセス内 threading.Lock なのでワーカー間（プロセス間）に
     効かず、外部から filelock で auto() だけ排他化しても auto() 後の実行段階の競合は
-    防げない。そのため、ワーカーごとに HOME を分けてキャッシュを完全分離する。
+    防げない。`undetected_chromedriver.Patcher.data_path`（クラス属性）をワーカー
+    固有の一時ディレクトリに差し替えて、各ワーカーで独立したキャッシュを使う。
+
+    HOME 全体は切り替えない（playwright の `~/.cache/ms-playwright/` 等を巻き込まない）。
     """
     if worker_id == "master":
-        yield
         return
 
-    cache_root = tmp_path_factory.mktemp(f"home_{worker_id}")
-    original_home = os.environ.get("HOME")
-    os.environ["HOME"] = str(cache_root)
-    try:
-        yield
-    finally:
-        if original_home is not None:
-            os.environ["HOME"] = original_home
-        else:
-            os.environ.pop("HOME", None)
+    import undetected_chromedriver
+
+    isolated_path = tmp_path_factory.mktemp(f"uc_cache_{worker_id}")
+    undetected_chromedriver.Patcher.data_path = str(isolated_path)
 
 
 # === 環境モック ===
