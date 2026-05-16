@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-05-09T11:43:17.71441589Z"
+exclude-newer = "2026-05-09T11:50:58.597831061Z"
 exclude-newer-span = "P1W"
 
 [[package]]
@@ -2184,7 +2184,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "filelock" },
     { name = "flaky" },
     { name = "mypy" },
     { name = "playwright" },
@@ -2230,7 +2229,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "filelock", specifier = ">=3.20.3" },
     { name = "flaky", specifier = ">=3.8.1" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "playwright", specifier = ">=1.57.0" },

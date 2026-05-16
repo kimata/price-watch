@@ -7,6 +7,7 @@
 """
 
 import logging
+import os
 import pathlib
 import unittest.mock
 
@@ -19,34 +20,34 @@ import price_watch.managers.history
 import price_watch.webapi.server
 
 
-@pytest.fixture(autouse=True)
-def _serialize_undetected_chromedriver_patcher(tmp_path_factory, worker_id, monkeypatch):
-    """pytest-xdist の並列ワーカー間で `undetected_chromedriver.Patcher.auto()` を排他制御。
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_undetected_chromedriver_cache(tmp_path_factory, worker_id):
+    """pytest-xdist の並列ワーカーごとに独立した HOME を使う。
 
-    Patcher.auto() は `~/.local/share/undetected_chromedriver/` のバイナリを
-    unlink → 再ダウンロード → unzip → patch する処理を毎回行うが、内部の
-    threading.Lock はプロセス内のみで、ワーカー間（プロセス間）では効かない。
-    結果、複数ワーカーが同時に Chrome を起動すると IsADirectoryError や
-    FileNotFoundError で flaky に失敗する。
+    `undetected_chromedriver.Patcher.auto()` は `~/.local/share/undetected_chromedriver/`
+    のバイナリを unlink → 再ダウンロード → unzip → rename する処理を chrome 起動の
+    たびに行う。並列ワーカーが同じパスを取り合うと、auto() 完了直後の chromedriver
+    実行段階で別ワーカーが unlink してしまい、`ValueError: The path is not a valid file`
+    や `IsADirectoryError` で flaky に失敗する。
 
-    対策として、ワーカー共通のロックファイルで `Patcher.auto()` 全体を排他化する。
-    Patcher.auto() を呼ばないテストには影響しない（monkeypatch のオーバーヘッドのみ）。
+    Patcher 内部の Lock はプロセス内 threading.Lock なのでワーカー間（プロセス間）に
+    効かず、外部から filelock で auto() だけ排他化しても auto() 後の実行段階の競合は
+    防げない。そのため、ワーカーごとに HOME を分けてキャッシュを完全分離する。
     """
     if worker_id == "master":
+        yield
         return
 
-    import filelock
-    import undetected_chromedriver
-
-    lock_path = tmp_path_factory.getbasetemp().parent / "undetected_chromedriver_patcher.lock"
-    file_lock = filelock.FileLock(str(lock_path))
-    original_auto = undetected_chromedriver.Patcher.auto
-
-    def _locked_auto(self, *args, **kwargs):
-        with file_lock:
-            return original_auto(self, *args, **kwargs)
-
-    monkeypatch.setattr(undetected_chromedriver.Patcher, "auto", _locked_auto)
+    cache_root = tmp_path_factory.mktemp(f"home_{worker_id}")
+    original_home = os.environ.get("HOME")
+    os.environ["HOME"] = str(cache_root)
+    try:
+        yield
+    finally:
+        if original_home is not None:
+            os.environ["HOME"] = original_home
+        else:
+            os.environ.pop("HOME", None)
 
 
 # === 環境モック ===
