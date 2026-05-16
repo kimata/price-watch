@@ -19,6 +19,22 @@ import price_watch.managers.history
 import price_watch.webapi.server
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """xdist_group マーカーを尊重するため dist 戦略を loadgroup に切り替える。
+
+    `~/.local/share/undetected_chromedriver/` のキャッシュ展開が pytest-xdist の
+    並列ワーカー間で競合し、chromedriver-linux64 を ファイル/ディレクトリ で取り合う
+    事象を回避するため、Chrome を起動するテストクラスを同じワーカーに集約する。
+
+    `addopts` は `../py-project` で共通管理されているため、ここで動的に上書きする。
+    """
+    # NOTE: pytest-xdist 未使用時 (`config.option.dist` が存在しない or "no") は何もしない
+    current_dist = getattr(config.option, "dist", None)
+    if current_dist in (None, "no"):
+        return
+    config.option.dist = "loadgroup"
+
+
 # === 環境モック ===
 @pytest.fixture(scope="session", autouse=True)
 def env_mock():

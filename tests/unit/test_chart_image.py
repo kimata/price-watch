@@ -179,6 +179,7 @@ class TestRenderChartHtml:
 
 
 @pytest.mark.selenium
+@pytest.mark.xdist_group(name="chrome")
 class TestGenerateChartImage:
     """generate_chart_image 関数のテスト（Selenium 必要）."""
 
@@ -223,6 +224,7 @@ class TestGenerateChartImage:
         assert img.size[1] > 0
 
 
+@pytest.mark.xdist_group(name="chrome")
 class TestCacheOperations:
     """キャッシュ操作のテスト."""
 
