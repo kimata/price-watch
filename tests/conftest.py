@@ -19,20 +19,34 @@ import price_watch.managers.history
 import price_watch.webapi.server
 
 
-def pytest_configure(config: pytest.Config) -> None:
-    """xdist_group マーカーを尊重するため dist 戦略を loadgroup に切り替える。
+@pytest.fixture(autouse=True)
+def _serialize_undetected_chromedriver_patcher(tmp_path_factory, worker_id, monkeypatch):
+    """pytest-xdist の並列ワーカー間で `undetected_chromedriver.Patcher.auto()` を排他制御。
 
-    `~/.local/share/undetected_chromedriver/` のキャッシュ展開が pytest-xdist の
-    並列ワーカー間で競合し、chromedriver-linux64 を ファイル/ディレクトリ で取り合う
-    事象を回避するため、Chrome を起動するテストクラスを同じワーカーに集約する。
+    Patcher.auto() は `~/.local/share/undetected_chromedriver/` のバイナリを
+    unlink → 再ダウンロード → unzip → patch する処理を毎回行うが、内部の
+    threading.Lock はプロセス内のみで、ワーカー間（プロセス間）では効かない。
+    結果、複数ワーカーが同時に Chrome を起動すると IsADirectoryError や
+    FileNotFoundError で flaky に失敗する。
 
-    `addopts` は `../py-project` で共通管理されているため、ここで動的に上書きする。
+    対策として、ワーカー共通のロックファイルで `Patcher.auto()` 全体を排他化する。
+    Patcher.auto() を呼ばないテストには影響しない（monkeypatch のオーバーヘッドのみ）。
     """
-    # NOTE: pytest-xdist 未使用時 (`config.option.dist` が存在しない or "no") は何もしない
-    current_dist = getattr(config.option, "dist", None)
-    if current_dist in (None, "no"):
+    if worker_id == "master":
         return
-    config.option.dist = "loadgroup"
+
+    import filelock
+    import undetected_chromedriver
+
+    lock_path = tmp_path_factory.getbasetemp().parent / "undetected_chromedriver_patcher.lock"
+    file_lock = filelock.FileLock(str(lock_path))
+    original_auto = undetected_chromedriver.Patcher.auto
+
+    def _locked_auto(self, *args, **kwargs):
+        with file_lock:
+            return original_auto(self, *args, **kwargs)
+
+    monkeypatch.setattr(undetected_chromedriver.Patcher, "auto", _locked_auto)
 
 
 # === 環境モック ===
