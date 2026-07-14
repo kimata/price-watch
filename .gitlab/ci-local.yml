@@ -1,0 +1,22 @@
+# プロジェクト固有の CI ジョブ
+# （共通骨格は py-project の gitlab-ci-gen で生成される .gitlab-ci.yml 側にあり、
+#   このファイルは include: local で読み込まれる。py-project は本ファイルに触れない）
+
+test-docker:
+    stage: test
+
+    needs:
+        - generate-tag
+        - build-image
+
+    script:
+        - 'echo "Testing: ${CI_REGISTRY_IMAGE}:${TAG}"'
+        - docker pull ${CI_REGISTRY_IMAGE}:${TAG}
+        - mkdir -p data/debug
+        # デバッグモードで実行（各ストア1アイテムのみチェックして終了）
+        - docker run --rm -v $(pwd)/data/debug:/opt/price-watch/data/debug ${CI_REGISTRY_IMAGE}:${TAG} price-watch -D
+
+    artifacts:
+        when: on_failure
+        paths:
+            - data/debug/**
