@@ -1,6 +1,6 @@
 services:
     price-watch:
-        image: ghcr.io/kimata/price-watch:latest@sha256:2d14357ed84fb23ef309a829fcbfd93269e320273513c3ec1a17954451a7da6d
+        image: ghcr.io/kimata/price-watch:latest@sha256:1d331e50c81cc6c3993279bc08a004d92d7f96e9e87a4d0b39e4db524e51bb61
         tty: false
         stdin_open: true
         volumes:
