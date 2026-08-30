@@ -45,8 +45,8 @@ class BrowserManager:
                 my_lib.browser.BrowserProfile(
                     name=PROFILE_NAME,
                     data_dir=self.selenium_data_dir,
-                    # NOTE: bot 検出回避のため headful（Xvfb 上での実行を想定）。
-                    headless=False,
+                    # NOTE: 公開検索ページは bot 検出が無く headless で通るため headless 起動（Xvfb 不要）。
+                    headless=True,
                 ),
             )
         return self._manager

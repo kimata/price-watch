@@ -212,7 +212,7 @@ class TestInternalManagerCreation:
             assert isinstance(profile, my_lib.browser.BrowserProfile)
             assert profile.name == price_watch.managers.browser_manager.PROFILE_NAME
             assert profile.data_dir == tmp_path
-            assert profile.headless is False
+            assert profile.headless is True
 
     def test_reuses_existing_manager(self, tmp_path: pathlib.Path) -> None:
         """既存の内部マネージャーを再利用"""
