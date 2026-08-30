@@ -16,12 +16,14 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
+import my_lib.browser
+
 import price_watch.chart_image
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from selenium.webdriver.remote.webdriver import WebDriver
+    from my_lib.browser import Browser
 
 
 class RequestPriority(Enum):
@@ -88,7 +90,7 @@ class ChartImageWorker:
 
         self._request_queue: queue.PriorityQueue[tuple[int, float, ChartRequest]] = queue.PriorityQueue()
         self._worker_thread: threading.Thread | None = None
-        self._driver: WebDriver | None = None
+        self._browser: Browser | None = None
         self._should_stop = threading.Event()
         self._is_running = False
         self._lock = threading.Lock()
@@ -265,8 +267,8 @@ class ChartImageWorker:
                 self._process_request(request)
 
         finally:
-            # ドライバーを終了
-            self._quit_driver()
+            # ブラウザを終了
+            self._quit_browser()
             logging.info("ChartImageWorker loop ended")
 
     def _process_request(self, request: ChartRequest) -> None:
@@ -280,16 +282,16 @@ class ChartImageWorker:
                 request.result_path = cache_path
                 return
 
-            # ドライバーを確保
-            driver = self._ensure_driver()
-            if driver is None:
-                request.error = RuntimeError("Failed to create WebDriver")
+            # ブラウザを確保
+            browser = self._ensure_browser()
+            if browser is None:
+                request.error = RuntimeError("Failed to create browser")
                 return
 
             # 画像を生成
             img = price_watch.chart_image.generate_chart_image(
                 request.chart_data,
-                driver=driver,
+                browser=browser,
                 data_path=self._data_path,
                 font_family=self._font_family,
             )
@@ -303,8 +305,8 @@ class ChartImageWorker:
             logging.exception("Failed to generate chart image for %s", item_key)
             request.error = e
 
-            # エラー時はドライバーを再作成（セッション無効の可能性）
-            self._quit_driver()
+            # エラー時はブラウザを再作成（セッション無効の可能性）
+            self._quit_browser()
 
         finally:
             # pending から削除
@@ -314,42 +316,42 @@ class ChartImageWorker:
             # 完了を通知
             request.result_event.set()
 
-    def _ensure_driver(self) -> WebDriver | None:
-        """WebDriver を確保（必要に応じて作成）."""
-        if self._driver is not None:
+    def _ensure_browser(self) -> Browser | None:
+        """ブラウザを確保（必要に応じて作成）."""
+        if self._browser is not None:
             # セッションが有効か確認
             try:
-                self._driver.current_url  # noqa: B018
-                return self._driver
+                self._browser.pages()
+                return self._browser
             except Exception:
-                logging.warning("Chart driver session invalid, recreating...")
-                self._quit_driver()
+                logging.warning("Chart browser session invalid, recreating...")
+                self._quit_browser()
 
         try:
             css_width = int(price_watch.chart_image.CHART_WIDTH / price_watch.chart_image.DEVICE_PIXEL_RATIO)
             css_height = int(
                 price_watch.chart_image.CHART_HEIGHT / price_watch.chart_image.DEVICE_PIXEL_RATIO
             )
-            self._driver = price_watch.chart_image._create_headless_driver(
+            self._browser = price_watch.chart_image._create_headless_browser(
                 self._data_path,
                 css_width,
                 css_height,
                 price_watch.chart_image.DEVICE_PIXEL_RATIO,
             )
-            logging.info("Created chart image WebDriver")
-            return self._driver
-        except Exception:
-            logging.exception("Failed to create chart image WebDriver")
+            logging.info("Created chart image browser")
+            return self._browser
+        except my_lib.browser.BrowserError:
+            logging.exception("Failed to create chart image browser")
             return None
 
-    def _quit_driver(self) -> None:
-        """WebDriver を終了."""
-        if self._driver is not None:
+    def _quit_browser(self) -> None:
+        """ブラウザを終了."""
+        if self._browser is not None:
             try:
-                self._driver.quit()
+                self._browser.close()
             except Exception:
-                logging.exception("Error quitting chart driver")
-            self._driver = None
+                logging.exception("Error quitting chart browser")
+            self._browser = None
 
 
 # グローバルワーカーインスタンス

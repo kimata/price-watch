@@ -30,11 +30,11 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import jinja2
-import my_lib.selenium_util
+import my_lib.browser
 from PIL import Image
 
 if TYPE_CHECKING:
-    from selenium.webdriver.remote.webdriver import WebDriver
+    from my_lib.browser import Browser
 
     import price_watch.config
 
@@ -232,13 +232,16 @@ def _render_chart_html(
     )
 
 
-def _create_headless_driver(
+def _create_headless_browser(
     data_path: pathlib.Path,
     css_width: int,
     css_height: int,
     device_scale_factor: float = DEVICE_PIXEL_RATIO,
-) -> WebDriver:
-    """軽量なヘッドレス Chrome ドライバーを作成.
+) -> Browser:
+    """軽量なヘッドレス Chrome ブラウザを作成.
+
+    Chart.js の描画をスクリーンショットするだけで bot 検出はないため headless で起動する。
+    Retina 相当の描画のため device_scale_factor を指定し、ビューポートを CSS ピクセルで設定する。
 
     Args:
         data_path: Chrome データディレクトリのパス
@@ -247,30 +250,18 @@ def _create_headless_driver(
         device_scale_factor: デバイスピクセル比（デフォルト 2.0 で Retina 相当）
 
     Returns:
-        WebDriver インスタンス
+        Browser インスタンス
     """
-    driver = my_lib.selenium_util.create_driver(
-        profile_name="chart_generator",
-        data_path=data_path,
-        is_headless=True,
-        stealth_mode=False,
+    return my_lib.browser.launch(
+        my_lib.browser.BrowserProfile(
+            name="chart_generator",
+            data_dir=data_path,
+            headless=True,
+            device_scale_factor=device_scale_factor,
+            viewport=my_lib.browser.Viewport(width=css_width + 100, height=css_height + 200),
+            stealth=False,
+        ),
     )
-
-    # デバイスメトリクスを CDP 経由で設定
-    driver.execute_cdp_cmd(
-        "Emulation.setDeviceMetricsOverride",
-        {
-            "width": css_width + 100,
-            "height": css_height + 200,
-            "deviceScaleFactor": device_scale_factor,
-            "mobile": False,
-        },
-    )
-
-    # ウィンドウサイズを CSS ピクセルで設定
-    driver.set_window_size(css_width + 100, css_height + 200)
-
-    return driver
 
 
 def generate_chart_image(
@@ -278,14 +269,14 @@ def generate_chart_image(
     font_paths: FontPaths | None = None,  # 互換性のため残す（Chart.js では未使用）
     width: int = CHART_WIDTH,
     height: int = CHART_HEIGHT,
-    driver: WebDriver | None = None,
+    browser: Browser | None = None,
     data_path: pathlib.Path | None = None,
     font_family: str | None = None,
     device_pixel_ratio: float = DEVICE_PIXEL_RATIO,
 ) -> Image.Image:
     """価格チャート画像を生成.
 
-    Selenium + Chart.js でグラフをレンダリングし、スクリーンショットを撮影。
+    ブラウザ + Chart.js でグラフをレンダリングし、スクリーンショットを撮影。
     ブラウザと同じ devicePixelRatio でレンダリングすることで、
     フォントサイズや線の太さが一致する。
 
@@ -294,7 +285,7 @@ def generate_chart_image(
         font_paths: フォントパス設定（互換性のため、実際には使用しない）
         width: 最終出力画像の幅（物理ピクセル）
         height: 最終出力画像の高さ（物理ピクセル）
-        driver: 既存の WebDriver（None の場合は新規作成）
+        browser: 既存の Browser（None の場合は新規作成）
         data_path: Chrome データディレクトリのパス
         font_family: CSS font-family 名（None の場合はシステムフォント）
         device_pixel_ratio: デバイスピクセル比（デフォルト 2.0）
@@ -317,26 +308,24 @@ def generate_chart_image(
         html_path = pathlib.Path(f.name)
 
     try:
-        # WebDriver を作成または使用
-        own_driver = False
-        if driver is None:
+        # Browser を作成または使用
+        own_browser = False
+        if browser is None:
             if data_path is None:
                 data_path = pathlib.Path(tempfile.gettempdir()) / "price_watch_chart"
             data_path.mkdir(parents=True, exist_ok=True)
-            driver = _create_headless_driver(data_path, css_width, css_height, device_pixel_ratio)
-            own_driver = True
-        assert driver is not None  # noqa: S101
+            browser = _create_headless_browser(data_path, css_width, css_height, device_pixel_ratio)
+            own_browser = True
 
         try:
-            # HTML ファイルを開く
-            driver.get(f"file://{html_path}")
+            # HTML ファイルを新しいタブで開く（with を抜けるとタブは閉じる）
+            with browser.tab(f"file://{html_path}") as page:
+                # Chart.js のレンダリング完了を待機
+                _wait_for_chart_render(page)
 
-            # Chart.js のレンダリング完了を待機
-            _wait_for_chart_render(driver)
-
-            # スクリーンショットを撮影
-            # devicePixelRatio 倍の物理ピクセルで撮影される
-            screenshot = driver.get_screenshot_as_png()
+                # スクリーンショットを撮影
+                # devicePixelRatio 倍の物理ピクセルで撮影される
+                screenshot = page.screenshot()
 
             # PIL Image に変換
             import io
@@ -345,32 +334,27 @@ def generate_chart_image(
 
             # チャート領域をクロップ（目標サイズで）
             # devicePixelRatio でレンダリングしているので、縮小は不要
-            cropped_img = _crop_chart(raw_img, width, height)
-
-            return cropped_img
+            return _crop_chart(raw_img, width, height)
 
         finally:
-            if own_driver:
-                driver.quit()
+            if own_browser:
+                browser.close()
 
     finally:
         # 一時ファイルを削除
         html_path.unlink(missing_ok=True)
 
 
-def _wait_for_chart_render(driver: WebDriver, timeout: int = 10) -> None:
+def _wait_for_chart_render(page: my_lib.browser.Page, timeout: int = 10) -> None:
     """Chart.js のレンダリング完了を待機.
 
     Args:
-        driver: WebDriver インスタンス
+        page: ブラウザページ
         timeout: タイムアウト秒数
     """
-    import selenium.webdriver.support.wait
-
-    wait = selenium.webdriver.support.wait.WebDriverWait(driver, timeout)
     try:
-        wait.until(lambda d: d.execute_script("return window.chartRendered === true"))
-    except Exception:
+        page.wait_until("() => window.chartRendered === true", timeout=timeout)
+    except my_lib.browser.WaitTimeoutError:
         logging.warning("Chart render wait timed out, proceeding anyway")
         # タイムアウトしても続行（レンダリングが完了している可能性がある）
         time.sleep(1)
@@ -440,7 +424,7 @@ def get_or_generate_chart_image(
     cache_dir: pathlib.Path,
     ttl_sec: int = CACHE_TTL_SEC,
     font_paths: FontPaths | None = None,
-    driver: WebDriver | None = None,
+    browser: Browser | None = None,
     data_path: pathlib.Path | None = None,
     font_family: str | None = None,
 ) -> pathlib.Path:
@@ -451,7 +435,7 @@ def get_or_generate_chart_image(
         cache_dir: キャッシュディレクトリ
         ttl_sec: キャッシュ有効期間（秒）
         font_paths: フォントパス設定（互換性のため）
-        driver: 既存の WebDriver（None の場合は新規作成）
+        browser: 既存の Browser（None の場合は新規作成）
         data_path: Chrome データディレクトリのパス
         font_family: CSS font-family 名（None の場合はシステムフォント）
 
@@ -464,7 +448,9 @@ def get_or_generate_chart_image(
         return cache_path
 
     # 画像を生成して保存
-    img = generate_chart_image(data, font_paths, driver=driver, data_path=data_path, font_family=font_family)
+    img = generate_chart_image(
+        data, font_paths, browser=browser, data_path=data_path, font_family=font_family
+    )
     save_chart_image(img, cache_path)
 
     return cache_path
@@ -587,7 +573,7 @@ def generate_all_chart_images(
 ) -> int:
     """全アイテムのチャート画像を一括生成.
 
-    - 1つのWebDriverを共有して効率化
+    - 1つのブラウザを共有して効率化
     - キャッシュが有効なアイテムはスキップ
     - should_terminate で中断可能
 
@@ -649,8 +635,8 @@ def generate_all_chart_images(
     css_width = int(CHART_WIDTH / DEVICE_PIXEL_RATIO)
     css_height = int(CHART_HEIGHT / DEVICE_PIXEL_RATIO)
 
-    # WebDriver を作成
-    driver = _create_headless_driver(data_path, css_width, css_height, DEVICE_PIXEL_RATIO)
+    # Browser を作成
+    browser = _create_headless_browser(data_path, css_width, css_height, DEVICE_PIXEL_RATIO)
 
     generated_count = 0
     try:
@@ -690,7 +676,7 @@ def generate_all_chart_images(
                 # 画像を生成
                 img = generate_chart_image(
                     chart_data,
-                    driver=driver,
+                    browser=browser,
                     data_path=data_path,
                     font_family=font_family,
                 )
@@ -707,7 +693,7 @@ def generate_all_chart_images(
                 continue
 
     finally:
-        driver.quit()
+        browser.close()
 
     logging.info("Generated %d chart images", generated_count)
     return generated_count

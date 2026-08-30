@@ -10,12 +10,11 @@ import logging
 from typing import TYPE_CHECKING
 
 import my_lib.store.yodobashi
-import selenium.webdriver.support.wait
 
 import price_watch.models
 
 if TYPE_CHECKING:
-    import selenium.webdriver.remote.webdriver
+    from my_lib.browser import Page
 
     from price_watch.config import AppConfig
     from price_watch.target import ResolvedItem
@@ -23,14 +22,14 @@ if TYPE_CHECKING:
 
 def check(
     config: AppConfig,
-    driver: selenium.webdriver.remote.webdriver.WebDriver,
+    page: Page,
     item: ResolvedItem,
 ) -> price_watch.models.CheckedItem:
     """ヨドバシ商品ページから価格情報を取得.
 
     Args:
         config: アプリケーション設定（現在未使用だが将来の拡張用）
-        driver: WebDriver インスタンス
+        page: ブラウザページ
         item: 監視対象アイテム
 
     Returns:
@@ -39,14 +38,11 @@ def check(
     # 結果を格納する CheckedItem を作成
     result = price_watch.models.CheckedItem.from_resolved_item(item)
 
-    # WebDriverWait を作成（タイムアウト 10 秒）
-    wait = selenium.webdriver.support.wait.WebDriverWait(driver, 10)
-
     logging.info("[ヨドバシ] %s: スクレイピング開始 - %s", item.name, item.url)
 
     try:
         # my_lib.store.yodobashi.scrape を呼び出し
-        product_info = my_lib.store.yodobashi.scrape(driver, wait, item.url)
+        product_info = my_lib.store.yodobashi.scrape(page, item.url)
 
         # 結果を CheckedItem に変換
         if product_info.price is not None:

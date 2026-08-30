@@ -11,7 +11,6 @@ import my_lib.store.flea_market
 import my_lib.store.mercari.search
 import my_lib.store.paypay.search
 import my_lib.store.rakuma.search
-import selenium.webdriver.support.wait
 
 import price_watch.affiliate
 import price_watch.history
@@ -22,7 +21,7 @@ import price_watch.target
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from selenium.webdriver.remote.webdriver import WebDriver
+    from my_lib.browser import Page
 
     from price_watch.config import AppConfig
     from price_watch.target import ResolvedItem
@@ -55,7 +54,7 @@ _STORE_WARMUP_FUNCS: dict[
 
 
 def warmup(
-    driver: WebDriver,
+    page: Page,
     check_method: price_watch.target.CheckMethod,
 ) -> bool:
     """指定されたフリマストアのウォームアップを実行.
@@ -63,7 +62,7 @@ def warmup(
     Google検索経由でフリマサイトにアクセスし、bot検出を回避する。
 
     Args:
-        driver: WebDriver インスタンス
+        page: ブラウザページ
         check_method: チェックメソッド（フリマストア種別）
 
     Returns:
@@ -74,8 +73,7 @@ def warmup(
         logging.warning("ウォームアップ関数が見つかりません: %s", check_method)
         return False
 
-    wait = selenium.webdriver.support.wait.WebDriverWait(driver, 30)
-    return warmup_func(driver, wait)
+    return warmup_func(page)
 
 
 def _parse_cond(cond_str: str | None) -> list[my_lib.store.flea_market.ItemCondition] | None:
@@ -181,21 +179,19 @@ def _get_store_label(item: ResolvedItem) -> str:
 
 def check(
     config: AppConfig,
-    driver: WebDriver,
+    page: Page,
     item: ResolvedItem,
 ) -> price_watch.models.CheckedItem:
     """フリマ検索で最安値商品を取得.
 
     Args:
         config: アプリケーション設定
-        driver: WebDriver インスタンス
+        page: ブラウザページ
         item: 監視対象アイテム
 
     Returns:
         チェック結果（CheckedItem）
     """
-    wait = selenium.webdriver.support.wait.WebDriverWait(driver, 10)
-
     label = _get_store_label(item)
 
     # 結果を格納する CheckedItem を作成
@@ -219,8 +215,7 @@ def check(
     # 20件以上取得する場合は scroll_to_load=True
     scroll_to_load = MAX_SEARCH_RESULTS > 20
     results = search_func(
-        driver,
-        wait,
+        page,
         condition,
         max_items=MAX_SEARCH_RESULTS,
         scroll_to_load=scroll_to_load,

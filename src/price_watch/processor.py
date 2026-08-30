@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import selenium.common.exceptions
+import my_lib.browser
 
 import price_watch.const
 import price_watch.event
@@ -81,8 +81,8 @@ class ItemProcessor:
         Args:
             item_list: 全アイテムリスト（フィルタリング前）
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return
 
         scrape_items = [
@@ -132,15 +132,15 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return False
 
         logging.info(price_watch.log_format.format_crawl_start(item))
         crawl_success = False
 
         try:
-            checked = price_watch.store.scrape.check(self.config, driver, item, self.loop)
+            checked = price_watch.store.scrape.check(self.config, page, item, self.loop)
             crawl_success = checked.is_success()
 
             self._process_data(checked)
@@ -154,10 +154,10 @@ class ItemProcessor:
             else:
                 self._handle_crawl_failure(checked, store_name)
 
-        except selenium.common.exceptions.InvalidSessionIdException:
-            logging.warning("セッションが無効になりました。ドライバーを再作成します")
-            if not self.app.browser_manager.recreate_driver():
-                logging.error("ドライバーの再作成に失敗しました")
+        except my_lib.browser.SessionError:
+            logging.warning("セッションが無効になりました。ブラウザを再起動します")
+            if not self.app.browser_manager.restart():
+                logging.error("ブラウザの再起動に失敗しました")
                 return False
             # 失敗として記録
             checked = price_watch.models.CheckedItem.from_resolved_item(item)
@@ -223,8 +223,8 @@ class ItemProcessor:
         Args:
             item_list: 全アイテムリスト
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return
 
         flea_market_items = [
@@ -258,7 +258,7 @@ class ItemProcessor:
             # ストアごとにウォームアップを実行（最初のアイテム処理前に1回）
             if store_items:
                 check_method = store_items[0].check_method
-                price_watch.store.flea_market.warmup(driver, check_method)
+                price_watch.store.flea_market.warmup(page, check_method)
 
             with price_watch.managers.metrics_manager.StoreContext(
                 self.app.metrics_manager, store_name
@@ -293,14 +293,14 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return False
 
         crawl_success = False
 
         try:
-            checked = price_watch.store.flea_market.check(self.config, driver, item)
+            checked = price_watch.store.flea_market.check(self.config, page, item)
             crawl_success = checked.is_success()
             item_key = price_watch.store.flea_market.generate_item_key(checked)
 
@@ -315,10 +315,10 @@ class ItemProcessor:
             else:
                 self._handle_crawl_failure(checked, store_name, item_key=item_key)
 
-        except selenium.common.exceptions.InvalidSessionIdException:
-            logging.warning("セッションが無効になりました。ドライバーを再作成します")
-            if not self.app.browser_manager.recreate_driver():
-                logging.error("ドライバーの再作成に失敗しました")
+        except my_lib.browser.SessionError:
+            logging.warning("セッションが無効になりました。ブラウザを再起動します")
+            if not self.app.browser_manager.restart():
+                logging.error("ブラウザの再起動に失敗しました")
                 return False
             # 失敗として記録
             checked = price_watch.models.CheckedItem.from_resolved_item(item)
@@ -351,8 +351,8 @@ class ItemProcessor:
         Args:
             failed_items: (アイテム, ストア名) のタプルリスト
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return
 
         retry_success = 0
@@ -549,8 +549,8 @@ class ItemProcessor:
         Args:
             item_list: 全アイテムリスト
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return
 
         yodobashi_items = [
@@ -605,15 +605,15 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
-        driver = self.app.browser_manager.driver
-        if driver is None:
+        page = self.app.browser_manager.page
+        if page is None:
             return False
 
         logging.info(price_watch.log_format.format_crawl_start(item))
         crawl_success = False
 
         try:
-            checked = price_watch.store.yodobashi.check(self.config, driver, item)
+            checked = price_watch.store.yodobashi.check(self.config, page, item)
             crawl_success = checked.is_success()
 
             self._process_data(checked)
@@ -627,10 +627,10 @@ class ItemProcessor:
             else:
                 self._handle_crawl_failure(checked, store_name)
 
-        except selenium.common.exceptions.InvalidSessionIdException:
-            logging.warning("セッションが無効になりました。ドライバーを再作成します")
-            if not self.app.browser_manager.recreate_driver():
-                logging.error("ドライバーの再作成に失敗しました")
+        except my_lib.browser.SessionError:
+            logging.warning("セッションが無効になりました。ブラウザを再起動します")
+            if not self.app.browser_manager.restart():
+                logging.error("ブラウザの再起動に失敗しました")
                 return False
             # 失敗として記録
             checked = price_watch.models.CheckedItem.from_resolved_item(item)

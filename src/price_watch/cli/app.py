@@ -76,7 +76,7 @@ class AppRunner:
             self.app.initialize()
 
             # ブラウザを起動
-            self.app.browser_manager.ensure_driver()
+            self.app.browser_manager.ensure_page()
 
         except Exception:
             logging.exception("Failed to initialize")

@@ -3,7 +3,7 @@
 
 HistoryManager, target.yaml, config.yaml のキャッシュを管理します。
 target.yaml の変更を監視し、変更時にキャッシュを無効化して SSE で通知します。
-ヨドバシ検索用の WebDriver も管理します。
+ヨドバシ検索用のブラウザも管理します。
 """
 
 from __future__ import annotations
@@ -13,8 +13,8 @@ import pathlib
 import threading
 from typing import TYPE_CHECKING
 
+import my_lib.browser
 import my_lib.file_watcher
-import my_lib.selenium_util
 import my_lib.webapp.event
 
 import price_watch.config
@@ -24,7 +24,7 @@ import price_watch.target
 from price_watch.managers import HistoryManager
 
 if TYPE_CHECKING:
-    import selenium.webdriver.remote.webdriver
+    from my_lib.browser import Browser, Page
 
 # HistoryManager のキャッシュ（遅延初期化）
 _history_manager: HistoryManager | None = None
@@ -175,109 +175,51 @@ def get_target_config_cache() -> price_watch.file_cache.FileCache[price_watch.ta
     return _target_config_cache
 
 
-# ヨドバシ検索用 WebDriver 管理
-_yodobashi_driver: selenium.webdriver.remote.webdriver.WebDriver | None = None
-_yodobashi_driver_lock: threading.Lock = threading.Lock()
+# ヨドバシ検索用ブラウザ管理
+_yodobashi_browser: Browser | None = None
+_yodobashi_browser_lock: threading.Lock = threading.Lock()
 
 
-def get_yodobashi_driver() -> selenium.webdriver.remote.webdriver.WebDriver | None:
-    """ヨドバシ検索用の WebDriver を取得（遅延初期化）.
+def get_yodobashi_page() -> Page | None:
+    """ヨドバシ検索用のブラウザページを取得（遅延初期化）.
 
     Returns:
-        WebDriver インスタンス（初期化失敗時は None）
+        Page インスタンス（初期化失敗時は None）
     """
-    global _yodobashi_driver
+    global _yodobashi_browser
 
-    with _yodobashi_driver_lock:
-        if _yodobashi_driver is not None:
-            return _yodobashi_driver
+    with _yodobashi_browser_lock:
+        if _yodobashi_browser is not None:
+            pages = _yodobashi_browser.pages()
+            return pages[0] if pages else _yodobashi_browser.new_page()
 
         config = get_app_config()
         if config is None:
-            logging.error("Cannot create Yodobashi driver: config not available")
+            logging.error("Cannot create Yodobashi browser: config not available")
             return None
 
         try:
-            logging.info("Creating Yodobashi search WebDriver")
-            driver = my_lib.selenium_util.create_driver(
-                "yodobashi_search",
-                config.data.selenium,
-                stealth_mode=True,
+            logging.info("Creating Yodobashi search browser")
+            browser = my_lib.browser.launch(
+                my_lib.browser.BrowserProfile(
+                    name="yodobashi_search",
+                    data_dir=config.data.selenium,
+                ),
             )
-            _yodobashi_driver = driver
-            return driver
-        except Exception:
-            logging.exception("Failed to create Yodobashi search WebDriver")
+            _yodobashi_browser = browser
+            pages = browser.pages()
+            return pages[0] if pages else browser.new_page()
+        except my_lib.browser.BrowserError:
+            logging.exception("Failed to create Yodobashi search browser")
             return None
 
 
-def quit_yodobashi_driver() -> None:
-    """ヨドバシ検索用 WebDriver を終了."""
-    global _yodobashi_driver
+def quit_yodobashi_browser() -> None:
+    """ヨドバシ検索用ブラウザを終了."""
+    global _yodobashi_browser
 
-    with _yodobashi_driver_lock:
-        if _yodobashi_driver is not None:
-            logging.info("Quitting Yodobashi search WebDriver")
-            my_lib.selenium_util.quit_driver_gracefully(_yodobashi_driver)
-            _yodobashi_driver = None
-
-
-# チャート画像生成用 WebDriver 管理
-_chart_driver: selenium.webdriver.remote.webdriver.WebDriver | None = None
-_chart_driver_lock: threading.Lock = threading.Lock()
-
-
-def get_chart_driver() -> selenium.webdriver.remote.webdriver.WebDriver | None:
-    """チャート画像生成用の WebDriver を取得（遅延初期化）.
-
-    オンデマンドでチャート画像を生成する際に使用する。
-    WebAPI リクエスト間でドライバーを再利用して効率化する。
-
-    Returns:
-        WebDriver インスタンス（初期化失敗時は None）
-    """
-    global _chart_driver
-
-    with _chart_driver_lock:
-        if _chart_driver is not None:
-            return _chart_driver
-
-        config = get_app_config()
-        if config is None:
-            logging.error("Cannot create chart driver: config not available")
-            return None
-
-        try:
-            import price_watch.chart_image
-
-            logging.info("Creating chart image WebDriver")
-            # chart_image モジュールの専用ドライバー作成関数を使用
-            css_width = int(price_watch.chart_image.CHART_WIDTH / price_watch.chart_image.DEVICE_PIXEL_RATIO)
-            css_height = int(
-                price_watch.chart_image.CHART_HEIGHT / price_watch.chart_image.DEVICE_PIXEL_RATIO
-            )
-            driver = price_watch.chart_image._create_headless_driver(
-                config.data.selenium,
-                css_width,
-                css_height,
-                price_watch.chart_image.DEVICE_PIXEL_RATIO,
-            )
-            _chart_driver = driver
-            return driver
-        except Exception:
-            logging.exception("Failed to create chart image WebDriver")
-            return None
-
-
-def quit_chart_driver() -> None:
-    """チャート画像生成用 WebDriver を終了."""
-    global _chart_driver
-
-    with _chart_driver_lock:
-        if _chart_driver is not None:
-            logging.info("Quitting chart image WebDriver")
-            try:
-                _chart_driver.quit()
-            except Exception:
-                logging.exception("Error quitting chart driver")
-            _chart_driver = None
+    with _yodobashi_browser_lock:
+        if _yodobashi_browser is not None:
+            logging.info("Quitting Yodobashi search browser")
+            _yodobashi_browser.close()
+            _yodobashi_browser = None

@@ -9,7 +9,6 @@ import threading
 
 import flask
 import my_lib.store.yodobashi
-import selenium.webdriver.support.wait
 from pydantic import BaseModel, Field
 
 import price_watch.webapi.cache
@@ -86,20 +85,16 @@ def search() -> flask.Response | tuple[flask.Response, int]:
         return flask.jsonify(error.model_dump()), 503
 
     try:
-        # WebDriver を取得
-        driver = price_watch.webapi.cache.get_yodobashi_driver()
-        if driver is None:
-            error = ErrorResponse(error="WebDriver の初期化に失敗しました")
+        # ブラウザページを取得
+        page = price_watch.webapi.cache.get_yodobashi_page()
+        if page is None:
+            error = ErrorResponse(error="ブラウザの初期化に失敗しました")
             return flask.jsonify(error.model_dump()), 503
-
-        # WebDriverWait を作成
-        wait = selenium.webdriver.support.wait.WebDriverWait(driver, 10)
 
         # 検索実行
         try:
             results = my_lib.store.yodobashi.search(
-                driver,
-                wait,
+                page,
                 request.keywords,
                 max_items=request.item_count,
             )

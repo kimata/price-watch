@@ -80,7 +80,7 @@ class TestAppRunnerExecute:
             result = runner.execute()
 
         mock_app.initialize.assert_called_once()
-        mock_app.browser_manager.ensure_driver.assert_called_once()
+        mock_app.browser_manager.ensure_page.assert_called_once()
         assert result is True
 
     def test_execute_returns_false_on_init_error(self) -> None:

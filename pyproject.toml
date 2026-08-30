@@ -12,7 +12,8 @@ requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0.3",
     "ruamel.yaml>=0.18.6",
-    "my-lib @ git+https://github.com/kimata/my-py-lib@0726f8b7cccd8f83b76989b2496afea556f62728",
+    "my-lib @ git+https://github.com/kimata/my-py-lib@a97299e646d6292cd64affde34c40106e3038c14",
+    "patchright>=1.62.0",
     "selenium>=4.39.0",
     "undetected-chromedriver>=3.5.5",
     "setuptools>=75.0.0",

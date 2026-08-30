@@ -186,14 +186,14 @@ def _run_check_job(
 
         # チェック方法に応じた処理
         config = app.config_manager.config
-        driver = app.browser_manager.driver
+        page = app.browser_manager.page
 
         if resolved_item.check_method == CheckMethod.SCRAPE:
-            if driver is None:
-                raise RuntimeError("WebDriver が初期化されていません")
+            if page is None:
+                raise RuntimeError("ブラウザが初期化されていません")
             result = scrape.check(
                 config,
-                driver,
+                page,
                 resolved_item,
                 loop=0,
             )
@@ -235,9 +235,9 @@ def _run_check_job(
             CheckMethod.RAKUMA_SEARCH,
             CheckMethod.PAYPAY_SEARCH,
         ):
-            if driver is None:
-                raise RuntimeError("WebDriver が初期化されていません")
-            result = flea_market.check(config, driver, resolved_item)
+            if page is None:
+                raise RuntimeError("ブラウザが初期化されていません")
+            result = flea_market.check(config, page, resolved_item)
 
             job.result = {
                 "price": result.price,

@@ -18,6 +18,109 @@ import pytest
 import price_watch.managers.history
 import price_watch.webapi.server
 
+# === ブラウザ (my_lib.browser) モックヘルパー ===
+#
+# プロダクションコードは Selenium の (driver, wait) タプルから
+# my_lib.browser の Page 抽象へ移行済み。テストでは以下のヘルパーで
+# Page / Element のモックを組み立てる。
+#
+# Page / Element の要素検索（find / find_all / exists）は Locator を受け取る。
+# XPath 文字列は locator.value に入るため、xpath ごとに返り値を出し分けたい
+# 場合は build_page / build_element の find/find_all/exists に
+# 「値の部分文字列 -> 返り値」のマッピングか、値を受け取る関数を渡す。
+
+
+def _locator_dispatch(spec, default):
+    """Locator を受け取る side_effect を生成する。"""
+    if spec is None:
+        return lambda *a, **k: default
+    if callable(spec):
+        return lambda locator, *a, **k: spec(locator.value)
+
+    pairs = list(spec.items()) if isinstance(spec, dict) else list(spec)
+
+    def _side_effect(locator, *a, **k):
+        for substr, result in pairs:
+            if substr in locator.value:
+                return result
+        return default
+
+    return _side_effect
+
+
+def build_element(*, text="", attrs=None, screenshot=b"\x89PNG\r\n", visible=True, find=None, find_all=None):
+    """my_lib.browser.Element のモックを生成する。"""
+    element = unittest.mock.MagicMock(name="element")
+    element.text = text
+
+    attr_map = dict(attrs or {})
+    element.attr = unittest.mock.MagicMock(side_effect=lambda name: attr_map.get(name))
+
+    element.screenshot = unittest.mock.MagicMock(return_value=screenshot)
+    element.click = unittest.mock.MagicMock()
+    element.type = unittest.mock.MagicMock()
+    element.press = unittest.mock.MagicMock()
+    element.is_visible = unittest.mock.MagicMock(return_value=visible)
+    _set_finders(element, find, find_all)
+    return element
+
+
+def _set_finders(mock, find, find_all):
+    """find / find_all をモックに設定する。"""
+    if find is None:
+        mock.find = unittest.mock.MagicMock(return_value=None)
+    else:
+        mock.find = unittest.mock.MagicMock(side_effect=_locator_dispatch(find, None))
+    if find_all is None:
+        mock.find_all = unittest.mock.MagicMock(return_value=[])
+    else:
+        mock.find_all = unittest.mock.MagicMock(side_effect=_locator_dispatch(find_all, []))
+
+
+def build_page(
+    *,
+    url="https://example.com/item",
+    title="",
+    content="<html></html>",
+    find=None,
+    find_all=None,
+    exists=False,
+):
+    """my_lib.browser.Page のモックを生成する。"""
+    page = unittest.mock.MagicMock(name="page")
+    page.url = url
+    page.title = title
+    page.content = content
+
+    _set_finders(page, find, find_all)
+
+    if callable(exists):
+        page.exists = unittest.mock.MagicMock(side_effect=lambda locator, *a, **k: exists(locator.value))
+    else:
+        page.exists = unittest.mock.MagicMock(return_value=exists)
+
+    page.wait_visible = unittest.mock.MagicMock(return_value=build_element())
+    page.wait_clickable = unittest.mock.MagicMock(return_value=build_element())
+    page.wait_absent = unittest.mock.MagicMock(return_value=None)
+    page.wait_text = unittest.mock.MagicMock(return_value=None)
+    page.wait_until = unittest.mock.MagicMock(return_value=None)
+    page.goto = unittest.mock.MagicMock()
+    page.refresh = unittest.mock.MagicMock()
+    page.screenshot = unittest.mock.MagicMock(return_value=b"\x89PNG")
+    return page
+
+
+@pytest.fixture
+def make_element():
+    """Element モック生成関数を返すフィクスチャ。"""
+    return build_element
+
+
+@pytest.fixture
+def make_page():
+    """Page モック生成関数を返すフィクスチャ。"""
+    return build_page
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _isolate_undetected_chromedriver_cache(tmp_path_factory, worker_id):

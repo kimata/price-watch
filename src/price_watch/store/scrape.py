@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 import random
 import re
@@ -12,10 +13,10 @@ import time
 import urllib.parse
 from typing import TYPE_CHECKING
 
-import my_lib.selenium_util
+import my_lib.browser
+import my_lib.browser.helpers
 import PIL.Image
-import selenium.webdriver.common.by
-import selenium.webdriver.support.wait
+from my_lib.browser import Xpath
 
 import price_watch.captcha
 import price_watch.const
@@ -25,13 +26,10 @@ import price_watch.thumbnail
 from price_watch.security.url_guard import validate_public_url
 
 if TYPE_CHECKING:
-    from selenium.webdriver.remote.webdriver import WebDriver
-    from selenium.webdriver.support.wait import WebDriverWait as WebDriverWaitType
+    from my_lib.browser import Element, Page
 
     from price_watch.config import AppConfig
     from price_watch.target import ResolvedItem
-
-TIMEOUT_SEC = 4
 
 
 def _parse_xpath_attr(xpath: str) -> tuple[str, str]:
@@ -54,14 +52,11 @@ def _resolve_template(template: str, item: ResolvedItem) -> str:
 
 def _process_action(
     config: AppConfig,
-    driver: WebDriver,
-    wait: selenium.webdriver.support.wait.WebDriverWait,
+    page: Page,
     item: ResolvedItem,
     name: str = "action",
 ) -> None:
     """アクションを処理."""
-    By = selenium.webdriver.common.by.By
-
     logging.info("process action: %s", item.name)
 
     for action in item.actions:
@@ -73,52 +68,58 @@ def _process_action(
                 if action.xpath is None:
                     continue
                 xpath = _resolve_template(action.xpath, item)
-                if not my_lib.selenium_util.xpath_exists(driver, xpath):
+                element = page.find(Xpath(xpath))
+                if element is None:
                     logging.debug("Element not found. Interrupted.")
                     return
-                driver.find_element(By.XPATH, xpath).send_keys(_resolve_template(action.value or "", item))
+                element.type(_resolve_template(action.value or "", item))
 
             case "click":
                 if action.xpath is None:
                     continue
                 xpath = _resolve_template(action.xpath, item)
-                if not my_lib.selenium_util.xpath_exists(driver, xpath):
+                element = page.find(Xpath(xpath))
+                if element is None:
                     logging.debug("Element not found. Interrupted.")
                     return
-                driver.find_element(By.XPATH, xpath).click()
+                element.click()
 
             case "recaptcha":
-                price_watch.captcha.resolve_mp3(driver, wait)
+                price_watch.captcha.resolve_mp3(page)
 
             case "captcha":
                 input_xpath = '//input[@id="captchacharacters"]'
-                if not my_lib.selenium_util.xpath_exists(driver, input_xpath):
+                input_elem = page.find(Xpath(input_xpath))
+                if input_elem is None:
                     logging.debug("Element not found.")
                     continue
-                domain = urllib.parse.urlparse(driver.current_url).netloc
+                domain = urllib.parse.urlparse(page.url).netloc
 
                 logging.warning("Resolve captcha is needed at %s.", domain)
 
-                my_lib.selenium_util.dump_page(
-                    driver, int(random.random() * 100), price_watch.const.DUMP_PATH
+                my_lib.browser.helpers.dump_page(
+                    page, int(random.random() * 100), price_watch.const.DUMP_PATH
                 )
                 code = input(f"{domain} captcha: ")
 
-                driver.find_element(By.XPATH, input_xpath).send_keys(code)
-                driver.find_element(By.XPATH, '//button[@type="submit"]').click()
+                input_elem.type(code)
+                submit = page.find(Xpath('//button[@type="submit"]'))
+                if submit is not None:
+                    submit.click()
 
             case "sixdigit":
-                digit_code = input(f"{urllib.parse.urlparse(driver.current_url).netloc} app code: ")
+                digit_code = input(f"{urllib.parse.urlparse(page.url).netloc} app code: ")
                 for i, code in enumerate(list(digit_code)):
-                    driver.find_element(By.XPATH, f'//input[@data-id="{i}"]').send_keys(code)
+                    digit_elem = page.find(Xpath(f'//input[@data-id="{i}"]'))
+                    if digit_elem is not None:
+                        digit_elem.type(code)
 
         time.sleep(4)
 
 
 def _process_preload(
     config: AppConfig,
-    driver: WebDriver,
-    wait: selenium.webdriver.support.wait.WebDriverWait,
+    page: Page,
     item: ResolvedItem,
     loop: int,
 ) -> None:
@@ -133,16 +134,26 @@ def _process_preload(
         return
 
     validate_public_url(item.preload.url)
-    driver.get(item.preload.url)
+    page.goto(item.preload.url)
     time.sleep(2)
 
     # プリロード用のアクションがあれば実行
     # NOTE: 現状 preload にはアクションがないのでスキップ
 
 
+def _select_visible_element(elements: list[Element]) -> Element | None:
+    """表示されている要素を優先して 1 つ選択."""
+    if not elements:
+        return None
+    for element in elements:
+        if element.is_visible():
+            return element
+    return elements[0]
+
+
 def _check_impl(
     config: AppConfig,
-    driver: WebDriver,
+    page: Page,
     item: ResolvedItem,
     loop: int,
 ) -> price_watch.models.CheckedItem:
@@ -156,20 +167,16 @@ def _check_impl(
     | True        | True        | False   | None      |
     | True        | True        | True    | 有効な価格 |
     """
-    By = selenium.webdriver.common.by.By
-    WebDriverWait = selenium.webdriver.support.wait.WebDriverWait
-
-    wait: WebDriverWaitType = WebDriverWait(driver, TIMEOUT_SEC)
-    _process_preload(config, driver, wait, item, loop)
+    _process_preload(config, page, item, loop)
 
     logging.info("fetch: %s", item.url)
 
     validate_public_url(item.url)
-    driver.get(item.url)
+    page.goto(item.url)
     time.sleep(2)
 
     if item.actions:
-        _process_action(config, driver, wait, item)
+        _process_action(config, page, item)
 
     logging.info("parse: %s", item.name)
 
@@ -187,11 +194,11 @@ def _check_impl(
         result.crawl_status = price_watch.models.CrawlStatus.FAILURE
         return result
 
-    price_xpath_exists = my_lib.selenium_util.xpath_exists(driver, item.price_xpath)
+    price_xpath_exists = page.exists(Xpath(item.price_xpath), visible=False)
 
     if not price_xpath_exists:
         # 価格要素が見つからない場合でも、unavailable_xpath をチェック
-        if item.unavailable_xpath is not None and driver.find_elements(By.XPATH, item.unavailable_xpath):
+        if item.unavailable_xpath is not None and page.find_all(Xpath(item.unavailable_xpath)):
             # 在庫なし状態（販売終了など）として SUCCESS 扱い
             result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
             result.crawl_status = price_watch.models.CrawlStatus.SUCCESS
@@ -199,14 +206,14 @@ def _check_impl(
         else:
             # unavailable_xpath が未定義またはマッチしない場合は FAILURE
             logging.warning("%s: price element not found (crawl failure).", item.name)
-            my_lib.selenium_util.dump_page(driver, int(random.random() * 100), price_watch.const.DUMP_PATH)
+            my_lib.browser.helpers.dump_page(page, int(random.random() * 100), price_watch.const.DUMP_PATH)
             result.crawl_status = price_watch.models.CrawlStatus.FAILURE
     else:
         # 価格要素が見つかった → 在庫状態を確認
         if item.unavailable_xpath is not None:
             # unavailable_xpath が定義されている場合、在庫状態を判定可能
             stock_found = True
-            if driver.find_elements(By.XPATH, item.unavailable_xpath):
+            if page.find_all(Xpath(item.unavailable_xpath)):
                 result.stock = price_watch.models.StockStatus.OUT_OF_STOCK
             else:
                 result.stock = price_watch.models.StockStatus.IN_STOCK
@@ -216,11 +223,8 @@ def _check_impl(
             result.stock = price_watch.models.StockStatus.IN_STOCK
 
         # 価格を取得（複数要素がマッチする場合、表示されているものを優先）
-        price_elements = driver.find_elements(By.XPATH, item.price_xpath)
-        price_element = next(
-            (e for e in price_elements if e.is_displayed()),
-            price_elements[0] if price_elements else None,
-        )
+        price_elements = list(page.find_all(Xpath(item.price_xpath)))
+        price_element = _select_visible_element(price_elements)
         price_text = price_element.text if price_element else ""
         try:
             m = re.match(r".*?(\d{1,3}(?:,\d{3})*)", price_text)
@@ -249,10 +253,11 @@ def _check_impl(
     thumb_url: str | None = None
     if item.thumb_img_xpath is not None:
         elem_xpath, attr_name = _parse_xpath_attr(item.thumb_img_xpath)
-        if my_lib.selenium_util.xpath_exists(driver, elem_xpath):
+        thumb_elem = page.find(Xpath(elem_xpath))
+        if thumb_elem is not None:
             thumb_url = urllib.parse.urljoin(
-                driver.current_url,
-                driver.find_element(By.XPATH, elem_xpath).get_attribute(attr_name),
+                page.url,
+                thumb_elem.attr(attr_name),
             )
 
     # サムネイルをローカルに保存
@@ -265,7 +270,7 @@ def _check_impl(
 
 def check(
     config: AppConfig,
-    driver: WebDriver,
+    page: Page,
     item: ResolvedItem,
     loop: int,
 ) -> price_watch.models.CheckedItem:
@@ -276,23 +281,40 @@ def check(
 
     Args:
         config: アプリケーション設定
-        driver: WebDriver インスタンス
+        page: ブラウザページ
         item: 監視対象アイテム
         loop: ループカウンタ
 
     Returns:
         チェック結果
     """
-    # エラー時の通知用に CheckedItem を作成
-    error_item = price_watch.models.CheckedItem.from_resolved_item(item)
+    logging.info("Check %s", item.name)
 
-    def on_error(
-        exc: Exception,
-        screenshot: PIL.Image.Image | None,
-        page_source: str | None,
-    ) -> None:
-        """エラー発生時のコールバック."""
-        logging.error("URL: %s", driver.current_url)
+    try:
+        return _check_impl(config, page, item, loop)
+    except Exception as exc:
+        logging.exception("Failed to check price: %s", item.name)
+
+        # エラー時の通知用に CheckedItem を作成
+        error_item = price_watch.models.CheckedItem.from_resolved_item(item)
+
+        # スクリーンショット・ページソースを取得
+        screenshot: PIL.Image.Image | None = None
+        page_source: str | None = None
+        try:
+            page_source = page.content
+        except Exception:
+            logging.debug("Failed to capture page source for error handling")
+        try:
+            screenshot = PIL.Image.open(io.BytesIO(page.screenshot()))
+        except Exception:
+            logging.debug("Failed to capture screenshot for error handling")
+
+        try:
+            logging.error("URL: %s", page.url)
+        except Exception:
+            logging.debug("Failed to get current URL for error handling")
+
         price_watch.notify.error_with_page(
             config.slack,
             error_item,
@@ -300,16 +322,4 @@ def check(
             screenshot,
             page_source,
         )
-
-    logging.info("Check %s", item.name)
-
-    with my_lib.selenium_util.error_handler(
-        driver,
-        message=f"Failed to check price: {item.name}",
-        on_error=on_error,
-        reraise=True,
-    ):
-        return _check_impl(config, driver, item, loop)
-
-    # error_handler が reraise=True なので例外発生時はここに到達しない
-    raise AssertionError("Unreachable: error_handler should have reraised exception")
+        raise
