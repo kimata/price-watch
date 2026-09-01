@@ -8,7 +8,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-08-23T11:43:57.069892115Z"
+exclude-newer = "2026-08-25T09:57:39.645845167Z"
 exclude-newer-span = "P1W"
 
 [[package]]
@@ -1826,7 +1826,7 @@ wheels = [
 [[package]]
 name = "my-lib"
 version = "0.2.0"
-source = { git = "https://github.com/kimata/my-py-lib?rev=a97299e646d6292cd64affde34c40106e3038c14#a97299e646d6292cd64affde34c40106e3038c14" }
+source = { git = "https://github.com/kimata/my-py-lib?rev=f2ad097cebf4a7f36f5b51506f1fedbaac341b96#f2ad097cebf4a7f36f5b51506f1fedbaac341b96" }
 dependencies = [
     { name = "coloredlogs" },
     { name = "dacite" },
@@ -2233,7 +2233,7 @@ requires-dist = [
     { name = "flask-cors", specifier = ">=6.0.0" },
     { name = "flask-pydantic", specifier = ">=0.12.0" },
     { name = "matplotlib", specifier = ">=3.8.0" },
-    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=a97299e646d6292cd64affde34c40106e3038c14" },
+    { name = "my-lib", git = "https://github.com/kimata/my-py-lib?rev=f2ad097cebf4a7f36f5b51506f1fedbaac341b96" },
     { name = "patchright", specifier = ">=1.62.0" },
     { name = "pillow", specifier = ">=12.1.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
