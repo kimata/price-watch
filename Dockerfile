@@ -26,14 +26,14 @@ ENV TZ=Asia/Tokyo \
 RUN locale-gen en_US.UTF-8
 RUN locale-gen ja_JP.UTF-8
 
-# NOTE: 新しい Chrome の不具合回避のためバージョンを固定する
-# （固定バージョンは py-project の config.yaml で管理）
-RUN curl -O https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_142.0.7444.175-1_amd64.deb
+# NOTE: Chromeは頻繁に更新されるため、キャッシュバスターを使用して最新版を取得する
+ARG CHROME_CACHE_BUSTER
+RUN curl -O https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
 
 RUN --mount=type=cache,target=/var/lib/apt,sharing=locked \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install --no-install-recommends --assume-yes \
-    ./google-chrome-stable_142.0.7444.175-1_amd64.deb
+    ./google-chrome-stable_current_amd64.deb
 
 COPY font /usr/share/fonts/
 RUN fc-cache --force --verbose
