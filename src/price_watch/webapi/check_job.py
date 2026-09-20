@@ -186,17 +186,15 @@ def _run_check_job(
 
         # チェック方法に応じた処理
         config = app.config_manager.config
-        page = app.browser_manager.page
 
         if resolved_item.check_method == CheckMethod.SCRAPE:
-            if page is None:
-                raise RuntimeError("ブラウザが初期化されていません")
-            result = scrape.check(
-                config,
-                page,
-                resolved_item,
-                loop=0,
-            )
+            with app.browser_manager.page() as page:
+                result = scrape.check(
+                    config,
+                    page,
+                    resolved_item,
+                    loop=0,
+                )
 
             job.message_queue.put(
                 JobMessage(type="log", data={"message": f"チェック結果: crawl_status={result.crawl_status}"})
@@ -235,9 +233,8 @@ def _run_check_job(
             CheckMethod.RAKUMA_SEARCH,
             CheckMethod.PAYPAY_SEARCH,
         ):
-            if page is None:
-                raise RuntimeError("ブラウザが初期化されていません")
-            result = flea_market.check(config, page, resolved_item)
+            with app.browser_manager.page() as page:
+                result = flea_market.check(config, page, resolved_item)
 
             job.result = {
                 "price": result.price,

@@ -8,6 +8,7 @@ target.yaml の変更を監視し、変更時にキャッシュを無効化し�
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import pathlib
 import threading
@@ -24,6 +25,8 @@ import price_watch.target
 from price_watch.managers import HistoryManager
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from my_lib.browser import Browser, Page
 
 # HistoryManager のキャッシュ（遅延初期化）
@@ -180,18 +183,17 @@ _yodobashi_browser: Browser | None = None
 _yodobashi_browser_lock: threading.Lock = threading.Lock()
 
 
-def get_yodobashi_page() -> Page | None:
-    """ヨドバシ検索用のブラウザページを取得（遅延初期化）.
+def _get_yodobashi_browser() -> my_lib.browser.Browser | None:
+    """ヨドバシ検索用のブラウザを取得（遅延初期化）.
 
     Returns:
-        Page インスタンス（初期化失敗時は None）
+        Browser インスタンス（初期化失敗時は None）
     """
     global _yodobashi_browser
 
     with _yodobashi_browser_lock:
         if _yodobashi_browser is not None:
-            pages = _yodobashi_browser.pages()
-            return pages[0] if pages else _yodobashi_browser.new_page()
+            return _yodobashi_browser
 
         config = get_app_config()
         if config is None:
@@ -200,18 +202,31 @@ def get_yodobashi_page() -> Page | None:
 
         try:
             logging.info("Creating Yodobashi search browser")
-            browser = my_lib.browser.launch(
+            _yodobashi_browser = my_lib.browser.launch(
                 my_lib.browser.BrowserProfile(
                     name="yodobashi_search",
                     data_dir=config.data.selenium,
                 ),
             )
-            _yodobashi_browser = browser
-            pages = browser.pages()
-            return pages[0] if pages else browser.new_page()
         except my_lib.browser.BrowserError:
             logging.exception("Failed to create Yodobashi search browser")
             return None
+        return _yodobashi_browser
+
+
+@contextlib.contextmanager
+def yodobashi_page() -> Iterator[Page | None]:
+    """ヨドバシ検索用のタブを開いて返し、with を抜けると閉じる.
+
+    Yields:
+        Page インスタンス（ブラウザの初期化失敗時は None）
+    """
+    browser = _get_yodobashi_browser()
+    if browser is None:
+        yield None
+        return
+    with browser.page() as page:
+        yield page
 
 
 def quit_yodobashi_browser() -> None:

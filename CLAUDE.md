@@ -234,12 +234,12 @@ processor.process_all(item_list)
 
 #### Manager クラス
 
-| Manager        | 責務                                                       |
-| -------------- | ---------------------------------------------------------- |
-| ConfigManager  | 設定・ターゲットファイルの読み込み、ホットリロード         |
-| BrowserManager | WebDriver のライフサイクル管理（遅延初期化、再作成、終了） |
-| HistoryManager | 価格履歴 DB の操作（DI 対応ラッパー）                      |
-| MetricsManager | 巡回セッションのメトリクス記録                             |
+| Manager        | 責務                                                                                                                         |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| ConfigManager  | 設定・ターゲットファイルの読み込み、ホットリロード                                                                           |
+| BrowserManager | ブラウザのライフサイクル管理（遅延初期化、再作成、終了）。Page は `page()` スコープ内でのみ存在し、with 終了でタブごと閉じる |
+| HistoryManager | 価格履歴 DB の操作（DI 対応ラッパー）                                                                                        |
+| MetricsManager | 巡回セッションのメトリクス記録                                                                                               |
 
 #### 実行フロー
 
@@ -248,7 +248,7 @@ price-watch (cli/app.py)
 ├── PriceWatchApp.create() → アプリケーションコンテキスト作成
 │   ├── ConfigManager → 設定読み込み
 │   ├── HistoryManager → 履歴 DB 管理
-│   ├── BrowserManager → WebDriver 管理
+│   ├── BrowserManager → ブラウザ管理（タブは page() スコープ単位）
 │   └── MetricsManager → メトリクス管理
 ├── app.initialize() → 各 Manager を初期化
 ├── app.setup_signal_handlers() → シグナルハンドラ設定

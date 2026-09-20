@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import my_lib.browser
 
+import price_watch.exceptions
 import price_watch.models
 import price_watch.processor
 from price_watch.target import CheckMethod, ResolvedItem
@@ -74,9 +75,12 @@ class TestProcessScrapeItems:
     """process_scrape_items メソッドのテスト"""
 
     def test_returns_early_if_no_driver(self) -> None:
-        """driver がない場合は早期リターン"""
+        """ブラウザを起動できない場合は早期リターン"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = None
+        mock_app.browser_manager.ensure_browser.side_effect = price_watch.exceptions.BrowserError(
+            "no browser"
+        )
+        mock_app.browser_manager.page.side_effect = price_watch.exceptions.BrowserError("no browser")
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         processor.process_scrape_items([])
@@ -85,7 +89,7 @@ class TestProcessScrapeItems:
     def test_filters_scrape_items(self) -> None:
         """スクレイピング対象をフィルタリング"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.should_terminate = False
         mock_app.debug_mode = False
         processor = price_watch.processor.ItemProcessor(app=mock_app)
@@ -106,7 +110,7 @@ class TestProcessScrapeItems:
     def test_returns_on_terminate(self) -> None:
         """終了フラグで早期リターン"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.should_terminate = True
         mock_app.debug_mode = False
         processor = price_watch.processor.ItemProcessor(app=mock_app)
@@ -119,7 +123,7 @@ class TestProcessScrapeItems:
     def test_debug_mode_selects_one_per_store(self) -> None:
         """デバッグモードではストアごとに1アイテム"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.should_terminate = False
         mock_app.debug_mode = True
         processor = price_watch.processor.ItemProcessor(app=mock_app)
@@ -151,9 +155,12 @@ class TestProcessScrapeItem:
     """_process_scrape_item メソッドのテスト"""
 
     def test_returns_false_if_no_driver(self) -> None:
-        """driver がない場合は False"""
+        """ブラウザを起動できない場合は False"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = None
+        mock_app.browser_manager.ensure_browser.side_effect = price_watch.exceptions.BrowserError(
+            "no browser"
+        )
+        mock_app.browser_manager.page.side_effect = price_watch.exceptions.BrowserError("no browser")
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         item = _create_resolved_item()
@@ -164,7 +171,7 @@ class TestProcessScrapeItem:
     def test_successful_scrape(self) -> None:
         """成功時の処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
         mock_app.config = mock_config
@@ -186,7 +193,7 @@ class TestProcessScrapeItem:
     def test_handles_invalid_session_exception(self) -> None:
         """InvalidSessionIdException を処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.browser_manager.restart.return_value = True
         mock_app.debug_mode = False
         mock_config = MagicMock()
@@ -210,7 +217,7 @@ class TestProcessScrapeItem:
     def test_handles_exception(self) -> None:
         """一般的な例外を処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
         mock_app.config = mock_config
@@ -332,9 +339,12 @@ class TestProcessFleaMarketItems:
     """process_flea_market_items メソッドのテスト"""
 
     def test_returns_early_if_no_driver(self) -> None:
-        """driver がない場合は早期リターン"""
+        """ブラウザを起動できない場合は早期リターン"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = None
+        mock_app.browser_manager.ensure_browser.side_effect = price_watch.exceptions.BrowserError(
+            "no browser"
+        )
+        mock_app.browser_manager.page.side_effect = price_watch.exceptions.BrowserError("no browser")
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         processor.process_flea_market_items([])
@@ -343,7 +353,7 @@ class TestProcessFleaMarketItems:
     def test_returns_early_if_no_items(self) -> None:
         """アイテムがない場合は早期リターン"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         processor.process_flea_market_items([])
@@ -354,9 +364,12 @@ class TestProcessFleaMarketItem:
     """_process_flea_market_item メソッドのテスト"""
 
     def test_returns_false_if_no_driver(self) -> None:
-        """driver がない場合は False"""
+        """ブラウザを起動できない場合は False"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = None
+        mock_app.browser_manager.ensure_browser.side_effect = price_watch.exceptions.BrowserError(
+            "no browser"
+        )
+        mock_app.browser_manager.page.side_effect = price_watch.exceptions.BrowserError("no browser")
         processor = price_watch.processor.ItemProcessor(app=mock_app)
 
         item = _create_resolved_item(check_method=CheckMethod.MERCARI_SEARCH)
@@ -367,7 +380,7 @@ class TestProcessFleaMarketItem:
     def test_successful_check(self) -> None:
         """成功時の処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
         mock_app.config = mock_config
@@ -392,7 +405,7 @@ class TestProcessFleaMarketItem:
     def test_handles_invalid_session_exception(self) -> None:
         """InvalidSessionIdException を処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.browser_manager.restart.return_value = True
         mock_app.debug_mode = False
         mock_config = MagicMock()
@@ -877,7 +890,7 @@ class TestExceptionHandling:
     def test_scrape_webdriver_exception(self) -> None:
         """WebDriverException を処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
         mock_config.check.drop = None
@@ -899,7 +912,7 @@ class TestExceptionHandling:
     def test_flea_market_general_exception(self) -> None:
         """メルカリの一般的な例外を処理"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.debug_mode = False
         mock_config = MagicMock()
         mock_config.check.drop = None
@@ -946,7 +959,7 @@ class TestExceptionHandling:
     def test_driver_recreate_failure(self) -> None:
         """ドライバー再作成失敗"""
         mock_app = MagicMock()
-        mock_app.browser_manager.page = MagicMock()
+        mock_app.browser_manager.page.return_value.__enter__.return_value = MagicMock()
         mock_app.browser_manager.restart.return_value = False  # 再作成失敗
         mock_app.debug_mode = False
         mock_config = MagicMock()

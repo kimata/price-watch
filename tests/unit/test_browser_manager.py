@@ -22,16 +22,6 @@ import price_watch.managers.browser_manager
 class TestBrowserManagerProperties:
     """BrowserManager のプロパティテスト"""
 
-    def test_page_returns_none_on_browser_error(self, tmp_path: pathlib.Path) -> None:
-        """ブラウザ起動に失敗した場合 page は None"""
-        manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
-
-        mock_inner_manager = MagicMock()
-        mock_inner_manager.get_page.side_effect = my_lib.browser.BrowserError("Failed")
-        manager._manager = mock_inner_manager
-
-        assert manager.page is None
-
     def test_is_active_returns_false_initially(self, tmp_path: pathlib.Path) -> None:
         """初期状態では is_active は False"""
         manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
@@ -48,61 +38,75 @@ class TestBrowserManagerProperties:
         assert manager.is_active is True
 
 
-class TestPageProperty:
-    """page プロパティのテスト"""
+class TestPageScope:
+    """page() コンテキストマネージャのテスト"""
 
-    def test_page_returns_page_when_exists(self, tmp_path: pathlib.Path) -> None:
-        """ページが取得できる場合は返す"""
+    def test_yields_scoped_page_and_closes_on_exit(self, tmp_path: pathlib.Path) -> None:
+        """内部マネージャーの page() スコープを開き、with 終了で閉じる"""
         manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
         mock_page = MagicMock()
 
         mock_inner_manager = MagicMock()
-        mock_inner_manager.get_page.return_value = mock_page
+        mock_scope = mock_inner_manager.page.return_value
+        mock_scope.__enter__.return_value = mock_page
         manager._manager = mock_inner_manager
 
-        assert manager.page is mock_page
+        with manager.page() as page:
+            assert page is mock_page
+            mock_scope.__exit__.assert_not_called()
 
+        mock_scope.__exit__.assert_called_once()
 
-class TestEnsurePage:
-    """ensure_page メソッドのテスト"""
-
-    def test_creates_page_if_none(self, tmp_path: pathlib.Path) -> None:
-        """内部マネージャーが未作成の場合は作成してページを返す"""
+    def test_closes_scope_on_exception(self, tmp_path: pathlib.Path) -> None:
+        """例外発生時もスコープを閉じる"""
         manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
-        mock_page = MagicMock()
+
+        mock_inner_manager = MagicMock()
+        mock_scope = mock_inner_manager.page.return_value
+        manager._manager = mock_inner_manager
+
+        with pytest.raises(ValueError, match="boom"), manager.page():
+            raise ValueError("boom")
+
+        mock_scope.__exit__.assert_called_once()
+
+    def test_raises_browser_error_on_launch_failure(self, tmp_path: pathlib.Path) -> None:
+        """ブラウザ起動失敗時は price_watch の BrowserError を raise"""
+        manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
+
+        mock_inner_manager = MagicMock()
+        mock_inner_manager.page.return_value.__enter__.side_effect = my_lib.browser.BrowserError("Failed")
+        manager._manager = mock_inner_manager
+
+        with pytest.raises(price_watch.exceptions.BrowserError), manager.page():
+            pass
+
+
+class TestEnsureBrowser:
+    """ensure_browser メソッドのテスト"""
+
+    def test_creates_manager_and_launches(self, tmp_path: pathlib.Path) -> None:
+        """内部マネージャーが未作成の場合は作成してブラウザを起動する"""
+        manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
 
         with patch("my_lib.browser.BrowserManager") as mock_manager_class:
             mock_inner_manager = MagicMock()
-            mock_inner_manager.get_page.return_value = mock_page
             mock_manager_class.return_value = mock_inner_manager
 
-            result = manager.ensure_page()
+            manager.ensure_browser()
 
-        assert result is mock_page
-
-    def test_returns_existing_page(self, tmp_path: pathlib.Path) -> None:
-        """既存の内部マネージャーからページを返す"""
-        manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
-        existing_page = MagicMock()
-
-        mock_inner_manager = MagicMock()
-        mock_inner_manager.get_page.return_value = existing_page
-        manager._manager = mock_inner_manager
-
-        result = manager.ensure_page()
-
-        assert result is existing_page
+        mock_inner_manager.get_browser.assert_called_once()
 
     def test_raises_browser_error_on_failure(self, tmp_path: pathlib.Path) -> None:
-        """作成失敗時は BrowserError を raise"""
+        """起動失敗時は BrowserError を raise"""
         manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
 
         mock_inner_manager = MagicMock()
-        mock_inner_manager.get_page.side_effect = my_lib.browser.BrowserError("Failed")
+        mock_inner_manager.get_browser.side_effect = my_lib.browser.BrowserError("Failed")
         manager._manager = mock_inner_manager
 
         with pytest.raises(price_watch.exceptions.BrowserError):
-            manager.ensure_page()
+            manager.ensure_browser()
 
 
 class TestRestart:
@@ -201,11 +205,10 @@ class TestInternalManagerCreation:
 
         with patch("my_lib.browser.BrowserManager") as mock_manager_class:
             mock_inner = MagicMock()
-            mock_inner.get_page.return_value = MagicMock()
             mock_manager_class.return_value = mock_inner
 
-            # page プロパティにアクセスして内部マネージャーを作成
-            _ = manager.page
+            # ensure_browser で内部マネージャーを作成
+            manager.ensure_browser()
 
             mock_manager_class.assert_called_once()
             profile = mock_manager_class.call_args[0][0]
@@ -219,13 +222,12 @@ class TestInternalManagerCreation:
         manager = price_watch.managers.browser_manager.BrowserManager(selenium_data_dir=tmp_path)
 
         mock_inner_manager = MagicMock()
-        mock_inner_manager.get_page.return_value = MagicMock()
         manager._manager = mock_inner_manager
 
         with patch("my_lib.browser.BrowserManager") as mock_manager_class:
-            # page プロパティに2回アクセス
-            _ = manager.page
-            _ = manager.page
+            # 2 回起動を要求
+            manager.ensure_browser()
+            manager.ensure_browser()
 
             # 新しいマネージャーは作成されない
             mock_manager_class.assert_not_called()

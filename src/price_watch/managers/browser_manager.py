@@ -3,12 +3,18 @@
 
 ブラウザのライフサイクルを管理します。
 my_lib.browser.BrowserManager をラップして price-watch 固有のインターフェースを提供します。
+
+Page は `page()` スコープ内でのみ存在し、with を抜けるとタブごと閉じられます。
+タブに紐づくリソース（CDP セッション・iframe・Route）はタブ単位でしか解放されないため、
+スコープの単位は「1 アイテムのチェック」とし、巡回全体を 1 つのスコープで包まないこと。
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import pathlib
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -52,19 +58,6 @@ class BrowserManager:
         return self._manager
 
     @property
-    def page(self) -> Page | None:
-        """ブラウザページを取得.
-
-        Returns:
-            Page インスタンス、または起動に失敗した場合は None
-        """
-        try:
-            return self._get_or_create_manager().get_page()
-        except my_lib.browser.BrowserError:
-            logging.exception("Failed to get page")
-            return None
-
-    @property
     def is_active(self) -> bool:
         """ブラウザがアクティブかどうかを確認.
 
@@ -75,19 +68,35 @@ class BrowserManager:
             return False
         return self._manager.has_browser()
 
-    def ensure_page(self) -> Page:
-        """ブラウザページを取得。存在しない場合は作成.
-
-        Returns:
-            Page インスタンス
+    def ensure_browser(self) -> None:
+        """ブラウザを起動する（起動済みなら何もしない）.
 
         Raises:
             BrowserError: ブラウザの起動に失敗した場合
         """
         try:
-            return self._get_or_create_manager().get_page()
+            self._get_or_create_manager().get_browser()
         except my_lib.browser.BrowserError as e:
             raise price_watch.exceptions.BrowserError(f"Failed to create browser: {e}") from e
+
+    @contextlib.contextmanager
+    def page(self) -> Iterator[Page]:
+        """新しいタブを開いて返し、with を抜けると閉じる.
+
+        ブラウザが未起動なら起動します。
+
+        Raises:
+            BrowserError: ブラウザの起動に失敗した場合
+        """
+        try:
+            cm = self._get_or_create_manager().page()
+            page = cm.__enter__()
+        except my_lib.browser.BrowserError as e:
+            raise price_watch.exceptions.BrowserError(f"Failed to create browser: {e}") from e
+        try:
+            yield page
+        finally:
+            cm.__exit__(None, None, None)
 
     def restart(self) -> bool:
         """ブラウザを再起動.

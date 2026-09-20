@@ -85,19 +85,18 @@ def search() -> flask.Response | tuple[flask.Response, int]:
         return flask.jsonify(error.model_dump()), 503
 
     try:
-        # ブラウザページを取得
-        page = price_watch.webapi.cache.get_yodobashi_page()
-        if page is None:
-            error = ErrorResponse(error="ブラウザの初期化に失敗しました")
-            return flask.jsonify(error.model_dump()), 503
-
-        # 検索実行
+        # 検索実行（タブは検索ごとに開いて閉じる）
         try:
-            results = my_lib.store.yodobashi.search(
-                page,
-                request.keywords,
-                max_items=request.item_count,
-            )
+            with price_watch.webapi.cache.yodobashi_page() as page:
+                if page is None:
+                    error = ErrorResponse(error="ブラウザの初期化に失敗しました")
+                    return flask.jsonify(error.model_dump()), 503
+
+                results = my_lib.store.yodobashi.search(
+                    page,
+                    request.keywords,
+                    max_items=request.item_count,
+                )
 
             items = [
                 YodobashiSearchResultItem(

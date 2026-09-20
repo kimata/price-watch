@@ -14,6 +14,7 @@ import my_lib.browser
 
 import price_watch.const
 import price_watch.event
+import price_watch.exceptions
 import price_watch.log_format
 import price_watch.managers.history
 import price_watch.managers.metrics_manager
@@ -51,6 +52,15 @@ class ItemProcessor:
         """設定を取得."""
         return self.app.config
 
+    def _ensure_browser(self) -> bool:
+        """ブラウザを起動する（失敗時はログを出して False）."""
+        try:
+            self.app.browser_manager.ensure_browser()
+        except price_watch.exceptions.BrowserError:
+            logging.exception("ブラウザを起動できませんでした")
+            return False
+        return True
+
     def process_all(self, item_list: list[ResolvedItem]) -> None:
         """全アイテムを処理.
 
@@ -81,8 +91,7 @@ class ItemProcessor:
         Args:
             item_list: 全アイテムリスト（フィルタリング前）
         """
-        page = self.app.browser_manager.page
-        if page is None:
+        if not self._ensure_browser():
             return
 
         scrape_items = [
@@ -132,15 +141,12 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
-        page = self.app.browser_manager.page
-        if page is None:
-            return False
-
         logging.info(price_watch.log_format.format_crawl_start(item))
         crawl_success = False
 
         try:
-            checked = price_watch.store.scrape.check(self.config, page, item, self.loop)
+            with self.app.browser_manager.page() as page:
+                checked = price_watch.store.scrape.check(self.config, page, item, self.loop)
             crawl_success = checked.is_success()
 
             self._process_data(checked)
@@ -153,6 +159,10 @@ class ItemProcessor:
                     logging.info("[デバッグモード] %s: 成功", store_name)
             else:
                 self._handle_crawl_failure(checked, store_name)
+
+        except price_watch.exceptions.BrowserError:
+            logging.exception("ブラウザを起動できないためチェックをスキップします: %s", item.name)
+            return False
 
         except my_lib.browser.SessionError:
             logging.warning("セッションが無効になりました。ブラウザを再起動します")
@@ -223,8 +233,7 @@ class ItemProcessor:
         Args:
             item_list: 全アイテムリスト
         """
-        page = self.app.browser_manager.page
-        if page is None:
+        if not self._ensure_browser():
             return
 
         flea_market_items = [
@@ -256,9 +265,15 @@ class ItemProcessor:
                 return
 
             # ストアごとにウォームアップを実行（最初のアイテム処理前に1回）
+            # NOTE: Cookie はコンテキストに残るので、別タブで行っても以降の検索に効く。
             if store_items:
                 check_method = store_items[0].check_method
-                price_watch.store.flea_market.warmup(page, check_method)
+                try:
+                    with self.app.browser_manager.page() as page:
+                        price_watch.store.flea_market.warmup(page, check_method)
+                except price_watch.exceptions.BrowserError:
+                    logging.exception("ウォームアップ用のブラウザを起動できませんでした")
+                    return
 
             with price_watch.managers.metrics_manager.StoreContext(
                 self.app.metrics_manager, store_name
@@ -293,14 +308,11 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
-        page = self.app.browser_manager.page
-        if page is None:
-            return False
-
         crawl_success = False
 
         try:
-            checked = price_watch.store.flea_market.check(self.config, page, item)
+            with self.app.browser_manager.page() as page:
+                checked = price_watch.store.flea_market.check(self.config, page, item)
             crawl_success = checked.is_success()
             item_key = price_watch.store.flea_market.generate_item_key(checked)
 
@@ -314,6 +326,10 @@ class ItemProcessor:
                     logging.info("[デバッグモード] %s: 成功", store_name)
             else:
                 self._handle_crawl_failure(checked, store_name, item_key=item_key)
+
+        except price_watch.exceptions.BrowserError:
+            logging.exception("ブラウザを起動できないためチェックをスキップします: %s", item.name)
+            return False
 
         except my_lib.browser.SessionError:
             logging.warning("セッションが無効になりました。ブラウザを再起動します")
@@ -351,8 +367,7 @@ class ItemProcessor:
         Args:
             failed_items: (アイテム, ストア名) のタプルリスト
         """
-        page = self.app.browser_manager.page
-        if page is None:
+        if not self._ensure_browser():
             return
 
         retry_success = 0
@@ -549,8 +564,7 @@ class ItemProcessor:
         Args:
             item_list: 全アイテムリスト
         """
-        page = self.app.browser_manager.page
-        if page is None:
+        if not self._ensure_browser():
             return
 
         yodobashi_items = [
@@ -605,15 +619,12 @@ class ItemProcessor:
         Returns:
             成功時 True
         """
-        page = self.app.browser_manager.page
-        if page is None:
-            return False
-
         logging.info(price_watch.log_format.format_crawl_start(item))
         crawl_success = False
 
         try:
-            checked = price_watch.store.yodobashi.check(self.config, page, item)
+            with self.app.browser_manager.page() as page:
+                checked = price_watch.store.yodobashi.check(self.config, page, item)
             crawl_success = checked.is_success()
 
             self._process_data(checked)
@@ -626,6 +637,10 @@ class ItemProcessor:
                     logging.info("[デバッグモード] %s: 成功", store_name)
             else:
                 self._handle_crawl_failure(checked, store_name)
+
+        except price_watch.exceptions.BrowserError:
+            logging.exception("ブラウザを起動できないためチェックをスキップします: %s", item.name)
+            return False
 
         except my_lib.browser.SessionError:
             logging.warning("セッションが無効になりました。ブラウザを再起動します")

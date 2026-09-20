@@ -319,13 +319,8 @@ class ChartImageWorker:
     def _ensure_browser(self) -> Browser | None:
         """ブラウザを確保（必要に応じて作成）."""
         if self._browser is not None:
-            # セッションが有効か確認
-            try:
-                self._browser.pages()
-                return self._browser
-            except Exception:
-                logging.warning("Chart browser session invalid, recreating...")
-                self._quit_browser()
+            # NOTE: セッション無効は生成失敗時の例外経路で検出して再作成する。
+            return self._browser
 
         try:
             css_width = int(price_watch.chart_image.CHART_WIDTH / price_watch.chart_image.DEVICE_PIXEL_RATIO)
