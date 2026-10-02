@@ -40,6 +40,7 @@ class ChartRequest:
     item_key: str
     chart_data: price_watch.chart_image.ChartData
     priority: RequestPriority
+    force: bool = False  # キャッシュが有効でも再生成する
     result_event: threading.Event = field(default_factory=threading.Event)
     result_path: pathlib.Path | None = field(default=None)
     error: Exception | None = field(default=None)
@@ -204,14 +205,17 @@ class ChartImageWorker:
         self,
         chart_data_list: list[price_watch.chart_image.ChartData],
         should_terminate: Callable[[], bool] | None = None,
+        force: bool = False,
     ) -> int:
         """バッチでチャート画像生成をキューに追加（バックグラウンド用）.
 
         キャッシュが有効なものはスキップし、無効なもののみキューに追加。
+        force=True の場合はキャッシュが有効でも再生成する（定期更新用）。
 
         Args:
             chart_data_list: チャートデータのリスト
             should_terminate: 終了判定コールバック
+            force: キャッシュが有効でも再生成するかどうか
 
         Returns:
             キューに追加したリクエスト数
@@ -225,7 +229,7 @@ class ChartImageWorker:
             cache_path = price_watch.chart_image.get_cache_path(item_key, self._cache_dir)
 
             # キャッシュが有効ならスキップ
-            if price_watch.chart_image.is_cache_valid(cache_path, self._ttl_sec):
+            if not force and price_watch.chart_image.is_cache_valid(cache_path, self._ttl_sec):
                 continue
 
             # 既に処理中ならスキップ
@@ -237,6 +241,7 @@ class ChartImageWorker:
                     item_key=item_key,
                     chart_data=chart_data,
                     priority=RequestPriority.LOW,
+                    force=force,
                 )
                 self._pending_requests[item_key] = request
 
@@ -278,7 +283,7 @@ class ChartImageWorker:
         try:
             # キャッシュを再チェック（キュー待機中に生成された可能性）
             cache_path = price_watch.chart_image.get_cache_path(item_key, self._cache_dir)
-            if price_watch.chart_image.is_cache_valid(cache_path, self._ttl_sec):
+            if not request.force and price_watch.chart_image.is_cache_valid(cache_path, self._ttl_sec):
                 request.result_path = cache_path
                 return
 

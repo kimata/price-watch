@@ -120,8 +120,10 @@ class AppRunner:
             self._do_work()
 
             # 巡回完了後、チャート画像生成が必要なら実行
+            # NOTE: キャッシュの TTL は生成間隔より長いので、有効なキャッシュも含めて
+            # 再生成する（期限切れを待つと、再生成までキャッシュが無効な時間帯ができる）。
             if self._should_generate_charts():
-                self._generate_chart_images()
+                self._generate_chart_images(force=True)
 
             # 作業終了時刻を記録（スリープ前）
             self.app.metrics_manager.record_work_ended(time.time())
@@ -159,8 +161,12 @@ class AppRunner:
         elapsed = now - self._last_chart_generation_time
         return elapsed >= price_watch.const.CHART_GENERATION_INTERVAL_SEC
 
-    def _generate_chart_images(self) -> None:
-        """全アイテムのチャート画像を ChartImageWorker 経由で生成."""
+    def _generate_chart_images(self, force: bool = False) -> None:
+        """全アイテムのチャート画像を ChartImageWorker 経由で生成.
+
+        Args:
+            force: キャッシュが有効でも再生成するかどうか
+        """
         logging.info("Starting background chart image generation...")
 
         worker = price_watch.chart_image_worker.get_worker()
@@ -182,13 +188,14 @@ class AppRunner:
             added = worker.submit_batch(
                 chart_data_list,
                 should_terminate=lambda: self.app.should_terminate,
+                force=force,
             )
             logging.info("Submitted %d chart generation requests to worker", added)
 
-            # 実際に生成リクエストがあった場合のみ生成時刻を更新
-            # 0件の場合（全キャッシュ有効）は更新しない。
-            # キャッシュが期限切れになった後の次回チェックで再生成を実行するため。
-            if added > 0:
+            # 全件を再生成した場合のみ生成時刻を更新
+            # 起動時（force=False）は既存キャッシュの生成時刻が不明なので更新せず、
+            # 初回の巡回完了時に全件を再生成する。
+            if force and added > 0:
                 self._last_chart_generation_time = time.time()
         except Exception:
             logging.exception("Failed to submit chart generation requests")

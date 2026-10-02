@@ -47,8 +47,11 @@ CHART_HEIGHT = 320
 # デバイスピクセル比（Retina 相当）
 DEVICE_PIXEL_RATIO = 2.0
 
-# キャッシュ有効期間（秒）- デフォルト3時間
-CACHE_TTL_SEC = 3 * 60 * 60
+# キャッシュ有効期間（秒）- デフォルト4時間
+# NOTE: バックグラウンド再生成（const.CHART_GENERATION_INTERVAL_SEC）は巡回完了時にしか
+# 判定されず、実際の再生成間隔は 3 時間 + 最大 1 巡回分になる。再生成より先に期限切れに
+# ならないよう、再生成間隔より長くしておく。
+CACHE_TTL_SEC = 4 * 60 * 60
 
 # デフォルトの色（PriceChart.tsx と同じ）
 DEFAULT_COLORS = [

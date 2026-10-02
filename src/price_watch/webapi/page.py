@@ -31,6 +31,9 @@ if TYPE_CHECKING:
 # チャート画像生成のタイムアウト（秒）
 CHART_GENERATION_TIMEOUT_SEC = 120.0
 
+# 期限切れチャート画像のキャッシュ時間（秒）- 再生成後の画像に早めに切り替える
+STALE_CHART_CACHE_SEC = 300
+
 # プレースホルダー画像のキャッシュ時間（秒）- 短くしてリトライを促す
 PLACEHOLDER_CACHE_SEC = 10
 
@@ -787,6 +790,7 @@ def serve_chart_image(item_key: str) -> flask.Response:
     """チャート画像を配信.
 
     - キャッシュが有効なら配信
+    - 期限切れでも画像が残っていれば、それを配信（再生成はバックグラウンド生成に任せる）
     - なければ ChartImageWorker 経由で生成
     - Cache-Control: public, max-age=10800 (3時間)
     """
@@ -806,6 +810,16 @@ def serve_chart_image(item_key: str) -> flask.Response:
                 cache_path,
                 mimetype="image/png",
                 max_age=10800,  # 3時間キャッシュ
+            )
+
+        # 期限切れでも画像があれば配信する。
+        # NOTE: 全件を一斉にオンデマンド生成すると直列処理でタイムアウトするため、
+        # 生成を待たせない。
+        if cache_path.exists():
+            return flask.send_file(
+                cache_path,
+                mimetype="image/png",
+                max_age=STALE_CHART_CACHE_SEC,
             )
 
         # ワーカーを取得

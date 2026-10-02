@@ -1719,6 +1719,58 @@ class TestOgpImageException:
         assert response.status_code == 500
 
 
+class TestServeChartImage:
+    """チャート画像配信のテスト"""
+
+    def _request(
+        self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path, age_sec: float
+    ) -> tuple[flask.wrappers.Response, MagicMock]:
+        import os
+        import time
+
+        import price_watch.chart_image
+
+        mock_config = MagicMock()
+        mock_config.data.cache = tmp_path
+
+        cache_path = price_watch.chart_image.get_cache_path("key1", tmp_path)
+        cache_path.write_bytes(b"dummy")
+        mtime = time.time() - age_sec
+        os.utime(cache_path, (mtime, mtime))
+
+        with (
+            patch.object(price_watch.webapi.cache._config_cache, "get", return_value=mock_config),
+            patch("price_watch.chart_image_worker.get_worker") as mock_get_worker,
+        ):
+            response = client.get("/price/chart/key1.png")
+
+        return response, mock_get_worker
+
+    def test_serves_valid_cache(self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path) -> None:
+        """有効なキャッシュは 3 時間キャッシュで配信する"""
+        response, mock_get_worker = self._request(client, tmp_path, age_sec=0)
+
+        assert response.status_code == 200
+        assert response.data == b"dummy"
+        assert response.cache_control.max_age == 10800
+        mock_get_worker.assert_not_called()
+
+    def test_serves_stale_cache_without_generation(
+        self, client: flask.testing.FlaskClient, tmp_path: pathlib.Path
+    ) -> None:
+        """期限切れのキャッシュは生成を待たずに短いキャッシュ時間で配信する"""
+        import price_watch.chart_image
+
+        response, mock_get_worker = self._request(
+            client, tmp_path, age_sec=price_watch.chart_image.CACHE_TTL_SEC + 60
+        )
+
+        assert response.status_code == 200
+        assert response.data == b"dummy"
+        assert response.cache_control.max_age == price_watch.webapi.page.STALE_CHART_CACHE_SEC
+        mock_get_worker.assert_not_called()
+
+
 class TestGetMetricsDb:
     """_get_metrics_db 関数のテスト"""
 

@@ -157,6 +157,39 @@ class TestAppRunnerExecuteMainLoop:
         assert result is True
 
 
+class TestAppRunnerGenerateChartImages:
+    """AppRunner._generate_chart_images のテスト"""
+
+    def _run(self, force: bool, added: int) -> tuple[price_watch.cli.app.AppRunner, MagicMock]:
+        runner = price_watch.cli.app.AppRunner(app=MagicMock())
+        mock_worker = MagicMock()
+        mock_worker.submit_batch.return_value = added
+
+        with (
+            patch("price_watch.chart_image_worker.get_worker", return_value=mock_worker),
+            patch.object(runner, "_collect_chart_data", return_value=[MagicMock()]),
+        ):
+            runner._generate_chart_images(force=force)
+
+        return runner, mock_worker
+
+    def test_startup_does_not_update_generation_time(self) -> None:
+        """起動時（force=False）は生成時刻を更新しない"""
+        runner, mock_worker = self._run(force=False, added=3)
+
+        assert mock_worker.submit_batch.call_args.kwargs["force"] is False
+        assert runner._last_chart_generation_time == 0.0
+        assert runner._should_generate_charts()
+
+    def test_forced_generation_updates_generation_time(self) -> None:
+        """定期更新（force=True）は生成時刻を更新する"""
+        runner, mock_worker = self._run(force=True, added=3)
+
+        assert mock_worker.submit_batch.call_args.kwargs["force"] is True
+        assert runner._last_chart_generation_time > 0
+        assert not runner._should_generate_charts()
+
+
 class TestAppRunnerDoWork:
     """AppRunner._do_work のテスト"""
 
